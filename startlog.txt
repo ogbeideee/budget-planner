@@ -1,0 +1,8 @@
+
+> budget-planner@0.1.0 start
+> next start -p 3113
+
+▲ Next.js 16.2.12
+- Local:         http://localhost:3113
+- Network:       http://192.168.100.7:3113
+✓ Ready in 222ms

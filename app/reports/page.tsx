@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { PlannerView } from "@/components/planner/PlannerView";
+import { ReportsView } from "@/components/reports/ReportsView";
 
 export const metadata: Metadata = {
-  title: "Budget Planner",
+  title: "Reports",
 };
 
-export default function PlannerPage() {
+export default function ReportsPage() {
   return (
     <Suspense fallback={null}>
-      <PlannerView />
+      <ReportsView />
     </Suspense>
   );
 }
