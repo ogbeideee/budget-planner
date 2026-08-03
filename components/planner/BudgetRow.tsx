@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/Button";
 import { PencilIcon, TrashIcon } from "@/components/ui/icons";
+import { categoryAccent } from "@/lib/accents";
 import { formatMoney } from "@/lib/money";
 import type { BudgetProgress } from "@/lib/selectors";
 import type { Budget, Category, Currency } from "@/lib/types";
@@ -15,6 +16,8 @@ export interface BudgetRowProps {
   currency: Currency;
   onEdit: () => void;
   onDelete: () => void;
+  highlighted?: boolean;
+  rowId?: string;
 }
 
 export const BudgetRow = memo(function BudgetRow({
@@ -24,6 +27,8 @@ export const BudgetRow = memo(function BudgetRow({
   currency,
   onEdit,
   onDelete,
+  highlighted = false,
+  rowId,
 }: BudgetRowProps) {
   const pct = budget.limit > 0 ? Math.round(progress.progress * 100) : 0;
   const stateClass = progress.over
@@ -34,10 +39,28 @@ export const BudgetRow = memo(function BudgetRow({
   const name = category?.name ?? "Category";
 
   return (
-    <tr className={`${stateClass} transition hover:brightness-95 dark:hover:brightness-125`}>
+    <tr
+      id={rowId}
+      tabIndex={-1}
+      aria-label={
+        progress.over
+          ? `${name} is over budget by ${formatMoney(progress.remaining * -1, currency)}`
+          : undefined
+      }
+      className={`${stateClass} transition hover:brightness-95 dark:hover:brightness-125 focus:outline-none ${
+        highlighted ? "ring-2 ring-inset ring-brand-500/70" : ""
+      }`}
+    >
       <td className="px-3 py-3">
         <span className="flex items-center gap-2 font-medium text-ink">
-          <span aria-hidden="true">{category?.icon}</span>
+          <span
+            aria-hidden="true"
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm ${
+              category ? categoryAccent(category.name).chip : "bg-canvas text-muted"
+            }`}
+          >
+            {category?.icon}
+          </span>
           {name}
         </span>
       </td>

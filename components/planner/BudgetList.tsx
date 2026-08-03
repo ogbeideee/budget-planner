@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -16,14 +16,16 @@ import { useToast } from "@/hooks/useToast";
 import { AllocationPanel } from "./AllocationPanel";
 import { BudgetForm } from "./BudgetForm";
 import { BudgetRow } from "./BudgetRow";
+import { BudgetSuggestions } from "./BudgetSuggestions";
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 export interface BudgetListProps {
   month: Month;
+  focusOver?: boolean;
 }
 
-export function BudgetList({ month }: BudgetListProps) {
+export function BudgetList({ month, focusOver = false }: BudgetListProps) {
   const budgets = useAppStore((s) => s.state.budgets);
   const transactions = useAppStore((s) => s.state.transactions);
   const categories = useAppStore((s) => s.state.categories);
@@ -35,6 +37,9 @@ export function BudgetList({ month }: BudgetListProps) {
   const [editing, setEditing] = useState<Budget | null>(null);
   const [formSession, setFormSession] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<Budget | null>(null);
+  const [reviewActive, setReviewActive] = useState(false);
+
+  const sectionRef = useRef<HTMLDivElement>(null);
 
   const monthBudgets = useMemo(
     () =>
@@ -60,6 +65,32 @@ export function BudgetList({ month }: BudgetListProps) {
     () => [...new Set(pastBudgets.map((budget) => budget.month))],
     [pastBudgets],
   );
+
+  const progressById = useMemo(
+    () => new Map(monthBudgets.map((budget) => [budget.id, budgetProgress(budget, transactions)])),
+    [monthBudgets, transactions],
+  );
+
+  const overBudgets = useMemo(
+    () => monthBudgets.filter((budget) => progressById.get(budget.id)?.over),
+    [monthBudgets, progressById],
+  );
+
+  useEffect(() => {
+    if (!focusOver || overBudgets.length === 0) return;
+    const scrollTimer = window.setTimeout(() => {
+      sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setReviewActive(true);
+      document
+        .getElementById(`budget-row-${overBudgets[0].id}`)
+        ?.focus({ preventScroll: true });
+    }, 60);
+    const clearTimer = window.setTimeout(() => setReviewActive(false), 5000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [focusOver, overBudgets]);
 
   const allocatable = useMemo(
     () => Math.max(0, totals(transactions, month).net),
@@ -139,28 +170,42 @@ export function BudgetList({ month }: BudgetListProps) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((budget) => (
-            <BudgetRow
-              key={budget.id}
-              budget={budget}
-              category={categoryOf(budget)}
-              progress={budgetProgress(budget, transactions)}
-              currency={currency}
-              onEdit={() => {
-                setEditing(budget);
-                setFormSession((session) => session + 1);
-                setFormOpen(true);
-              }}
-              onDelete={() => setPendingDelete(budget)}
-            />
-          ))}
+          {rows.map((budget) => {
+            const progress = progressById.get(budget.id);
+            if (!progress) return null;
+            return (
+              <BudgetRow
+                key={budget.id}
+                budget={budget}
+                category={categoryOf(budget)}
+                progress={progress}
+                currency={currency}
+                highlighted={reviewActive && progress.over}
+                rowId={`budget-row-${budget.id}`}
+                onEdit={() => {
+                  setEditing(budget);
+                  setFormSession((session) => session + 1);
+                  setFormOpen(true);
+                }}
+                onDelete={() => setPendingDelete(budget)}
+              />
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div ref={sectionRef} className="flex scroll-mt-24 flex-col gap-6">
+      <BudgetSuggestions
+        month={month}
+        onAdjust={(budget) => {
+          setEditing(budget);
+          setFormSession((session) => session + 1);
+          setFormOpen(true);
+        }}
+      />
       <Card
         title={`Allocated · ${formatMonthLabel(month)}`}
         action={
@@ -211,8 +256,9 @@ export function BudgetList({ month }: BudgetListProps) {
         {monthBudgets.length === 0 ? (
           <EmptyState
             icon={<TargetIcon className="h-5 w-5" />}
-            title="No budgets this month"
-            description="Create your first budget to start tracking spending."
+            iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+            title="Nothing planned yet"
+            description="Create your first budget to begin — it's the first step to feeling in control."
           />
         ) : (
           renderTable(monthBudgets)

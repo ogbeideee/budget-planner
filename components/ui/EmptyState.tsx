@@ -18,18 +18,24 @@ export function EmptyState({
   iconClass = "bg-canvas text-muted",
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
       {icon && (
         <span
           aria-hidden="true"
-          className={`flex h-11 w-11 items-center justify-center rounded-full ${iconClass}`}
+          className={`flex h-12 w-12 items-center justify-center rounded-2xl shadow-card ${iconClass}`}
         >
           {icon}
         </span>
       )}
-      <p className="text-base font-semibold text-ink">{title}</p>
-      <p className="max-w-sm text-sm text-muted">{description}</p>
-      {action && <div className="mt-2">{action}</div>}
+      <div className="flex flex-col gap-1">
+        <p className="text-base font-semibold tracking-tight text-ink">
+          {title}
+        </p>
+        <p className="mx-auto max-w-md text-sm leading-relaxed text-muted">
+          {description}
+        </p>
+      </div>
+      {action && <div className="mt-1">{action}</div>}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ChartIcon } from "@/components/ui/icons";
 import { formatMonthLabel, formatMonthShort } from "@/lib/date";
 import { compactMoney, formatMoney } from "@/lib/money";
 import { monthlySeries } from "@/lib/selectors";
@@ -36,10 +37,12 @@ export function IncomeExpenseChart({ months }: { months: Month[] }) {
   if (!hasData) {
     return (
       <ChartCard title="Income vs expenses" subtitle="Per month">
-        <EmptyState
-          title="No data for this window"
-          description="Add income or expenses to see the comparison."
-        />
+<EmptyState
+        icon={<ChartIcon className="h-5 w-5" />}
+        iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+        title="No data for this window"
+        description="Add income or expenses and this chart will show per-month comparisons."
+      />
       </ChartCard>
     );
   }

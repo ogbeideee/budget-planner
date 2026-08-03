@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { HistoryView } from "@/components/history/HistoryView";
+import { UpcomingView } from "@/components/upcoming/UpcomingView";
 import { PageSkeleton } from "@/components/ui/PageSkeleton";
 
 export const metadata: Metadata = {
-  title: "Timeline",
+  title: "Upcoming expenses",
 };
 
-export default function HistoryPage() {
+export default function UpcomingPage() {
   return (
     <Suspense fallback={<PageSkeleton />}>
-      <HistoryView />
+      <UpcomingView />
     </Suspense>
   );
 }

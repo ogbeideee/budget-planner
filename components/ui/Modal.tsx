@@ -68,7 +68,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4 animate-[overlay-in_120ms_ease-out]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4 backdrop-blur-[2px] animate-[overlay-in_180ms_ease-out]"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -80,9 +80,12 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={describedBy}
         tabIndex={-1}
-        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-pop animate-[dialog-in_120ms_ease-out] focus:outline-none"
+        className="w-full max-w-md rounded-xl border border-border/60 bg-surface p-6 shadow-pop animate-[dialog-in_180ms_ease-out] focus:outline-none"
       >
-        <h2 id={titleId} className="mb-4 text-lg font-semibold">
+        <h2
+          id={titleId}
+          className="mb-4 flex items-center gap-2 pr-8 text-lg font-bold tracking-tight"
+        >
           {title}
         </h2>
         {children}

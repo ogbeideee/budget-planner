@@ -9,9 +9,9 @@ import { NAV_ITEMS } from "./nav";
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-border bg-surface lg:flex">
-      <div className="flex h-16 items-center gap-2.5 border-b border-border px-4">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
+    <aside className="sidebar-surface fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-border lg:flex">
+      <div className="flex h-16 items-center gap-2.5 border-b border-border/70 px-4">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-card">
           <WalletIcon className="h-5 w-5" />
         </span>
         <span className="truncate text-sm font-bold tracking-tight">
@@ -28,13 +28,13 @@ export function Sidebar() {
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+                  className={`group flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus:outline-none ${
                     active
-                      ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                      ? "bg-brand-50 text-brand-700 shadow-card dark:bg-brand-950 dark:text-brand-300"
                       : "text-muted hover:bg-canvas hover:text-ink"
                   }`}
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
+                  <Icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
                   <span className="truncate">{item.label}</span>
                 </Link>
               </li>
@@ -42,7 +42,7 @@ export function Sidebar() {
           })}
         </ul>
       </nav>
-      <div className="border-t border-border px-4 py-3">
+      <div className="border-t border-border/70 px-4 py-3">
         <ThemeToggle />
         <p className="mt-2.5 px-1 text-xs text-muted">v0.1.0</p>
       </div>

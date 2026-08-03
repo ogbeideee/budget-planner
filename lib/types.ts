@@ -50,6 +50,21 @@ export interface Transaction {
   monthlyIncome?: boolean;
 }
 
+export type FutureExpenseStatus = "upcoming" | "paid";
+
+export interface FutureExpense {
+  id: ID;
+  categoryId: ID;
+  amount: number;
+  title: string;
+  dueDate: string;
+  notes?: string;
+  recurring: boolean;
+  priority: Priority;
+  status: FutureExpenseStatus;
+  createdAt: string;
+}
+
 export interface Settings {
   currency: Currency;
   recurringEnabled: boolean;
@@ -62,6 +77,7 @@ export interface AppState {
   categories: Category[];
   budgets: Budget[];
   transactions: Transaction[];
+  futureExpenses: FutureExpense[];
   recurrenceRules: RecurrenceRule[];
   settings: Settings;
 }
@@ -72,6 +88,17 @@ export interface TransactionInput {
   type: CategoryKind;
   date: string;
   note?: string;
+}
+
+export interface FutureExpenseInput {
+  categoryId: ID;
+  amount: number;
+  title: string;
+  dueDate: string;
+  notes?: string;
+  recurring?: boolean;
+  priority?: Priority;
+  status?: FutureExpenseStatus;
 }
 
 export interface BudgetInput {
@@ -100,4 +127,5 @@ export interface RecurrenceRuleInput {
 export type CategoryDeleteReason =
   | "in-use-transactions"
   | "in-use-budgets"
-  | "in-use-rules";
+  | "in-use-rules"
+  | "in-use-future-expenses";

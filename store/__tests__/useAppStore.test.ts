@@ -439,3 +439,100 @@ describe("setMonthlyIncome", () => {
     });
   });
 });
+
+describe("future expenses", () => {
+  function addValid(store: Store) {
+    const category = expenseCategory(store);
+    return store.getState().addFutureExpense({
+      categoryId: category.id,
+      amount: 1500,
+      title: "Netflix",
+      dueDate: "2026-08-15",
+      notes: "Monthly plan",
+      recurring: true,
+      priority: "low",
+    });
+  }
+
+  it("adds a future expense with defaults", () => {
+    const store = createAppStore();
+    expect(addValid(store)).toBe(true);
+    const added = store.getState().state.futureExpenses[0];
+    expect(added).toMatchObject({
+      title: "Netflix",
+      amount: 1500,
+      dueDate: "2026-08-15",
+      recurring: true,
+      priority: "low",
+      status: "upcoming",
+    });
+    expect(added.id).toBeDefined();
+  });
+
+  it("rejects invalid inputs", () => {
+    const store = createAppStore();
+    const category = expenseCategory(store);
+    const base = {
+      categoryId: category.id,
+      amount: 1500,
+      title: "Netflix",
+      dueDate: "2026-08-15",
+    };
+    expect(store.getState().addFutureExpense({ ...base, amount: 0 })).toBe(false);
+    expect(store.getState().addFutureExpense({ ...base, title: "  " })).toBe(false);
+    expect(store.getState().addFutureExpense({ ...base, dueDate: "15-08-2026" })).toBe(false);
+    expect(
+      store.getState().addFutureExpense({
+        ...base,
+        categoryId: store.getState().state.categories.find((c) => c.kind === "income")!.id,
+      }),
+    ).toBe(false);
+    expect(store.getState().state.futureExpenses).toHaveLength(0);
+  });
+
+  it("updates fields through sanitized patches", () => {
+    const store = createAppStore();
+    addValid(store);
+    const id = store.getState().state.futureExpenses[0].id;
+    store.getState().updateFutureExpense(id, {
+      title: "Netflix Premium",
+      status: "paid",
+      priority: "high",
+      notes: "Updated",
+    });
+    expect(store.getState().state.futureExpenses[0]).toMatchObject({
+      title: "Netflix Premium",
+      status: "paid",
+      priority: "high",
+      notes: "Updated",
+    });
+    store.getState().updateFutureExpense(id, { amount: -5, title: "" });
+    expect(store.getState().state.futureExpenses[0].amount).toBe(1500);
+  });
+
+  it("deletes a future expense", () => {
+    const store = createAppStore();
+    addValid(store);
+    store.getState().deleteFutureExpense(store.getState().state.futureExpenses[0].id);
+    expect(store.getState().state.futureExpenses).toHaveLength(0);
+  });
+
+  it("blocks deleting a category used by future expenses", () => {
+    const store = createAppStore();
+    addValid(store);
+    const category = expenseCategory(store);
+    expect(store.getState().deleteCategory(category.id)).toEqual({
+      ok: false,
+      reason: "in-use-future-expenses",
+    });
+  });
+
+  it("persists future expenses to localStorage", () => {
+    const store = createAppStore();
+    addValid(store);
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const persisted = JSON.parse(raw!);
+    expect(persisted.state.futureExpenses).toHaveLength(1);
+    expect(persisted.state.futureExpenses[0].title).toBe("Netflix");
+  });
+});

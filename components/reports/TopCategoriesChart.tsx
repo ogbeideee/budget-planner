@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { TargetIcon } from "@/components/ui/icons";
 import { compactMoney, formatMoney } from "@/lib/money";
 import { spendingByCategoryInMonths } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -50,10 +51,12 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
   if (data.length === 0) {
     return (
       <ChartCard title="Top categories" subtitle={`Across the 6-month window`}>
-        <EmptyState
-          title="No spending in this window"
-          description="Add expenses to see the top categories."
-        />
+<EmptyState
+        icon={<TargetIcon className="h-5 w-5" />}
+        iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+        title="No spending in this window"
+        description="Add expenses and your top categories will show up here."
+      />
       </ChartCard>
     );
   }

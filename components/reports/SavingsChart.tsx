@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { TrendingUpIcon } from "@/components/ui/icons";
 import { formatMonthLabel, formatMonthShort } from "@/lib/date";
 import { compactMoney, formatMoney } from "@/lib/money";
 import { monthlySeries } from "@/lib/selectors";
@@ -36,10 +37,12 @@ export function SavingsChart({ months }: { months: Month[] }) {
   if (!hasData) {
     return (
       <ChartCard title="Savings over time" subtitle="Per month">
-        <EmptyState
-          title="No data for this window"
-          description="Add income or expenses to see savings over time."
-        />
+<EmptyState
+        icon={<TrendingUpIcon className="h-5 w-5" />}
+        iconClass="bg-income/10 text-income"
+        title="No data for this window"
+        description="Add income or expenses to start tracking your savings trend."
+      />
       </ChartCard>
     );
   }

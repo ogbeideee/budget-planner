@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ArrowRightToLineIcon } from "@/components/ui/icons";
+import { categoryAccent } from "@/lib/accents";
 import { formatDateShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { deferredExpenses } from "@/lib/selectors";
@@ -33,7 +34,7 @@ export function DeferredSection({ month }: { month: Month }) {
           href={`/history?month=${month}`}
           className="rounded-sm text-sm font-semibold text-brand-600 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400"
         >
-          View in History
+          View in Timeline
         </Link>
       }
     >
@@ -55,7 +56,16 @@ export function DeferredSection({ month }: { month: Month }) {
                   key={transaction.id}
                   className="flex items-center gap-3 py-1.5"
                 >
-                  <span aria-hidden="true">{category?.icon}</span>
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${
+                      category
+                        ? categoryAccent(category.name).chip
+                        : "bg-canvas text-muted"
+                    }`}
+                  >
+                    {category?.icon}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-ink">
                       {transaction.note ?? category?.name ?? "Expense"}

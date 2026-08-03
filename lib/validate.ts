@@ -5,6 +5,8 @@ import type {
   Category,
   CategoryKind,
   Currency,
+  FutureExpense,
+  FutureExpenseStatus,
   ID,
   Priority,
   RecurrenceFrequency,
@@ -14,7 +16,8 @@ import type {
 } from "./types";
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const MAX_NOTE_LENGTH = 200;
+export const MAX_NOTE_LENGTH = 200;
+export const MAX_TITLE_LENGTH = 60;
 
 export class ValidationError extends Error {}
 
@@ -214,6 +217,66 @@ function validateRecurrenceRule(
   };
 }
 
+function validateFutureExpense(
+  value: unknown,
+  categories: Category[],
+): FutureExpense {
+  if (!isRecord(value)) throw new ValidationError("Invalid future expense");
+  const categoryId = requireNonEmptyString(
+    value.categoryId,
+    "futureExpense.categoryId",
+  );
+  const category = categories.find((c) => c.id === categoryId);
+  if (!category) {
+    throw new ValidationError("Invalid futureExpense.categoryId: unknown category");
+  }
+  if (category.kind !== "expense") {
+    throw new ValidationError(
+      "Invalid futureExpense.categoryId: category must be an expense",
+    );
+  }
+  const title = requireNonEmptyString(value.title, "futureExpense.title");
+  if (title.length > MAX_TITLE_LENGTH) {
+    throw new ValidationError(`Invalid futureExpense.title: longer than ${MAX_TITLE_LENGTH} chars`);
+  }
+  const amount = value.amount;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    throw new ValidationError("Invalid futureExpense.amount");
+  }
+  const dueDate = requireString(value.dueDate, "futureExpense.dueDate");
+  if (!isIsoDate(dueDate)) throw new ValidationError("Invalid futureExpense.dueDate");
+  let priority: Priority = "medium";
+  if (value.priority !== undefined && value.priority !== null) {
+    if (value.priority !== "high" && value.priority !== "medium" && value.priority !== "low") {
+      throw new ValidationError("Invalid futureExpense.priority");
+    }
+    priority = value.priority;
+  }
+  let status: FutureExpenseStatus = "upcoming";
+  if (value.status === undefined || value.status === null) {
+    status = "upcoming";
+  } else if (value.status === "upcoming" || value.status === "paid") {
+    status = value.status;
+  } else {
+    throw new ValidationError("Invalid futureExpense.status");
+  }
+  return {
+    id: requireNonEmptyString(value.id, "futureExpense.id"),
+    categoryId,
+    amount,
+    title,
+    dueDate,
+    notes: requireOptionalNote(value.notes),
+    recurring:
+      value.recurring === undefined || value.recurring === null
+        ? false
+        : Boolean(value.recurring),
+    priority,
+    status,
+    createdAt: requireString(value.createdAt, "futureExpense.createdAt"),
+  };
+}
+
 export function validateAppState(value: unknown): AppState {
   if (!isRecord(value)) throw new ValidationError("Invalid state");
   if (value.version !== 1) throw new ValidationError("Unsupported state version");
@@ -226,6 +289,12 @@ export function validateAppState(value: unknown): AppState {
   const transactions = requireArray(value.transactions, "transactions").map(
     (entry) => validateTransaction(entry, categories),
   );
+  const futureExpenses =
+    value.futureExpenses === undefined || value.futureExpenses === null
+      ? []
+      : requireArray(value.futureExpenses, "futureExpenses").map((entry) =>
+          validateFutureExpense(entry, categories),
+        );
   const recurrenceRules = requireArray(
     value.recurrenceRules,
     "recurrenceRules",
@@ -258,6 +327,7 @@ export function validateAppState(value: unknown): AppState {
     categories,
     budgets,
     transactions,
+    futureExpenses,
     recurrenceRules,
     settings: {
       currency,

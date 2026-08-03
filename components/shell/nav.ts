@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  CalendarIcon,
   ChartIcon,
   CheckSquareIcon,
   ClockIcon,
@@ -17,7 +18,8 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/", label: "Planner", icon: GridIcon },
   { href: "/todo", label: "To-Do", icon: CheckSquareIcon },
-  { href: "/history", label: "History", icon: ClockIcon },
+  { href: "/upcoming", label: "Upcoming", icon: CalendarIcon },
+  { href: "/history", label: "Timeline", icon: ClockIcon },
   { href: "/reports", label: "Reports", icon: ChartIcon },
   { href: "/settings", label: "Settings", icon: GearIcon },
 ];

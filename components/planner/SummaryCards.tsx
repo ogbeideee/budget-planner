@@ -2,18 +2,20 @@
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { AnimatedMoney } from "@/components/ui/AnimatedNumber";
 import { Modal } from "@/components/ui/Modal";
 import {
   ArrowDownLeftIcon,
   ArrowUpRightIcon,
   ChevronRightIcon,
+  PencilIcon,
   TargetIcon,
   TrendingUpIcon,
 } from "@/components/ui/icons";
 import { formatMonthLabel } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { totals } from "@/lib/selectors";
-import type { Month } from "@/lib/types";
+import type { Currency, Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { AllocationPanel } from "./AllocationPanel";
 import { ExpenseBreakdown } from "./ExpenseBreakdown";
@@ -22,11 +24,14 @@ import { MonthlyIncomeModal } from "./MonthlyIncomeModal";
 interface SummaryCardProps {
   ariaLabel: string;
   label: string;
-  value: string;
+  value: number;
   hint: string;
   icon: ReactNode;
   iconClass: string;
   valueClass?: string;
+  accent: string;
+  editAffordance?: boolean;
+  currency: Currency;
   onClick: () => void;
 }
 
@@ -38,6 +43,9 @@ function SummaryCard({
   icon,
   iconClass,
   valueClass,
+  accent,
+  editAffordance = false,
+  currency,
   onClick,
 }: SummaryCardProps) {
   return (
@@ -45,23 +53,38 @@ function SummaryCard({
       type="button"
       aria-label={ariaLabel}
       onClick={onClick}
-      className="group flex flex-col gap-2 rounded-lg bg-surface p-5 text-left shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:shadow-card-hover focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none"
+      className="group relative flex flex-col gap-2 overflow-hidden rounded-xl border border-border/50 bg-surface p-5 text-left shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-border hover:shadow-card-hover hover:brightness-[1.01] focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus:outline-none motion-reduce:transform-none"
     >
+      <span
+        aria-hidden="true"
+        className={`absolute inset-x-0 top-0 h-[3px] ${accent}`}
+      />
       <span className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2.5">
           <span
             aria-hidden="true"
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${iconClass}`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm transition-transform duration-200 group-hover:scale-105 ${iconClass}`}
           >
             {icon}
           </span>
-          <span className="truncate text-sm text-muted">{label}</span>
+          <span className="truncate text-sm font-semibold text-muted group-hover:text-ink">
+            {label}
+          </span>
         </span>
-        <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted/40 transition-transform duration-150 group-hover:translate-x-0.5" />
+        {editAffordance ? (
+          <span className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-border bg-canvas px-2 text-[11px] font-semibold text-muted transition-colors duration-200 group-hover:border-brand-500/40 group-hover:bg-brand-50 group-hover:text-brand-600 dark:group-hover:bg-brand-950 dark:group-hover:text-brand-300">
+            <PencilIcon className="h-3 w-3" />
+            Edit
+          </span>
+        ) : (
+          <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted/40 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-muted" />
+        )}
       </span>
-      <span className={`text-2xl font-bold tabular-nums ${valueClass ?? ""}`}>
-        {value}
-      </span>
+      <AnimatedMoney
+        value={value}
+        currency={currency}
+        className={`text-2xl font-bold tracking-tight tabular-nums ${valueClass ?? ""}`}
+      />
       <span className="text-xs text-muted">{hint}</span>
     </button>
   );
@@ -98,43 +121,56 @@ export function SummaryCards({ month }: { month: Month }) {
         <SummaryCard
           ariaLabel={income > 0 ? "Monthly income" : "Set monthly income"}
           label={income > 0 ? "Income" : "Set monthly income"}
-          value={fmt(income)}
-          hint={income > 0 ? "Tap to adjust monthly income" : "Define your income to plan"}
+          value={income}
+          hint={
+            income > 0
+              ? "Tap to adjust your monthly income"
+              : "Define your income to plan"
+          }
           icon={<ArrowDownLeftIcon className="h-4 w-4" />}
           iconClass="bg-income/10 text-income"
-          valueClass={income > 0 ? undefined : "text-muted"}
+          valueClass={income > 0 ? "text-income" : "text-muted"}
+          accent="bg-income/70"
+          editAffordance
+          currency={currency}
           onClick={() => setIncomeModalOpen(true)}
         />
         <SummaryCard
           ariaLabel="Expense breakdown"
           label="Expenses"
-          value={fmt(expenses)}
+          value={expenses}
           hint="Tap for the full breakdown"
           icon={<ArrowUpRightIcon className="h-4 w-4" />}
           iconClass="bg-expense/10 text-expense"
           valueClass="text-expense"
+          accent="bg-expense/70"
+          currency={currency}
           onClick={() => setExpensesModalOpen(true)}
         />
         <SummaryCard
           ariaLabel="Net summary"
           label="Net"
-          value={fmt(net)}
+          value={net}
           hint="Income minus expenses"
           icon={<TrendingUpIcon className="h-4 w-4" />}
           iconClass={
             net >= 0 ? "bg-income/10 text-income" : "bg-expense/10 text-expense"
           }
           valueClass={net >= 0 ? "text-income" : "text-expense"}
+          accent={net >= 0 ? "bg-income/70" : "bg-expense/70"}
+          currency={currency}
           onClick={() => setNetModalOpen(true)}
         />
         <SummaryCard
           ariaLabel="Remaining allocation"
           label="Remaining"
-          value={fmt(remaining)}
+          value={remaining}
           hint="What's left to allocate"
           icon={<TargetIcon className="h-4 w-4" />}
           iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
           valueClass={net < 0 ? "text-warn" : undefined}
+          accent="bg-brand-500/70"
+          currency={currency}
           onClick={() => setRemainingModalOpen(true)}
         />
       </div>

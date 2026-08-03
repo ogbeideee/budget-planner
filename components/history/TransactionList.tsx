@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -8,7 +8,9 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ClockIcon } from "@/components/ui/icons";
 import { formatMonthLabel, monthKeyFromIso, monthOffset } from "@/lib/date";
+import { formatMoney } from "@/lib/money";
 import { sortTransactions, transactionsForMonth } from "@/lib/selectors";
+import { groupTransactionsByTime } from "@/lib/timeline";
 import type { Transaction } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useMonth } from "@/hooks/useMonth";
@@ -99,6 +101,10 @@ export function TransactionList() {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
+  const groups = useMemo(
+    () => groupTransactionsByTime(pageRows),
+    [pageRows],
+  );
 
   const goToPage = (next: number) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -141,19 +147,20 @@ export function TransactionList() {
         </Button>
       </div>
 
-      <Card title={`Ledger · ${formatMonthLabel(month)}`}>
+      <Card title={`Timeline · ${formatMonthLabel(month)}`}>
         {pageRows.length === 0 ? (
           <EmptyState
             icon={<ClockIcon className="h-5 w-5" />}
+            iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
             title={
               filtered.length === 0
                 ? "No matching records"
-                : "No records this month"
+                : "No records for this month"
             }
             description={
               filtered.length === 0
-                ? "Try adjusting the filters."
-                : "Add your first income or expense to get started."
+                ? "Adjust the filters or clear the search to see more records."
+                : "Add your first income or expense — your timeline grows from here."
             }
           />
         ) : (
@@ -194,23 +201,45 @@ export function TransactionList() {
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((transaction) => (
-                  <TransactionRow
-                    key={transaction.id}
-                    transaction={transaction}
-                    category={categories.find(
-                      (category) => category.id === transaction.categoryId,
-                    )}
-                    currency={currency}
-                    onEdit={() => {
-                      setEditing(transaction);
-                      setFormSession((session) => session + 1);
-                      setFormOpen(true);
-                    }}
-                    onDelete={() => setPendingDelete(transaction)}
-                    onMoveNextMonth={() => handleMove(transaction)}
-                  />
-                ))}
+                {groups.map((group) => {
+                  const groupTotal = group.items.reduce(
+                    (sum, transaction) => sum + transaction.amount,
+                    0,
+                  );
+                  return (
+                    <Fragment key={group.key}>
+                      <tr>
+                        <th
+                          colSpan={5}
+                          scope="colgroup"
+                          className="bg-canvas/60 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted"
+                        >
+                          {group.label}
+                          <span className="ml-2 font-medium normal-case tracking-normal">
+                            {formatMoney(groupTotal, currency)}
+                          </span>
+                        </th>
+                      </tr>
+                      {group.items.map((transaction) => (
+                        <TransactionRow
+                          key={transaction.id}
+                          transaction={transaction}
+                          category={categories.find(
+                            (category) => category.id === transaction.categoryId,
+                          )}
+                          currency={currency}
+                          onEdit={() => {
+                            setEditing(transaction);
+                            setFormSession((session) => session + 1);
+                            setFormOpen(true);
+                          }}
+                          onDelete={() => setPendingDelete(transaction)}
+                          onMoveNextMonth={() => handleMove(transaction)}
+                        />
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -21,6 +21,7 @@ export function createInitialState(): AppState {
     categories,
     budgets: [],
     transactions: [],
+    futureExpenses: [],
     recurrenceRules: [],
     settings: {
       currency: "USD",

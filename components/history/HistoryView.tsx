@@ -7,7 +7,7 @@ export function HistoryView() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="History"
+        title="Timeline"
         description="Every income and expense, in one place."
       />
       <TransactionList />

@@ -273,4 +273,50 @@ describe("validateAppState", () => {
     (state.settings as unknown as Record<string, unknown>).theme = "sepia";
     expect(() => validateAppState(state)).toThrow(ValidationError);
   });
+
+  it("validates future expenses and defaults a missing array to empty", () => {
+    const state = clone(validState());
+    const expenseCategory = state.categories.find((c) => c.kind === "expense")!;
+    state.futureExpenses = [
+      {
+        id: "f1",
+        categoryId: expenseCategory.id,
+        amount: 500,
+        title: "Netflix",
+        dueDate: "2026-08-15",
+        notes: "Monthly plan",
+        recurring: true,
+        priority: "low",
+        status: "upcoming",
+        createdAt: "2026-08-01T00:00:00.000Z",
+      },
+    ];
+    expect(() => validateAppState(state)).not.toThrow();
+    expect(validateAppState(state).futureExpenses[0].title).toBe("Netflix");
+    expect(validateAppState(state).futureExpenses[0].status).toBe("upcoming");
+
+    state.futureExpenses[0] = {
+      ...state.futureExpenses[0],
+      status: "paid",
+    };
+    expect(validateAppState(state).futureExpenses[0].status).toBe("paid");
+
+    state.futureExpenses[0] = { ...state.futureExpenses[0], status: "later" } as never;
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.futureExpenses[0] = { ...state.futureExpenses[0], categoryId: "ghost" };
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.futureExpenses[0] = { ...state.futureExpenses[0], title: "" };
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.futureExpenses[0] = { ...state.futureExpenses[0], amount: 0 };
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.futureExpenses[0] = { ...state.futureExpenses[0], dueDate: "15-08-2026" };
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    delete (state as unknown as Record<string, unknown>).futureExpenses;
+    expect(validateAppState(state).futureExpenses).toEqual([]);
+  });
 });

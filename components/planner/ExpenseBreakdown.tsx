@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { BarChart } from "@/components/charts/BarChart";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ArrowUpRightIcon } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { spendingByCategory } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -26,17 +27,19 @@ export function ExpenseBreakdown({
   );
 
   if (spends.length === 0) {
-    return bare ? (
+    const empty = (
       <EmptyState
-        title="No expenses this month"
-        description="Expense categories will appear here as you spend."
+        icon={<ArrowUpRightIcon className="h-5 w-5" />}
+        iconClass="bg-expense/10 text-expense"
+        title="Nothing recorded yet"
+        description="Add your first expense and your category breakdown will show up here."
       />
+    );
+    return bare ? (
+      empty
     ) : (
       <Card title="Expense breakdown">
-        <EmptyState
-          title="No expenses this month"
-          description="Expense categories will appear here as you spend."
-        />
+        {empty}
       </Card>
     );
   }

@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { monthKeyFromIso, nextMonthDate } from "@/lib/date";
+import { isIsoDate, monthKeyFromIso, nextMonthDate } from "@/lib/date";
 import { hasGeneratedInstance, recordException } from "@/lib/recurrence";
 import { createInitialState } from "@/lib/seed";
 import { parseStoredState, STORAGE_KEY } from "@/lib/storage";
-import { validateAppState } from "@/lib/validate";
+import {
+  MAX_NOTE_LENGTH,
+  MAX_TITLE_LENGTH,
+  validateAppState,
+} from "@/lib/validate";
 import type {
   AppState,
   Budget,
@@ -12,6 +16,8 @@ import type {
   Category,
   CategoryDeleteReason,
   CategoryInput,
+  FutureExpense,
+  FutureExpenseInput,
   ID,
   Month,
   RecurrenceRule,
@@ -34,6 +40,9 @@ export interface AppStore {
   addBudget(input: BudgetInput): boolean;
   updateBudget(id: ID, patch: Partial<Pick<Budget, "limit" | "priority">>): void;
   deleteBudget(id: ID): void;
+  addFutureExpense(input: FutureExpenseInput): boolean;
+  updateFutureExpense(id: ID, patch: Partial<FutureExpenseInput>): void;
+  deleteFutureExpense(id: ID): void;
   addCategory(input: CategoryInput): void;
   renameCategory(id: ID, name: string): void;
   updateCategory(id: ID, patch: Partial<Pick<Category, "name" | "icon" | "color">>): void;
@@ -281,6 +290,110 @@ export function createAppStore() {
             },
           })),
 
+        addFutureExpense: (input) => {
+          const { state } = get();
+          const category = state.categories.find(
+            (c) => c.id === input.categoryId,
+          );
+          if (!category || category.kind !== "expense") return false;
+          if (typeof input.amount !== "number" || !Number.isFinite(input.amount) || input.amount <= 0) {
+            return false;
+          }
+          if (typeof input.title !== "string" || input.title.trim().length === 0) {
+            return false;
+          }
+          if (!isIsoDate(input.dueDate)) return false;
+          set((s) => ({
+            state: {
+              ...s.state,
+              futureExpenses: [
+                {
+                  id: crypto.randomUUID(),
+                  categoryId: input.categoryId,
+                  amount: input.amount,
+                  title: input.title,
+                  dueDate: input.dueDate,
+                  notes: input.notes,
+                  recurring: input.recurring ?? false,
+                  priority: input.priority ?? "medium",
+                  status: input.status ?? "upcoming",
+                  createdAt: new Date().toISOString(),
+                },
+                ...s.state.futureExpenses,
+              ],
+            },
+          }));
+          return true;
+        },
+
+        updateFutureExpense: (id, patch) =>
+          set((s) => {
+            const next: Partial<FutureExpense> = {};
+            if (patch.categoryId !== undefined) {
+              const category = s.state.categories.find(
+                (c) => c.id === patch.categoryId,
+              );
+              if (category && category.kind === "expense") {
+                next.categoryId = patch.categoryId;
+              }
+            }
+            if (
+              patch.amount !== undefined &&
+              Number.isFinite(patch.amount) &&
+              patch.amount > 0
+            ) {
+              next.amount = patch.amount;
+            }
+            if (
+              patch.title !== undefined &&
+              patch.title.trim().length > 0 &&
+              patch.title.length <= MAX_TITLE_LENGTH
+            ) {
+              next.title = patch.title;
+            }
+            if (patch.dueDate !== undefined && isIsoDate(patch.dueDate)) {
+              next.dueDate = patch.dueDate;
+            }
+            if (
+              patch.notes !== undefined &&
+              patch.notes.length <= MAX_NOTE_LENGTH
+            ) {
+              next.notes = patch.notes;
+            }
+            if (patch.recurring !== undefined) {
+              next.recurring = Boolean(patch.recurring);
+            }
+            if (
+              patch.priority === "high" ||
+              patch.priority === "medium" ||
+              patch.priority === "low"
+            ) {
+              next.priority = patch.priority;
+            }
+            if (patch.status === "upcoming" || patch.status === "paid") {
+              next.status = patch.status;
+            }
+            if (Object.keys(next).length === 0) return s;
+            return {
+              state: {
+                ...s.state,
+                futureExpenses: s.state.futureExpenses.map((future) =>
+                  future.id === id ? { ...future, ...next } : future,
+                ),
+              },
+            };
+          }),
+
+        deleteFutureExpense: (id) =>
+          set((s) => ({
+            state: {
+              ...s.state,
+              futureExpenses: s.state.futureExpenses.filter(
+                (future) => future.id !== id,
+              ),
+            },
+          })),
+
         addCategory: (input) =>
           set((s) => ({
             state: {
@@ -329,6 +442,9 @@ export function createAppStore() {
           }
           if (state.recurrenceRules.some((r) => r.categoryId === id)) {
             return { ok: false, reason: "in-use-rules" };
+          }
+          if (state.futureExpenses.some((f) => f.categoryId === id)) {
+            return { ok: false, reason: "in-use-future-expenses" };
           }
           set((s) => ({
             state: {

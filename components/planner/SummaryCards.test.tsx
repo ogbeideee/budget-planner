@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createInitialState } from "@/lib/seed";
 import { useAppStore } from "@/store/useAppStore";
@@ -48,15 +48,21 @@ describe("SummaryCards monthly income", () => {
     const income = state.transactions.find((t) => t.monthlyIncome === true);
     expect(income).toMatchObject({ amount: 250000, type: "income" });
 
-    const incomeButton = screen.getByRole("button", { name: /income/i });
-    expect(within(incomeButton).getByText("$2,500.00")).toBeInTheDocument();
-
-    const netCard = screen.getByRole("button", { name: "Net summary" });
-    expect(within(netCard).getByText("$2,500.00")).toBeInTheDocument();
-    const remainingCard = screen.getByRole("button", {
-      name: "Remaining allocation",
+    await waitFor(() => {
+      const incomeButton = screen.getByRole("button", { name: /income/i });
+      expect(within(incomeButton).getByText("$2,500.00")).toBeInTheDocument();
     });
-    expect(within(remainingCard).getByText("$2,500.00")).toBeInTheDocument();
+
+    await waitFor(() => {
+      const netCard = screen.getByRole("button", { name: "Net summary" });
+      expect(within(netCard).getByText("$2,500.00")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      const remainingCard = screen.getByRole("button", {
+        name: "Remaining allocation",
+      });
+      expect(within(remainingCard).getByText("$2,500.00")).toBeInTheDocument();
+    });
   });
 
   it("pre-fills the modal with the saved amount when reopened", async () => {

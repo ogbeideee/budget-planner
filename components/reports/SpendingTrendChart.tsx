@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ChartIcon } from "@/components/ui/icons";
 import { formatMonthLabel, formatMonthShort } from "@/lib/date";
 import { compactMoney, formatMoney } from "@/lib/money";
 import { monthlySeries } from "@/lib/selectors";
@@ -35,10 +36,12 @@ export function SpendingTrendChart({ months }: { months: Month[] }) {
   if (!hasData) {
     return (
       <ChartCard title="Monthly spending trend" subtitle="Total expenses per month">
-        <EmptyState
-          title="No data for this window"
-          description="Add expenses to see the spending trend."
-        />
+<EmptyState
+        icon={<ChartIcon className="h-5 w-5" />}
+        iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+        title="No data for this window"
+        description="Add expenses to see your monthly spending trend take shape."
+      />
       </ChartCard>
     );
   }

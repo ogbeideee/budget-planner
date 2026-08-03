@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { useAnimatedNumber } from "@/hooks/useAnimatedNumber";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { Card } from "@/components/ui/Card";
 import { CheckIcon, XIcon } from "@/components/ui/icons";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -21,10 +23,22 @@ const TIER_LABEL: Record<HealthTier, string> = {
   risk: "At risk",
 };
 
+const TIER_DESCRIPTION: Record<HealthTier, string> = {
+  healthy: "Your budget is in great shape.",
+  watch: "A few items need attention.",
+  risk: "Several budget lines are under pressure.",
+};
+
 const TIER_BADGE: Record<HealthTier, string> = {
   healthy: "bg-income/10 text-income",
   watch: "bg-warn/10 text-warn",
   risk: "bg-danger/10 text-danger",
+};
+
+const TIER_DOT: Record<HealthTier, string> = {
+  healthy: "bg-income",
+  watch: "bg-warn",
+  risk: "bg-danger",
 };
 
 export function BudgetHealthCard({ month }: { month: Month }) {
@@ -46,6 +60,7 @@ export function BudgetHealthCard({ month }: { month: Month }) {
   );
   const net = useMemo(() => totals(transactions, month).net, [transactions, month]);
   const tier = healthTier(health);
+  const animatedHealth = useAnimatedNumber(health);
 
   const checklist = [
     {
@@ -71,32 +86,54 @@ export function BudgetHealthCard({ month }: { month: Month }) {
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <p className="flex items-baseline gap-1">
-            <span className="text-4xl font-bold tabular-nums tracking-tight text-ink">
-              {health}
-            </span>
+            <AnimatedNumber
+              value={health}
+              className="text-4xl font-bold tracking-tight tabular-nums text-ink"
+            />
             <span className="text-sm font-semibold text-muted">/100</span>
           </p>
           <span
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${TIER_BADGE[tier]}`}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${TIER_BADGE[tier]}`}
           >
+            <span
+              aria-hidden="true"
+              className={`h-1.5 w-1.5 rounded-full ${TIER_DOT[tier]}`}
+            />
             {TIER_LABEL[tier]}
           </span>
         </div>
-        <ProgressBar value={health / 100} tone={TIER_TONE[tier]} />
+        <div className="flex flex-col gap-1.5">
+          <ProgressBar value={animatedHealth / 100} tone={TIER_TONE[tier]} />
+          <p className="text-xs text-muted">{TIER_DESCRIPTION[tier]}</p>
+        </div>
         <ul className="flex flex-col gap-2">
           {checklist.map((item) => (
-            <li key={item.label} className="flex items-center justify-between gap-3">
+            <li
+              key={item.label}
+              className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors duration-200 ${
+                item.ok
+                  ? "border-income/20 bg-income/[0.04]"
+                  : "border-danger/25 bg-danger/[0.05]"
+              }`}
+            >
               <span className="flex items-center gap-2.5 text-sm font-medium text-ink">
-                {item.ok ? (
-                  <CheckIcon className="h-4 w-4 shrink-0 text-income" />
-                ) : (
-                  <XIcon className="h-4 w-4 shrink-0 text-danger" />
-                )}
+                <span
+                  aria-hidden="true"
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                    item.ok ? "bg-income/15 text-income" : "bg-danger/10 text-danger"
+                  }`}
+                >
+                  {item.ok ? (
+                    <CheckIcon className="h-3.5 w-3.5" />
+                  ) : (
+                    <XIcon className="h-3.5 w-3.5" />
+                  )}
+                </span>
                 {item.label}
               </span>
               <span
-                className={`text-xs font-semibold ${
-                  item.ok ? "text-muted" : "text-danger"
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                  item.ok ? "bg-income/10 text-income" : "bg-danger/10 text-danger"
                 }`}
               >
                 {item.status}

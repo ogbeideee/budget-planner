@@ -396,14 +396,22 @@ export function SettingsView() {
       <ConfirmDialog
         open={pendingCategoryDelete !== null}
         title="Delete category"
-        message="This only works when the category is unused by transactions, budgets, and recurring rules."
+        message="This only works when the category is unused by transactions, budgets, recurring rules, and upcoming expenses."
         confirmLabel="Delete category"
         danger
         onConfirm={() => {
           if (pendingCategoryDelete === null) return;
           const result = deleteCategory(pendingCategoryDelete);
           if (!result.ok) {
-            toastError(`Category is in use (${result.reason}).`);
+            const reasons: Record<string, string> = {
+              "in-use-transactions": "it has transactions",
+              "in-use-budgets": "it has budgets",
+              "in-use-rules": "it has recurring rules",
+              "in-use-future-expenses": "it has upcoming expenses",
+            };
+            toastError(
+              `Category is in use — ${reasons[result.reason ?? ""] ?? result.reason}.`,
+            );
           }
           setPendingCategoryDelete(null);
         }}

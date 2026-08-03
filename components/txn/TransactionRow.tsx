@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/Button";
 import { ArrowRightToLineIcon, PencilIcon, TrashIcon } from "@/components/ui/icons";
+import { categoryAccent } from "@/lib/accents";
 import { formatDateShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import type { Category, Currency, Transaction } from "@/lib/types";
@@ -31,7 +32,14 @@ export const TransactionRow = memo(function TransactionRow({
       </td>
       <td className="px-3 py-3">
         <span className="flex items-center gap-2 font-medium text-ink">
-          <span aria-hidden="true">{category?.icon}</span>
+          <span
+            aria-hidden="true"
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm ${
+              category ? categoryAccent(category.name).chip : "bg-canvas text-muted"
+            }`}
+          >
+            {category?.icon}
+          </span>
           {category?.name ?? "Category"}
           {transaction.deferred && (
             <span

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { AlertTriangleIcon } from "@/components/ui/icons";
+import { AlertTriangleIcon, ChevronRightIcon } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { overBudgetCategories } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -23,31 +23,62 @@ export function OverBudgetAlert({ month }: { month: Month }) {
   return (
     <div
       role="alert"
-      className="rounded-lg border border-danger/30 bg-danger/10 px-5 py-4"
+      className="animate-[list-in_200ms_ease-out] rounded-xl border border-danger/25 bg-danger/[0.04] px-5 py-4 shadow-card"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-sm font-semibold text-danger">
-          <AlertTriangleIcon className="h-4 w-4" />
-          Over budget this month
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden="true"
+            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-danger/20 bg-danger/10 text-danger"
+          >
+            <AlertTriangleIcon className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-ink">
+              Over budget this month
+            </p>
+            <p className="mt-0.5 text-xs text-muted">
+              {entries.length === 1
+                ? "1 category has exceeded its limit."
+                : `${entries.length} categories have exceeded their limits.`}
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {entries.map((entry) => {
+                const category = categories.find(
+                  (c) => c.id === entry.budget.categoryId,
+                );
+                return (
+                  <li
+                    key={entry.budget.id}
+                    className="flex items-center gap-1.5 rounded-full border border-danger/20 bg-surface px-2.5 py-1 text-xs font-medium text-ink"
+                  >
+                    <span aria-hidden="true" className="text-danger">
+                      {category?.icon ?? ""}
+                    </span>
+                    <span className="truncate">
+                      {category?.name ?? "Category"}
+                    </span>
+                    <span className="font-semibold tabular-nums text-danger">
+                      {formatMoney(
+                        entry.spent - entry.budget.limit,
+                        currency,
+                      )}{" "}
+                      over
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
         <Link
-          href="/"
-          className="rounded-sm text-sm font-semibold text-brand-600 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400"
+          href="/?focus=over"
+          className="inline-flex items-center gap-1 rounded-md text-sm font-semibold text-brand-600 underline-offset-2 transition-colors duration-200 hover:text-brand-700 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400 dark:hover:text-brand-300"
         >
-          View budgets
+          Review budgets
+          <ChevronRightIcon className="h-4 w-4" />
         </Link>
       </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-        {entries.map((entry) => {
-          const category = categories.find((c) => c.id === entry.budget.categoryId);
-          return (
-            <li key={entry.budget.id} className="text-sm text-ink">
-              {category?.icon ?? ""} {category?.name ?? "Category"} ·{" "}
-              {formatMoney(entry.spent - entry.budget.limit, currency)} over
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }

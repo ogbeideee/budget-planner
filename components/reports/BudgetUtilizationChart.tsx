@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { TargetIcon } from "@/components/ui/icons";
 import { formatMonthLabel, formatMonthShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { budgetUtilizationSeries } from "@/lib/selectors";
@@ -39,10 +40,12 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
   if (data.length === 0) {
     return (
       <ChartCard title="Budget utilization" subtitle="Spent vs. limits">
-        <EmptyState
-          title="No budgets in this window"
-          description="Create budgets on the Planner to see utilization."
-        />
+<EmptyState
+        icon={<TargetIcon className="h-5 w-5" />}
+        iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+        title="No budgets in this window"
+        description="Create budgets on the Planner and utilization will appear here."
+      />
       </ChartCard>
     );
   }

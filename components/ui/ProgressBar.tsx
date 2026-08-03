@@ -25,7 +25,7 @@ export function ProgressBar({ value, tone = "brand" }: ProgressBarProps) {
       className="h-2 w-full overflow-hidden rounded-full bg-canvas"
     >
       <div
-        className={`h-full rounded-full transition-[width] duration-150 ease-out motion-reduce:transition-none ${TONES[tone]}`}
+        className={`h-full rounded-full transition-[width] duration-200 ease-out motion-reduce:transition-none ${TONES[tone]}`}
         style={{ width: `${percent}%` }}
       />
     </div>
