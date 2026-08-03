@@ -86,7 +86,7 @@ export function ThemeToggle() {
     <div
       role="group"
       aria-label="Theme"
-      className="inline-flex w-fit items-center gap-1 rounded-lg border border-border bg-surface p-1"
+      className="inline-flex w-fit items-center gap-1 rounded-lg border border-border bg-surface p-1 shadow-sm"
     >
       {OPTIONS.map((option) => {
         const active = theme === option.value;
@@ -99,10 +99,10 @@ export function ThemeToggle() {
             aria-pressed={active}
             aria-label={option.label}
             title={option.label}
-            className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none ${
+            className={`flex h-11 w-11 items-center justify-center rounded-md transition-all duration-150 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none ${
               active
                 ? "bg-brand-600 text-white"
-                : "text-muted hover:bg-canvas hover:text-ink"
+                : "text-muted hover:bg-canvas hover:text-ink active:scale-90"
             }`}
           >
             <Icon />

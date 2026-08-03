@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { Button } from "@/components/ui/Button";
+import { ArrowRightToLineIcon, PencilIcon, TrashIcon } from "@/components/ui/icons";
 import { formatDateShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import type { Category, Currency, Transaction } from "@/lib/types";
@@ -24,7 +25,7 @@ export const TransactionRow = memo(function TransactionRow({
   onMoveNextMonth,
 }: TransactionRowProps) {
   return (
-    <tr>
+    <tr className="transition hover:brightness-95 dark:hover:brightness-125">
       <td className="whitespace-nowrap px-3 py-3 tabular-nums text-muted">
         {formatDateShort(transaction.date)}
       </td>
@@ -55,14 +56,14 @@ export const TransactionRow = memo(function TransactionRow({
         <div className="flex justify-end gap-1">
           <Button
             variant="ghost"
-            icon="✎"
+            icon={<PencilIcon className="h-4 w-4" />}
             aria-label="Edit transaction"
             onClick={onEdit}
           />
           {transaction.type === "expense" && (
             <Button
               variant="ghost"
-              icon="→"
+              icon={<ArrowRightToLineIcon className="h-4 w-4" />}
               title="Move to next month"
               aria-label="Move to next month"
               onClick={onMoveNextMonth}
@@ -70,7 +71,7 @@ export const TransactionRow = memo(function TransactionRow({
           )}
           <Button
             variant="ghost"
-            icon="🗑"
+            icon={<TrashIcon className="h-4 w-4" />}
             aria-label="Delete transaction"
             onClick={onDelete}
           />

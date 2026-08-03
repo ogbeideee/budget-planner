@@ -13,21 +13,23 @@ beforeEach(() => {
 });
 
 describe("SummaryCards monthly income", () => {
-  it("shows Set Monthly Income when the month has no income", () => {
+  it("shows Set monthly income when the month has no income", () => {
     render(<SummaryCards month="2026-08" />);
     const incomeButton = screen.getByRole("button", {
-      name: /Set Monthly Income/,
+      name: /Set monthly income/,
     });
     expect(incomeButton).toBeInTheDocument();
     expect(within(incomeButton).getByText("$0.00")).toBeInTheDocument();
   });
 
-  it("opens the Monthly Income modal from the income card", async () => {
+  it("opens the Monthly income modal from the income card", async () => {
     const user = userEvent.setup();
     render(<SummaryCards month="2026-08" />);
-    await user.click(screen.getByRole("button", { name: /Set Monthly Income/ }));
+    await user.click(
+      screen.getByRole("button", { name: /Set monthly income/ }),
+    );
     expect(
-      within(screen.getByRole("dialog")).getByText("Monthly Income"),
+      within(screen.getByRole("dialog")).getByText("Monthly income"),
     ).toBeInTheDocument();
   });
 
@@ -35,7 +37,9 @@ describe("SummaryCards monthly income", () => {
     const user = userEvent.setup();
     render(<SummaryCards month="2026-08" />);
 
-    await user.click(screen.getByRole("button", { name: /Set Monthly Income/ }));
+    await user.click(
+      screen.getByRole("button", { name: /Set monthly income/ }),
+    );
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByLabelText("Amount"), "2500");
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -44,12 +48,14 @@ describe("SummaryCards monthly income", () => {
     const income = state.transactions.find((t) => t.monthlyIncome === true);
     expect(income).toMatchObject({ amount: 250000, type: "income" });
 
-    const incomeButton = screen.getByRole("button", { name: /Income/ });
+    const incomeButton = screen.getByRole("button", { name: /income/i });
     expect(within(incomeButton).getByText("$2,500.00")).toBeInTheDocument();
 
-    const netCard = screen.getByText("Net").closest("section")!;
+    const netCard = screen.getByRole("button", { name: "Net summary" });
     expect(within(netCard).getByText("$2,500.00")).toBeInTheDocument();
-    const remainingCard = screen.getByText("Remaining").closest("section")!;
+    const remainingCard = screen.getByRole("button", {
+      name: "Remaining allocation",
+    });
     expect(within(remainingCard).getByText("$2,500.00")).toBeInTheDocument();
   });
 
@@ -57,12 +63,14 @@ describe("SummaryCards monthly income", () => {
     const user = userEvent.setup();
     render(<SummaryCards month="2026-08" />);
 
-    await user.click(screen.getByRole("button", { name: /Set Monthly Income/ }));
+    await user.click(
+      screen.getByRole("button", { name: /Set monthly income/ }),
+    );
     let dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByLabelText("Amount"), "2500");
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    await user.click(screen.getByRole("button", { name: /Income/ }));
+    await user.click(screen.getByRole("button", { name: /income/i }));
     dialog = screen.getByRole("dialog");
     expect(
       (within(dialog).getByLabelText("Amount") as HTMLInputElement).value,

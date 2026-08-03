@@ -36,7 +36,7 @@ describe("NeedsFundingSection (AC-25)", () => {
       "Utilities",
     ]);
     expect(screen.queryByText("Salary")).not.toBeInTheDocument();
-    expect(screen.getByText("5 categories need funding")).toBeInTheDocument();
+    expect(screen.getByText("5 categories")).toBeInTheDocument();
   });
 
   it("excludes categories that already have a funded budget this month", () => {

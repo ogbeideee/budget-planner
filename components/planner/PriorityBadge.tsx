@@ -10,7 +10,7 @@ const LABELS: Record<Priority, string> = {
 
 const CLASSES: Record<Priority, string> = {
   high: "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300",
-  medium: "bg-slate-100 text-muted dark:bg-slate-700/60 dark:text-slate-300",
+  medium: "bg-canvas text-muted",
   low: "text-muted border border-border",
 };
 

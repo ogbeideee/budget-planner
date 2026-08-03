@@ -13,7 +13,10 @@ export interface TodoItem {
 
 const PLANNER_HREF = "/";
 
-export function todoFor(state: AppState, month: Month): TodoItem[] {
+export function todoFor(
+  state: Pick<AppState, "budgets" | "transactions" | "categories" | "settings">,
+  month: Month,
+): TodoItem[] {
   const { budgets, transactions, categories, settings } = state;
   const monthBudgets = budgets.filter((budget) => budget.month === month);
   const monthTransactions = transactions.filter((transaction) =>

@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { Button } from "@/components/ui/Button";
+import { PencilIcon, TrashIcon } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import type { BudgetProgress } from "@/lib/selectors";
 import type { Budget, Category, Currency } from "@/lib/types";
@@ -33,7 +34,7 @@ export const BudgetRow = memo(function BudgetRow({
   const name = category?.name ?? "Category";
 
   return (
-    <tr className={stateClass}>
+    <tr className={`${stateClass} transition hover:brightness-95 dark:hover:brightness-125`}>
       <td className="px-3 py-3">
         <span className="flex items-center gap-2 font-medium text-ink">
           <span aria-hidden="true">{category?.icon}</span>
@@ -61,13 +62,13 @@ export const BudgetRow = memo(function BudgetRow({
         <div className="flex justify-end gap-1">
           <Button
             variant="ghost"
-            icon="✎"
+            icon={<PencilIcon className="h-4 w-4" />}
             aria-label={`Edit budget for ${name}`}
             onClick={onEdit}
           />
           <Button
             variant="ghost"
-            icon="🗑"
+            icon={<TrashIcon className="h-4 w-4" />}
             aria-label={`Delete budget for ${name}`}
             onClick={onDelete}
           />

@@ -3,6 +3,7 @@
 import { PageHeader } from "@/components/shell/PageHeader";
 import { MonthPicker } from "@/components/ui/MonthPicker";
 import { useMonth } from "@/hooks/useMonth";
+import { usePlannerStatus } from "@/hooks/usePlannerStatus";
 import { BudgetHealthCard } from "./BudgetHealthCard";
 import { BudgetList } from "./BudgetList";
 import { DeferredSection } from "./DeferredSection";
@@ -15,13 +16,11 @@ import { SummaryCards } from "./SummaryCards";
 
 export function PlannerView() {
   const { month, setMonth } = useMonth();
+  const status = usePlannerStatus(month);
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageHeader
-          title="Budget Planner"
-          description="Plan the month: fund what needs money, then track what is allocated."
-        />
+        <PageHeader title="Budget Planner" description={status} />
         <MonthPicker value={month} onChange={setMonth} />
       </div>
       <SummaryCards month={month} />

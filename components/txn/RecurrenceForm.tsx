@@ -152,9 +152,11 @@ export function RecurrenceForm({ open, onClose, rule }: RecurrenceFormProps) {
           onChange={(event) => setAmount(event.target.value)}
           error={error && !error.startsWith("Choose") && !error.startsWith("Pick") ? error : undefined}
         />
-        <p className="-mt-2 text-sm text-muted">
-          Preview: {formatMoney(amountMinor, currency)}
-        </p>
+        {isMinorUnitsValid(amountMinor) && (
+          <p className="-mt-2 text-sm text-muted">
+            Preview: {formatMoney(amountMinor, currency)}
+          </p>
+        )}
 
         <Select
           label="Frequency"

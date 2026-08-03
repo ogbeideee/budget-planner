@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
 export interface ModalProps {
@@ -9,14 +9,23 @@ export interface ModalProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  describedBy?: string;
 }
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ open, onClose, title, children, footer }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  describedBy,
+}: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<Element | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -68,11 +77,12 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={`${title}-title`}
+        aria-labelledby={titleId}
+        aria-describedby={describedBy}
         tabIndex={-1}
         className="w-full max-w-md rounded-lg bg-surface p-6 shadow-pop animate-[dialog-in_120ms_ease-out] focus:outline-none"
       >
-        <h2 id={`${title}-title`} className="mb-4 text-lg font-semibold">
+        <h2 id={titleId} className="mb-4 text-lg font-semibold">
           {title}
         </h2>
         {children}

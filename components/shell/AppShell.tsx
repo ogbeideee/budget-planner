@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import type { ReactNode } from "react";
 import { CorruptedStateError } from "@/lib/storage";
 import { useAppStore } from "@/store/useAppStore";
@@ -26,8 +27,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <Sidebar />
-      <div className="lg:pl-60">
-        <Header />
+      <div className="lg:pl-56">
+        <Suspense fallback={null}>
+          <Header />
+        </Suspense>
         <main
           id="main"
           className="mx-auto w-full max-w-[1152px] px-6 pb-28 pt-6 lg:pb-12"

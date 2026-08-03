@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ArrowRightToLineIcon } from "@/components/ui/icons";
 import { formatDateShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { deferredExpenses } from "@/lib/selectors";
@@ -29,16 +31,18 @@ export function DeferredSection({ month }: { month: Month }) {
       action={
         <Link
           href={`/history?month=${month}`}
-          className="text-sm font-semibold text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+          className="rounded-sm text-sm font-semibold text-brand-600 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400"
         >
           View in History
         </Link>
       }
     >
       {deferred.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted">
-          Nothing was deferred into this month.
-        </p>
+        <EmptyState
+          icon={<ArrowRightToLineIcon className="h-5 w-5" />}
+          title="Nothing was deferred into this month"
+          description="Expenses moved from a previous month will appear here."
+        />
       ) : (
         <>
           <ul className="flex flex-col gap-1">

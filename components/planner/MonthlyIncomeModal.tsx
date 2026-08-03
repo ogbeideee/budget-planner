@@ -104,7 +104,7 @@ export function MonthlyIncomeModal({
   );
 
   return (
-    <Modal open={open} onClose={onClose} title="Monthly Income">
+    <Modal open={open} onClose={onClose} title="Monthly income">
       {incomeCategories.length === 0 ? (
         <p className="text-sm text-muted">
           Add an income category in Settings to set monthly income.

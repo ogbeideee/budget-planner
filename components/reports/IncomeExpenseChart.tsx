@@ -77,12 +77,12 @@ export function IncomeExpenseChart({ months }: { months: Month[] }) {
               tick={{ fill: colors.tick, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
-              width={64}
+              width={60}
             />
             <Tooltip
-              formatter={(value) => [
+              formatter={(value, name) => [
                 formatMoney(Number(value), currency),
-                undefined,
+                name,
               ]}
               labelFormatter={(label) => formatMonthLabel(String(label))}
               contentStyle={{

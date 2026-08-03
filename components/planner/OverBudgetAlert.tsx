@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { AlertTriangleIcon } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { overBudgetCategories } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -22,13 +23,16 @@ export function OverBudgetAlert({ month }: { month: Month }) {
   return (
     <div
       role="alert"
-      className="rounded-lg border border-red-200 bg-red-50 px-5 py-4 dark:border-red-900 dark:bg-red-950/60"
+      className="rounded-lg border border-danger/30 bg-danger/10 px-5 py-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-danger">Over budget this month</p>
+        <p className="flex items-center gap-2 text-sm font-semibold text-danger">
+          <AlertTriangleIcon className="h-4 w-4" />
+          Over budget this month
+        </p>
         <Link
           href="/"
-          className="text-sm font-semibold text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+          className="rounded-sm text-sm font-semibold text-brand-600 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400"
         >
           View budgets
         </Link>

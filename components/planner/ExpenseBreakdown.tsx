@@ -9,7 +9,13 @@ import { spendingByCategory } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 
-export function ExpenseBreakdown({ month }: { month: Month }) {
+export function ExpenseBreakdown({
+  month,
+  bare = false,
+}: {
+  month: Month;
+  bare?: boolean;
+}) {
   const transactions = useAppStore((s) => s.state.transactions);
   const categories = useAppStore((s) => s.state.categories);
   const currency = useAppStore((s) => s.state.settings.currency);
@@ -20,7 +26,12 @@ export function ExpenseBreakdown({ month }: { month: Month }) {
   );
 
   if (spends.length === 0) {
-    return (
+    return bare ? (
+      <EmptyState
+        title="No expenses this month"
+        description="Expense categories will appear here as you spend."
+      />
+    ) : (
       <Card title="Expense breakdown">
         <EmptyState
           title="No expenses this month"
@@ -47,6 +58,8 @@ export function ExpenseBreakdown({ month }: { month: Month }) {
   const ariaLabel = `Expense breakdown: ${items
     .map((item) => `${item.label} ${item.valueLabel} (${item.pct})`)
     .join(", ")}`;
+
+  if (bare) return <BarChart items={items} ariaLabel={ariaLabel} />;
 
   return (
     <Card title="Expense breakdown">

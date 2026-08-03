@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
+import { TargetIcon, TrendingUpIcon } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { totals } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -17,17 +19,25 @@ export function SnapshotCards({ month }: { month: Month }) {
   );
   const remaining = Math.max(0, net);
 
-  const cards = [
+  const cards: Array<{
+    label: string;
+    value: number;
+    icon: ReactNode;
+    iconClass: string;
+    valueClass: string;
+  }> = [
     {
-      label: "Savings",
+      label: "Net savings",
       value: net,
-      icon: "💰",
+      icon: <TrendingUpIcon className="h-4 w-4" />,
+      iconClass: net >= 0 ? "bg-income/10 text-income" : "bg-expense/10 text-expense",
       valueClass: net >= 0 ? "text-income" : "text-expense",
     },
     {
       label: "Remaining balance",
       value: remaining,
-      icon: "🎯",
+      icon: <TargetIcon className="h-4 w-4" />,
+      iconClass: "bg-brand-500/10 text-brand-600 dark:text-brand-400",
       valueClass: "text-ink",
     },
   ];
@@ -39,7 +49,7 @@ export function SnapshotCards({ month }: { month: Month }) {
           <div className="flex items-center gap-2">
             <span
               aria-hidden="true"
-              className="flex h-8 w-8 items-center justify-center rounded-md bg-canvas text-base"
+              className={`flex h-8 w-8 items-center justify-center rounded-lg ${card.iconClass}`}
             >
               {card.icon}
             </span>

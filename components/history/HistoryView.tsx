@@ -8,7 +8,7 @@ export function HistoryView() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="History"
-        description="Chronological ledger of completed income and expense records."
+        description="Every income and expense, in one place."
       />
       <TransactionList />
     </div>

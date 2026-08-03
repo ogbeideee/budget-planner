@@ -1,5 +1,7 @@
 "use client";
 
+import { useId } from "react";
+
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 
@@ -22,27 +24,27 @@ export function ConfirmDialog({
   onClose,
   danger,
 }: ConfirmDialogProps) {
+  const descriptionId = useId();
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={title}
+      describedBy={descriptionId}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            variant={danger ? "danger" : "primary"}
-            onClick={onConfirm}
-            autoFocus
-          >
+          <Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </>
       }
     >
-      <p className="text-sm text-muted">{message}</p>
+      <p id={descriptionId} className="text-sm text-muted">
+        {message}
+      </p>
     </Modal>
   );
 }

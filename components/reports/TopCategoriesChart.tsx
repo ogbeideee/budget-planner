@@ -35,9 +35,11 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
     return spends.slice(0, TOP_COUNT).map((spend) => {
       const category = categories.find((c) => c.id === spend.categoryId);
       const pct = total > 0 ? Math.round((100 * spend.amount) / total) : 0;
+      const rawLabel = `${category?.icon ?? ""} ${category?.name ?? "Category"}`;
       return {
         categoryId: spend.categoryId,
-        label: `${category?.icon ?? ""} ${category?.name ?? "Category"}`,
+        label:
+          rawLabel.length > 26 ? `${rawLabel.slice(0, 25)}…` : rawLabel,
         amount: spend.amount,
         pct,
         color: category?.color ?? "#0ea5e9",
@@ -70,7 +72,7 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
           <BarChart
             data={data}
             layout="vertical"
-            margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
+            margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
             barCategoryGap={10}
           >
             <CartesianGrid

@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ReferenceLine,
@@ -29,18 +28,14 @@ export function SavingsChart({ months }: { months: Month[] }) {
   const colors = useChartColors();
 
   const data = useMemo(
-    () =>
-      monthlySeries(transactions, months).map((point) => ({
-        ...point,
-        remaining: Math.max(0, point.net),
-      })),
+    () => monthlySeries(transactions, months),
     [transactions, months],
   );
   const hasData = data.some((point) => point.net !== 0);
 
   if (!hasData) {
     return (
-      <ChartCard title="Savings & remaining" subtitle="Per month">
+      <ChartCard title="Savings over time" subtitle="Per month">
         <EmptyState
           title="No data for this window"
           description="Add income or expenses to see savings over time."
@@ -49,15 +44,15 @@ export function SavingsChart({ months }: { months: Month[] }) {
     );
   }
 
-  const ariaLabel = `Savings and remaining balance: ${data
+  const ariaLabel = `Net savings per month: ${data
     .map(
       (point) =>
-        `${formatMonthShort(point.month)} savings ${formatMoney(point.net, currency)}, remaining ${formatMoney(point.remaining, currency)}`,
+        `${formatMonthShort(point.month)} ${formatMoney(point.net, currency)}`,
     )
     .join("; ")}`;
 
   return (
-    <ChartCard title="Savings & remaining" subtitle="Per month">
+    <ChartCard title="Savings over time" subtitle="Per month">
       <div role="img" aria-label={ariaLabel}>
         <ResponsiveContainer width="100%" height={260}>
           <LineChart
@@ -81,12 +76,12 @@ export function SavingsChart({ months }: { months: Month[] }) {
               tick={{ fill: colors.tick, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
-              width={64}
+              width={60}
             />
             <Tooltip
               formatter={(value) => [
                 formatMoney(Number(value), currency),
-                undefined,
+                "Net savings",
               ]}
               labelFormatter={(label) => formatMonthLabel(String(label))}
               contentStyle={{
@@ -97,7 +92,6 @@ export function SavingsChart({ months }: { months: Month[] }) {
                 color: colors.ink,
               }}
             />
-            <Legend wrapperStyle={{ color: colors.ink }} />
             <ReferenceLine
               y={0}
               stroke={colors.grid}
@@ -106,16 +100,7 @@ export function SavingsChart({ months }: { months: Month[] }) {
             <Line
               type="monotone"
               dataKey="net"
-              name="Savings"
-              stroke={colors.ink}
-              strokeWidth={2}
-              dot={{ r: 3, fill: colors.ink }}
-              isAnimationActive={!reduced}
-            />
-            <Line
-              type="monotone"
-              dataKey="remaining"
-              name="Remaining"
+              name="Net savings"
               stroke={colors.brand}
               strokeWidth={2}
               dot={{ r: 3, fill: colors.brand }}

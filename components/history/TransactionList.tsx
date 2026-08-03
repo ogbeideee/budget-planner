@@ -5,6 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ClockIcon } from "@/components/ui/icons";
 import { formatMonthLabel, monthKeyFromIso, monthOffset } from "@/lib/date";
 import { sortTransactions, transactionsForMonth } from "@/lib/selectors";
 import type { Transaction } from "@/lib/types";
@@ -141,29 +143,52 @@ export function TransactionList() {
 
       <Card title={`Ledger · ${formatMonthLabel(month)}`}>
         {pageRows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted">
-            {filtered.length === 0
-              ? "No transactions match your filters."
-              : "No records this month. Add your first one."}
-          </p>
+          <EmptyState
+            icon={<ClockIcon className="h-5 w-5" />}
+            title={
+              filtered.length === 0
+                ? "No matching records"
+                : "No records this month"
+            }
+            description={
+              filtered.length === 0
+                ? "Try adjusting the filters."
+                : "Add your first income or expense to get started."
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted">
-                  <th scope="col" className="px-3 py-2 font-semibold">
+                <tr className="text-xs uppercase tracking-wide text-muted">
+                  <th
+                    scope="col"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+                  >
                     Date
                   </th>
-                  <th scope="col" className="px-3 py-2 font-semibold">
+                  <th
+                    scope="col"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+                  >
                     Category
                   </th>
-                  <th scope="col" className="px-3 py-2 font-semibold">
+                  <th
+                    scope="col"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+                  >
                     Note
                   </th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold">
+                  <th
+                    scope="col"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+                  >
                     Amount
                   </th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold">
+                  <th
+                    scope="col"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+                  >
                     Actions
                   </th>
                 </tr>

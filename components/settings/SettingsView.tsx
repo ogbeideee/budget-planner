@@ -21,8 +21,10 @@ const FREQUENCY_LABELS: Record<string, string> = {
 };
 
 export function SettingsView() {
-  const state = useAppStore((s) => s.state);
-  const currency = state.settings.currency;
+  const categories = useAppStore((s) => s.state.categories);
+  const recurrenceRules = useAppStore((s) => s.state.recurrenceRules);
+  const currency = useAppStore((s) => s.state.settings.currency);
+  const recurringEnabled = useAppStore((s) => s.state.settings.recurringEnabled);
   const updateCategory = useAppStore((s) => s.updateCategory);
   const deleteCategory = useAppStore((s) => s.deleteCategory);
   const addCategory = useAppStore((s) => s.addCategory);
@@ -50,12 +52,13 @@ export function SettingsView() {
   const [resetText, setResetText] = useState("");
 
   const categoryName = (id: string) =>
-    state.categories.find((category) => category.id === id)?.name ?? "Unknown";
+    categories.find((category) => category.id === id)?.name ?? "Unknown";
 
   const handleExport = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob(
+      [JSON.stringify(useAppStore.getState().state, null, 2)],
+      { type: "application/json" },
+    );
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -100,7 +103,7 @@ export function SettingsView() {
           updates it everywhere.
         </p>
         <ul className="flex flex-col gap-2">
-          {state.categories.map((category) => (
+          {categories.map((category) => (
             <li key={category.id} className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
@@ -142,6 +145,7 @@ export function SettingsView() {
               </span>
               <Button
                 variant="ghost"
+                aria-label={`Delete ${category.name}`}
                 onClick={() => setPendingCategoryDelete(category.id)}
               >
                 Delete
@@ -235,7 +239,7 @@ export function SettingsView() {
           <input
             type="checkbox"
             aria-label="Generate recurring transactions automatically"
-            checked={state.settings.recurringEnabled}
+            checked={recurringEnabled}
             onChange={(event) => {
               setSettings({ recurringEnabled: event.target.checked });
               success(
@@ -247,13 +251,13 @@ export function SettingsView() {
             className="h-5 w-5 accent-brand-600"
           />
         </div>
-        {state.recurrenceRules.length === 0 ? (
+        {recurrenceRules.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted">
             No recurring rules yet.
           </p>
         ) : (
           <ul className="mt-4 flex flex-col gap-2">
-            {state.recurrenceRules.map((rule) => (
+            {recurrenceRules.map((rule) => (
               <li
                 key={rule.id}
                 className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2"
@@ -279,6 +283,7 @@ export function SettingsView() {
                 </span>
                 <Button
                   variant="ghost"
+                  aria-label={`Edit recurring rule for ${categoryName(rule.categoryId)}`}
                   onClick={() => {
                     setEditingRule(rule);
                     setRuleFormSession((session) => session + 1);
@@ -287,7 +292,11 @@ export function SettingsView() {
                 >
                   Edit
                 </Button>
-                <Button variant="ghost" onClick={() => setPendingRuleDelete(rule)}>
+                <Button
+                  variant="ghost"
+                  aria-label={`Delete recurring rule for ${categoryName(rule.categoryId)}`}
+                  onClick={() => setPendingRuleDelete(rule)}
+                >
                   Delete
                 </Button>
               </li>
@@ -438,6 +447,7 @@ export function SettingsView() {
         </p>
         <input
           type="text"
+          aria-label="Type RESET to confirm"
           value={resetText}
           placeholder="RESET"
           className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"

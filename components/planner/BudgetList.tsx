@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { ChevronRightIcon, TargetIcon } from "@/components/ui/icons";
 import { formatMonthLabel } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { budgetProgress, totals } from "@/lib/selectors";
@@ -91,26 +93,47 @@ export function BudgetList({ month }: BudgetListProps) {
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-left text-sm">
         <thead>
-          <tr className="border-b border-border text-xs uppercase tracking-wide text-muted">
-            <th scope="col" className="px-3 py-2 font-semibold">
+          <tr className="text-xs uppercase tracking-wide text-muted">
+            <th
+              scope="col"
+              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+            >
               Category
             </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
+            <th
+              scope="col"
+              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+            >
               Priority
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
+            <th
+              scope="col"
+              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+            >
               Limit
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
+            <th
+              scope="col"
+              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+            >
               Spent
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
+            <th
+              scope="col"
+              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+            >
               Remaining
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
+            <th
+              scope="col"
+              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+            >
               Progress
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
+            <th
+              scope="col"
+              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+            >
               Actions
             </th>
           </tr>
@@ -186,10 +209,11 @@ export function BudgetList({ month }: BudgetListProps) {
           </div>
         )}
         {monthBudgets.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted">
-            No budgets this month. Create your first budget to start tracking
-            spending.
-          </p>
+          <EmptyState
+            icon={<TargetIcon className="h-5 w-5" />}
+            title="No budgets this month"
+            description="Create your first budget to start tracking spending."
+          />
         ) : (
           renderTable(monthBudgets)
         )}
@@ -199,9 +223,10 @@ export function BudgetList({ month }: BudgetListProps) {
         <Card title="Past months">
           <div className="flex flex-col gap-4">
             {pastMonths.map((pastMonth) => (
-              <details key={pastMonth}>
-                <summary className="cursor-pointer text-sm font-semibold text-ink">
-                  {formatMonthLabel(pastMonth)}
+              <details key={pastMonth} className="group">
+                <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-2 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-canvas [&::-webkit-details-marker]:hidden">
+                  <span>{formatMonthLabel(pastMonth)}</span>
+                  <ChevronRightIcon className="h-4 w-4 text-muted transition-transform duration-150 group-open:rotate-90" />
                 </summary>
                 <div className="mt-2">
                   {renderTable(

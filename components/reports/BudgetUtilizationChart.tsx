@@ -80,7 +80,7 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
               tick={{ fill: colors.tick, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
-              width={44}
+              width={60}
             />
             <Tooltip
               formatter={(value) => [`${value}%`, "Utilization"]}

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { todayIso } from "@/lib/date";
+import { formatMonthLabel } from "@/lib/date";
 import { formatMoney, isMinorUnitsValid, toMinorUnits } from "@/lib/money";
 import type { Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
@@ -54,7 +55,7 @@ export function QuickAddExpense({ month }: { month: Month }) {
 
   if (expenseCategories.length === 0) {
     return (
-      <Card title="Quick Add Expense">
+      <Card title="Quick add expense">
         <p className="text-sm text-muted">
           Add an expense category in Settings to use quick add.
         </p>
@@ -63,7 +64,7 @@ export function QuickAddExpense({ month }: { month: Month }) {
   }
 
   return (
-    <Card title="Quick Add Expense">
+    <Card title="Quick add expense">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select
@@ -109,7 +110,8 @@ export function QuickAddExpense({ month }: { month: Month }) {
           <Button type="submit">Add expense</Button>
         </div>
         <p className="text-xs text-muted">
-          This month: {month}. Records dated in another month are counted there.
+          Records dated in {formatMonthLabel(month)} count toward this
+          month&apos;s budgets.
         </p>
       </form>
     </Card>

@@ -12,7 +12,13 @@ import type { Budget, Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/hooks/useToast";
 
-export function AllocationPanel({ month }: { month: Month }) {
+export function AllocationPanel({
+  month,
+  bare = false,
+}: {
+  month: Month;
+  bare?: boolean;
+}) {
   const transactions = useAppStore((s) => s.state.transactions);
   const budgets = useAppStore((s) => s.state.budgets);
 
@@ -25,13 +31,13 @@ export function AllocationPanel({ month }: { month: Month }) {
   if (monthBudgets.length === 0) return null;
 
   if (remaining <= 0) {
-    return (
-      <Card title="Allocate remaining">
-        <p className="text-sm text-muted">
-          Nothing left to allocate — expenses equal or exceed income this month.
-        </p>
-      </Card>
+    const message = (
+      <p className="text-sm text-muted">
+        Nothing left to allocate — expenses equal or exceed income this month.
+      </p>
     );
+    if (bare) return message;
+    return <Card title="Allocate remaining">{message}</Card>;
   }
 
   return (
@@ -39,6 +45,7 @@ export function AllocationPanel({ month }: { month: Month }) {
       key={month}
       monthBudgets={monthBudgets}
       remaining={remaining}
+      bare={bare}
     />
   );
 }
@@ -46,9 +53,14 @@ export function AllocationPanel({ month }: { month: Month }) {
 interface AllocationControlsProps {
   monthBudgets: Budget[];
   remaining: number;
+  bare?: boolean;
 }
 
-function AllocationControls({ monthBudgets, remaining }: AllocationControlsProps) {
+function AllocationControls({
+  monthBudgets,
+  remaining,
+  bare = false,
+}: AllocationControlsProps) {
   const categories = useAppStore((s) => s.state.categories);
   const currency = useAppStore((s) => s.state.settings.currency);
   const updateBudget = useAppStore((s) => s.updateBudget);
@@ -82,6 +94,51 @@ function AllocationControls({ monthBudgets, remaining }: AllocationControlsProps
     setAllocations({});
   };
 
+  const content = (
+    <div className="flex flex-col gap-5">
+      {monthBudgets.map((budget) => {
+        const category = categories.find((c) => c.id === budget.categoryId);
+        const value = allocations[budget.id] ?? 0;
+        const pct = remaining > 0 ? Math.round((100 * value) / remaining) : 0;
+        return (
+          <div key={budget.id} className="flex flex-col gap-1.5">
+            <Slider
+              label={`${category?.icon ?? ""} ${category?.name ?? "Category"}`}
+              value={value}
+              min={0}
+              max={remaining}
+              step={100}
+              onChange={(next) => handleChange(budget.id, next)}
+              displayValue={fmt(value)}
+            />
+            <p className="text-xs text-muted">
+              {pct}% of remaining · current limit {fmt(budget.limit)}
+            </p>
+          </div>
+        );
+      })}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+        <p className="text-sm font-semibold tabular-nums">
+          Unallocated: {fmt(unallocated)}
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setAllocations({})}
+            disabled={allocated === 0}
+          >
+            Reset
+          </Button>
+          <Button onClick={apply} disabled={allocated === 0}>
+            Apply allocations
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (bare) return content;
+
   return (
     <Card
       title="Allocate remaining"
@@ -91,46 +148,7 @@ function AllocationControls({ monthBudgets, remaining }: AllocationControlsProps
         </span>
       }
     >
-      <div className="flex flex-col gap-5">
-        {monthBudgets.map((budget) => {
-          const category = categories.find((c) => c.id === budget.categoryId);
-          const value = allocations[budget.id] ?? 0;
-          const pct = remaining > 0 ? Math.round((100 * value) / remaining) : 0;
-          return (
-            <div key={budget.id} className="flex flex-col gap-1.5">
-              <Slider
-                label={`${category?.icon ?? ""} ${category?.name ?? "Category"}`}
-                value={value}
-                min={0}
-                max={remaining}
-                step={100}
-                onChange={(next) => handleChange(budget.id, next)}
-                displayValue={fmt(value)}
-              />
-              <p className="text-xs text-muted">
-                {pct}% of remaining · current limit {fmt(budget.limit)}
-              </p>
-            </div>
-          );
-        })}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-          <p className="text-sm font-semibold tabular-nums">
-            Unallocated: {fmt(unallocated)}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setAllocations({})}
-              disabled={allocated === 0}
-            >
-              Reset
-            </Button>
-            <Button onClick={apply} disabled={allocated === 0}>
-              Apply allocations
-            </Button>
-          </div>
-        </div>
-      </div>
+      {content}
     </Card>
   );
 }
