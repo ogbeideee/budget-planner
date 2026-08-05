@@ -12,6 +12,7 @@ import { rememberMapping, suggestCategory } from "@/lib/categorize";
 import { todayIso } from "@/lib/date";
 import { formatMoney, isMinorUnitsValid, minorToInput, toMinorUnits } from "@/lib/money";
 import type { FutureExpense, Priority } from "@/lib/types";
+import { MAX_NOTE_LENGTH, MAX_TITLE_LENGTH } from "@/lib/validate";
 import { useAppStore } from "@/store/useAppStore";
 
 export interface FutureExpenseFormProps {
@@ -61,8 +62,8 @@ export function FutureExpenseForm({
     return suggestCategory(title, expenseCategories);
   }, [title, expenseCategories]);
 
-  const preview = isMinorUnitsValid(toMinorUnits(amount, currency))
-    ? formatMoney(toMinorUnits(amount, currency), currency)
+  const preview = isMinorUnitsValid(toMinorUnits(amount))
+    ? formatMoney(toMinorUnits(amount), currency)
     : null;
 
   const handleTitleChange = (value: string) => {
@@ -88,7 +89,7 @@ export function FutureExpenseForm({
       setError("Give this expense a name.");
       return;
     }
-    const minor = toMinorUnits(amount, currency);
+    const minor = toMinorUnits(amount);
     if (!isMinorUnitsValid(minor) || minor === 0) {
       setError("Enter an amount greater than 0 with up to 2 decimals.");
       return;
@@ -136,7 +137,7 @@ export function FutureExpenseForm({
         <Input
           label="Name"
           type="text"
-          maxLength={60}
+          maxLength={MAX_TITLE_LENGTH}
           placeholder="e.g. Netflix subscription"
           value={title}
           onChange={(event) => handleTitleChange(event.target.value)}
@@ -213,7 +214,7 @@ export function FutureExpenseForm({
         <Input
           label="Notes (optional)"
           type="text"
-          maxLength={200}
+          maxLength={MAX_NOTE_LENGTH}
           placeholder="Anything worth remembering?"
           value={notes}
           onChange={(event) => setNotes(event.target.value)}

@@ -79,7 +79,7 @@ describe("TransactionRow action alignment", () => {
 
     const placeholder = cell.querySelector('span[aria-hidden="true"]');
     expect(placeholder).not.toBeNull();
-    expect(placeholder!.className).toContain("w-11");
+    expect(placeholder!.className).toContain("w-10");
 
     const container = cell.querySelector("div")!;
     const children = Array.from(container.children);

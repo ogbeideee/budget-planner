@@ -159,7 +159,7 @@ export function NeedsFundingSection({
                         Fund
                       </Button>
                     </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                    <div className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-3 sm:gap-2">
                       <div className="flex items-baseline justify-between gap-1">
                         <span className="text-muted">Allocated</span>
                         <span className="font-semibold tabular-nums text-ink">

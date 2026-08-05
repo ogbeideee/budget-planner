@@ -12,6 +12,7 @@ import {
   toMinorUnits,
 } from "@/lib/money";
 import type { CategoryKind, RecurrenceFrequency, RecurrenceRule } from "@/lib/types";
+import { MAX_NOTE_LENGTH } from "@/lib/validate";
 import { useAppStore } from "@/store/useAppStore";
 
 const FREQUENCY_OPTIONS: { value: RecurrenceFrequency; label: string }[] = [
@@ -56,10 +57,10 @@ export function RecurrenceForm({ open, onClose, rule }: RecurrenceFormProps) {
     [categories, type],
   );
 
-  const amountMinor = toMinorUnits(amount, currency);
+  const amountMinor = toMinorUnits(amount);
 
   const handleSubmit = () => {
-    const minor = toMinorUnits(amount, currency);
+    const minor = toMinorUnits(amount);
     if (!isMinorUnitsValid(minor)) {
       setError("Enter a valid amount, e.g. 25.00.");
       return;
@@ -176,7 +177,7 @@ export function RecurrenceForm({ open, onClose, rule }: RecurrenceFormProps) {
         <Input
           label="Note (optional)"
           type="text"
-          maxLength={200}
+          maxLength={MAX_NOTE_LENGTH}
           value={note}
           placeholder="e.g. Salary"
           onChange={(event) => setNote(event.target.value)}

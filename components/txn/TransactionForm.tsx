@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { isIsoDate, todayIso } from "@/lib/date";
 import { formatMoney, isMinorUnitsValid, minorToInput, toMinorUnits } from "@/lib/money";
 import type { CategoryKind, Transaction, TransactionInput } from "@/lib/types";
+import { MAX_NOTE_LENGTH } from "@/lib/validate";
 import { useAppStore } from "@/store/useAppStore";
 
 export interface TransactionFormProps {
@@ -40,8 +41,8 @@ export function TransactionForm({
     () => categories.filter((category) => category.kind === type),
     [categories, type],
   );
-  const preview = isMinorUnitsValid(toMinorUnits(amountInput, currency))
-    ? formatMoney(toMinorUnits(amountInput, currency), currency)
+  const preview = isMinorUnitsValid(toMinorUnits(amountInput))
+    ? formatMoney(toMinorUnits(amountInput), currency)
     : null;
 
   const handleTypeChange = (next: CategoryKind) => {
@@ -53,7 +54,7 @@ export function TransactionForm({
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    const amount = toMinorUnits(amountInput, currency);
+    const amount = toMinorUnits(amountInput);
     if (!isMinorUnitsValid(amount) || amount === 0) {
       setError("Enter an amount greater than 0 with up to 2 decimals.");
       return;
@@ -142,7 +143,7 @@ export function TransactionForm({
         />
         <Input
           label="Note (optional)"
-          maxLength={200}
+          maxLength={MAX_NOTE_LENGTH}
           placeholder="What was this for?"
           value={note}
           onChange={(event) => setNote(event.target.value)}

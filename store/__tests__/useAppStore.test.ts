@@ -467,6 +467,102 @@ describe("categories (AC-11)", () => {
     expect(updated).toMatchObject({ name: "Rent", icon: "🏠", color: "#123456" });
     expect(updated?.kind).toBe("expense");
   });
+
+  it("rejects adding a category with an empty icon", () => {
+    const store = createAppStore();
+    const count = store.getState().state.categories.length;
+    const added = store.getState().addCategory({
+      name: "Empty icon",
+      icon: "",
+      color: "#ef4444",
+      kind: "expense",
+    });
+    expect(added).toBe(false);
+    expect(store.getState().state.categories).toHaveLength(count);
+  });
+
+  it("rejects adding a category with an invalid color", () => {
+    const store = createAppStore();
+    const count = store.getState().state.categories.length;
+    const added = store.getState().addCategory({
+      name: "Bad color",
+      icon: "🛒",
+      color: "red",
+      kind: "expense",
+    });
+    expect(added).toBe(false);
+    expect(store.getState().state.categories).toHaveLength(count);
+  });
+
+  it("rejects duplicate category names case-insensitively", () => {
+    const store = createAppStore();
+    const category = expenseCategory(store);
+    const added = store.getState().addCategory({
+      name: category.name.toUpperCase(),
+      icon: "🛒",
+      color: "#ef4444",
+      kind: "expense",
+    });
+    expect(added).toBe(false);
+  });
+
+  it("rejects category names longer than 30 characters", () => {
+    const store = createAppStore();
+    const count = store.getState().state.categories.length;
+    const added = store.getState().addCategory({
+      name: "x".repeat(31),
+      icon: "🛒",
+      color: "#ef4444",
+      kind: "expense",
+    });
+    expect(added).toBe(false);
+    expect(store.getState().state.categories).toHaveLength(count);
+  });
+
+  it("trims category names on add and renames to an existing name are rejected", () => {
+    const store = createAppStore();
+    const category = expenseCategory(store);
+    store.getState().addCategory({
+      name: "  Subscriptions  ",
+      icon: "💳",
+      color: "#3b82f6",
+      kind: "expense",
+    });
+    expect(
+      store.getState().state.categories.some((c) => c.name === "Subscriptions"),
+    ).toBe(true);
+    const renamed = store.getState().renameCategory(category.id, "Subscriptions");
+    expect(renamed).toBe(false);
+    expect(
+      store.getState().state.categories.find((c) => c.id === category.id)?.name,
+    ).toBe(category.name);
+  });
+
+  it("updateCategory rejects clearing the icon", () => {
+    const store = createAppStore();
+    const category = expenseCategory(store);
+    const updated = store.getState().updateCategory(category.id, { icon: "  " });
+    expect(updated).toBe(false);
+    expect(
+      store.getState().state.categories.find((c) => c.id === category.id)?.icon,
+    ).toBe(category.icon);
+  });
+
+  it("updateCategory rejects renaming to another existing category's name", () => {
+    const store = createAppStore();
+    const category = expenseCategory(store);
+    store.getState().addCategory({
+      name: "Utilities",
+      icon: "⚡",
+      color: "#eab308",
+      kind: "expense",
+    });
+    const updated = store.getState().updateCategory(category.id, { name: "UTILITIES" });
+    expect(updated).toBe(false);
+    expect(
+      store.getState().state.categories.find((c) => c.id === category.id)?.name,
+    ).toBe(category.name);
+  });
 });
 
 describe("import / export (AC-09, AC-10)", () => {
@@ -476,6 +572,36 @@ describe("import / export (AC-09, AC-10)", () => {
     expect(result.ok).toBe(false);
     expect(store.getState().state.categories).toHaveLength(11);
     expect(store.getState().state.transactions).toHaveLength(0);
+  });
+
+  it("rejects a non-JSON string without crashing", () => {
+    const store = createAppStore();
+    const result = store.getState().importState("{ not valid json");
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(store.getState().state.categories).toHaveLength(11);
+  });
+
+  it("accepts a valid export as a JSON string", () => {
+    const store = createAppStore();
+    const category = expenseCategory(store);
+    const current = store.getState().state;
+    const exportState = {
+      ...current,
+      transactions: [
+        {
+          id: "t-1",
+          categoryId: category.id,
+          amount: 100,
+          type: "expense",
+          date: "2026-08-01",
+          createdAt: "2026-08-01T00:00:00.000Z",
+        },
+      ],
+    };
+    const result = store.getState().importState(JSON.stringify(exportState));
+    expect(result.ok).toBe(true);
+    expect(store.getState().state.transactions).toHaveLength(1);
   });
 
   it("replaces state with a valid export", () => {

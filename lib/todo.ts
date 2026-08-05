@@ -1,7 +1,7 @@
 import type { InsightTone } from "./insights";
 import { monthFinance } from "./finance";
 import { formatMoney } from "./money";
-import { budgetProgress, deferredExpenses, spendingByCategory } from "./selectors";
+import { budgetProgress, deferredExpenses, isDeeplyOverBudget, spendingByCategory } from "./selectors";
 import type { AppState, ID, Month } from "./types";
 
 export interface TodoItem {
@@ -60,10 +60,9 @@ export function todoFor(
     });
   }
 
-  const over120 = monthBudgets.find((budget) => {
-    const { spent } = budgetProgress(budget, transactions);
-    return spent * 5 > budget.limit * 6;
-  });
+  const over120 = monthBudgets.find((budget) =>
+    isDeeplyOverBudget(budgetProgress(budget, transactions)),
+  );
   if (over120) {
     const { spent } = budgetProgress(over120, transactions);
     list.push({

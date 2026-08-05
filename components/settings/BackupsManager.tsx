@@ -163,7 +163,7 @@ export function BackupsManager({ onRecovered }: { onRecovered?: () => void }) {
               className="flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-surface px-3 py-2.5"
             >
               <span
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${kindTone(backup.kind)}`}
+                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${kindTone(backup.kind)}`}
               >
                 {kindLabel(backup.kind)}
               </span>

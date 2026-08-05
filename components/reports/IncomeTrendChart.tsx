@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatMonthLabel, formatMonthShort } from "@/lib/date";
 import { compactMoney, formatMoney } from "@/lib/money";
 import { incomeTrendSeries } from "@/lib/selectors";
@@ -21,24 +22,27 @@ import { ChartCard } from "./ChartCard";
 import { axisTickStyle, tooltipContentStyle } from "./chartStyles";
 
 export function IncomeTrendChart({ months }: { months: Month[] }) {
+  const transactions = useAppStore((s) => s.state.transactions);
   const plans = useAppStore((s) => s.state.incomePlans);
   const currency = useAppStore((s) => s.state.settings.currency);
   const reduced = useReducedMotion();
   const colors = useChartColors();
 
   const data = useMemo(
-    () => incomeTrendSeries(plans, months),
-    [plans, months],
+    () => incomeTrendSeries(transactions, plans, months),
+    [transactions, plans, months],
   );
   const hasData = data.some((point) => point.received > 0 || point.expected > 0);
 
   if (!hasData) {
     return (
       <ChartCard title="Income trend" subtitle="Last 6 months">
-        <p className="px-4 py-8 text-center text-sm leading-relaxed text-muted">
-          Add expected income or record income and your six-month trend will
-          take shape here.
-        </p>
+        <EmptyState
+          illustration="chart"
+          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          title="No income to chart yet"
+          description="Add expected income or record income and your six-month trend will take shape here."
+        />
       </ChartCard>
     );
   }

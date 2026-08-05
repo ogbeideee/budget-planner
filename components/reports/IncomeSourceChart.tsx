@@ -51,7 +51,7 @@ export function IncomeSourceChart({ month }: { month: Month }) {
           illustration="chart"
           illustrationClass="bg-income/10 text-income"
           title="No income received yet"
-          description="Record income and your sources will be ranked here by amount."
+          description="Plan your income sources on the planner and they'll be ranked here by amount received."
         />
       </ChartCard>
     );

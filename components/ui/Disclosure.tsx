@@ -77,8 +77,8 @@ export interface DisclosureProps {
 const CHROME: Record<"panel" | "section" | "quiet" | "brand", string> = {
   panel: "rounded-xl bg-surface shadow-card",
   section: "",
-  quiet: "rounded-2xl border border-border/60 bg-canvas/40 shadow-none",
-  brand: "rounded-2xl border border-brand-500/20 shadow-card",
+  quiet: "rounded-xl border border-border/60 bg-canvas/40 shadow-none",
+  brand: "rounded-xl border border-brand-500/20 shadow-card",
 };
 
 export function Disclosure({
@@ -151,7 +151,7 @@ export function Disclosure({
         >
           <ChevronDownIcon
             aria-hidden="true"
-            className={`h-4 w-4 shrink-0 text-muted transition-transform duration-[220ms] ease-premium motion-reduce:transition-none ${
+            className={`h-4 w-4 shrink-0 text-muted transition-transform duration-200 ease-premium motion-reduce:transition-none ${
               open ? "rotate-180" : ""
             }`}
           />
@@ -173,7 +173,7 @@ export function Disclosure({
         ref={setBodyEl}
         style={{ height }}
         onTransitionEnd={settle}
-        className={`transition-[height] duration-[220ms] ease-premium motion-reduce:transition-none ${
+        className={`transition-[height] duration-200 ease-premium motion-reduce:transition-none ${
           height === "auto" ? "overflow-visible" : "overflow-hidden"
         }`}
       >

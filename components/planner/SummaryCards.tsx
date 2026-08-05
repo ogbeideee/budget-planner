@@ -78,7 +78,7 @@ function SummaryCard({
           </span>
         </span>
         {editAffordance ? (
-          <span className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-border bg-canvas px-2 text-[11px] font-semibold text-muted transition-colors duration-200 ease-premium group-hover:border-brand-500/40 group-hover:bg-brand-50 group-hover:text-brand-600 dark:group-hover:bg-brand-950 dark:group-hover:text-brand-300">
+          <span className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-border bg-canvas px-2 text-xs font-semibold text-muted transition-colors duration-200 ease-premium group-hover:border-brand-500/40 group-hover:bg-brand-50 group-hover:text-brand-600 dark:group-hover:bg-brand-950 dark:group-hover:text-brand-300">
             <PencilIcon className="h-3 w-3" />
             Edit
           </span>
@@ -91,7 +91,7 @@ function SummaryCard({
         currency={currency}
         className={`text-[1.75rem] font-bold leading-9 tracking-tight tabular-nums ${valueClass ?? ""}`}
       />
-      <span className="text-[11px] font-medium leading-tight text-muted/80">
+      <span className="text-xs font-medium leading-tight text-muted/80">
         {hint}
       </span>
     </button>

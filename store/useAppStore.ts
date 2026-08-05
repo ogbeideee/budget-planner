@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isIsoDate, isMonth, monthKeyFromIso, nextMonthDate } from "@/lib/date";
+import { createId } from "@/lib/ids";
 import { hasGeneratedInstance, recordException } from "@/lib/recurrence";
 import { createInitialState } from "@/lib/seed";
 import {
@@ -12,6 +13,8 @@ import {
   STORAGE_KEY,
 } from "@/lib/storage";
 import {
+  isHexColor,
+  MAX_CATEGORY_NAME,
   MAX_NOTE_LENGTH,
   MAX_TITLE_LENGTH,
 } from "@/lib/validate";
@@ -67,9 +70,9 @@ export interface AppStore {
   addFutureExpense(input: FutureExpenseInput): boolean;
   updateFutureExpense(id: ID, patch: Partial<FutureExpenseInput>): void;
   deleteFutureExpense(id: ID): void;
-  addCategory(input: CategoryInput): void;
-  renameCategory(id: ID, name: string): void;
-  updateCategory(id: ID, patch: Partial<Pick<Category, "name" | "icon" | "color">>): void;
+  addCategory(input: CategoryInput): boolean;
+  renameCategory(id: ID, name: string): boolean;
+  updateCategory(id: ID, patch: Partial<Pick<Category, "name" | "icon" | "color">>): boolean;
   deleteCategory(id: ID): { ok: boolean; reason?: CategoryDeleteReason };
   addRecurrenceRule(input: RecurrenceRuleInput): void;
   updateRecurrenceRule(id: ID, patch: Partial<RecurrenceRule>): void;
@@ -94,7 +97,7 @@ export function createAppStore() {
               ...s.state,
               transactions: [
                 {
-                  id: crypto.randomUUID(),
+                  id: createId(),
                   categoryId: input.categoryId,
                   amount: input.amount,
                   type: input.type,
@@ -259,7 +262,7 @@ export function createAppStore() {
                 ...s.state,
                 incomePlans: [
                   {
-                    id: crypto.randomUUID(),
+                    id: createId(),
                     month,
                     name: nextName,
                     icon: nextIcon,
@@ -288,7 +291,7 @@ export function createAppStore() {
               budgets: [
                 ...s.state.budgets,
                 {
-                  id: crypto.randomUUID(),
+                  id: createId(),
                   categoryId: input.categoryId,
                   month: input.month,
                   limit: input.limit,
@@ -369,7 +372,7 @@ export function createAppStore() {
               ...s.state,
               futureExpenses: [
                 {
-                  id: crypto.randomUUID(),
+                  id: createId(),
                   categoryId: input.categoryId,
                   amount: input.amount,
                   title: input.title,
@@ -455,15 +458,28 @@ export function createAppStore() {
             },
           })),
 
-        addCategory: (input) =>
+        addCategory: (input) => {
+          const { state } = get();
+          const name = input.name.trim();
+          const invalid =
+            name.length === 0 ||
+            name.length > MAX_CATEGORY_NAME ||
+            (input.icon ?? "").trim().length === 0 ||
+            !isHexColor(input.color) ||
+            (input.kind !== "income" && input.kind !== "expense") ||
+            state.categories.some(
+              (category) =>
+                category.name.toLowerCase() === name.toLowerCase(),
+            );
+          if (invalid) return false;
           set((s) => ({
             state: {
               ...s.state,
               categories: [
                 ...s.state.categories,
                 {
-                  id: crypto.randomUUID(),
-                  name: input.name,
+                  id: createId(),
+                  name,
                   icon: input.icon,
                   color: input.color,
                   kind: input.kind,
@@ -471,27 +487,70 @@ export function createAppStore() {
                 },
               ],
             },
-          })),
+          }));
+          return true;
+        },
 
-        renameCategory: (id, name) =>
+        renameCategory: (id, name) => {
+          const { state } = get();
+          const target = state.categories.find(
+            (category) => category.id === id,
+          );
+          if (!target) return false;
+          const trimmed = name.trim();
+          const invalid =
+            trimmed.length === 0 ||
+            trimmed.length > MAX_CATEGORY_NAME ||
+            state.categories.some(
+              (category) =>
+                category.id !== id &&
+                category.name.toLowerCase() === trimmed.toLowerCase(),
+            );
+          if (invalid) return false;
           set((s) => ({
             state: {
               ...s.state,
               categories: s.state.categories.map((category) =>
-                category.id === id ? { ...category, name } : category,
+                category.id === id ? { ...category, name: trimmed } : category,
               ),
             },
-          })),
+          }));
+          return true;
+        },
 
-        updateCategory: (id, patch) =>
+        updateCategory: (id, patch) => {
+          const { state } = get();
+          const target = state.categories.find(
+            (category) => category.id === id,
+          );
+          if (!target) return false;
+          const name =
+            patch.name !== undefined ? patch.name.trim() : target.name;
+          const icon = patch.icon !== undefined ? patch.icon : target.icon;
+          const color = patch.color !== undefined ? patch.color : target.color;
+          const invalid =
+            name.length === 0 ||
+            name.length > MAX_CATEGORY_NAME ||
+            (icon ?? "").trim().length === 0 ||
+            !isHexColor(color) ||
+            state.categories.some(
+              (category) =>
+                category.id !== id &&
+                category.name.toLowerCase() === name.toLowerCase(),
+            );
+          if (invalid) return false;
           set((s) => ({
             state: {
               ...s.state,
               categories: s.state.categories.map((category) =>
-                category.id === id ? { ...category, ...patch } : category,
+                category.id === id
+                  ? { ...category, name, icon, color }
+                  : category,
               ),
             },
-          })),
+          }));
+          return true;
+        },
 
         deleteCategory: (id) => {
           const { state } = get();
@@ -525,7 +584,7 @@ export function createAppStore() {
               recurrenceRules: [
                 ...s.state.recurrenceRules,
                 {
-                  id: crypto.randomUUID(),
+                  id: createId(),
                   categoryId: input.categoryId,
                   amount: input.amount,
                   type: input.type,
@@ -572,7 +631,8 @@ export function createAppStore() {
 
         importState: (json) => {
           try {
-            const validated = parseExportPayload(json);
+            const value = typeof json === "string" ? JSON.parse(json) : json;
+            const validated = parseExportPayload(value);
             setWritesEnabled(true);
             useAppStoreErrors.getState().setHydrateError(null);
             set({ state: validated });
@@ -651,7 +711,11 @@ export function createAppStore() {
           setItem: (name, value) => {
             if (typeof window === "undefined") return;
             if (!isWritesEnabled()) return;
-            window.localStorage.setItem(name, JSON.stringify(value));
+            try {
+              window.localStorage.setItem(name, JSON.stringify(value));
+            } catch {
+              // storage unavailable (quota/security); writes resume when it clears
+            }
           },
           removeItem: (name) => {
             if (typeof window !== "undefined") {

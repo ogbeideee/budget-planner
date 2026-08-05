@@ -1,3 +1,4 @@
+import { createId } from "./ids";
 import type { AppState, Category } from "./types";
 
 export const DEFAULT_CATEGORIES: ReadonlyArray<Omit<Category, "id" | "createdAt">> = [
@@ -18,7 +19,7 @@ export function createInitialState(): AppState {
   const now = new Date().toISOString();
   const categories: Category[] = DEFAULT_CATEGORIES.map((category) => ({
     ...category,
-    id: crypto.randomUUID(),
+    id: createId(),
     createdAt: now,
   }));
   return {

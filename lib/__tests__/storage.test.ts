@@ -69,9 +69,15 @@ describe("backup snapshots", () => {
     window.localStorage.setItem(STORAGE_KEY, corrupt);
     expect(() => parseStoredState(corrupt)).toThrow();
     const keys = backupKeys();
-    expect(keys).toHaveLength(1);
-    expect(loadBackupSnapshot(keys[0])!.kind).toContain("auto-corrupt");
-    expect(loadBackupSnapshot(keys[0])!.sourceVersion).toBe("corrupt");
+    expect(keys).toHaveLength(2);
+    const kinds = keys
+      .map((key) => loadBackupSnapshot(key)!.kind)
+      .sort();
+    expect(kinds).toEqual(["auto-corrupt", "auto-v2"]);
+    const corruptKey = keys.find(
+      (key) => loadBackupSnapshot(key)!.kind === "auto-corrupt",
+    )!;
+    expect(loadBackupSnapshot(corruptKey)!.sourceVersion).toBe("corrupt");
   });
 
   it("snapshots unparseable JSON too", () => {

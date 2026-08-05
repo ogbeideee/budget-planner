@@ -109,4 +109,47 @@ describe("TransactionList timeline polish", () => {
     const row = screen.getByText("Rent today").closest("tr")!;
     expect(row.className).toContain("hover:bg-canvas");
   });
+
+  it("keeps the filter bar in flow and pins table headers below the app header", async () => {
+    seedTwoGroups();
+    const { container } = render(<TransactionList />);
+    await expandTimeline();
+
+    const bar = screen.getByRole("button", { name: "New record" }).closest("div")!;
+    expect(bar.className).not.toContain("sticky");
+
+    const headerCells = container.querySelectorAll('th[scope="col"]');
+    expect(headerCells.length).toBe(5);
+    headerCells.forEach((cell) => {
+      expect(cell.className).toContain("sticky top-16");
+      expect(cell.className).toContain("lg:top-0");
+    });
+  });
+
+  it("wraps long unbroken notes instead of widening the table", async () => {
+    const state = useAppStore.getState().state;
+    const note = "x".repeat(200);
+    useAppStore.setState({
+      state: {
+        ...state,
+        transactions: [
+          {
+            id: "long-note",
+            type: "expense" as const,
+            categoryId: state.categories[0].id,
+            amount: 100,
+            date: todayIso(),
+            note,
+            createdAt: new Date().toISOString(),
+          },
+          ...state.transactions,
+        ],
+      },
+    });
+    render(<TransactionList />);
+    await expandTimeline();
+
+    const cell = screen.getByText(note);
+    expect(cell.className).toContain("break-words");
+  });
 });

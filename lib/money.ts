@@ -7,18 +7,19 @@ const SYMBOLS: Record<Currency, string> = {
 
 const DECIMAL_RE = /^\d+(\.\d{1,2})?$/;
 
-export function currencySymbol(currency: Currency): string {
-  return SYMBOLS[currency];
-}
+export const MINOR_UNITS_PER_UNIT = 100;
 
-export function toMinorUnits(input: string, _currency?: Currency): number {
+export function toMinorUnits(input: string): number {
   let cleaned = input.trim();
   for (const symbol of Object.values(SYMBOLS)) {
     cleaned = cleaned.replace(symbol, "").trim();
   }
   if (cleaned === "" || !DECIMAL_RE.test(cleaned)) return NaN;
   const [whole, fraction = ""] = cleaned.split(".");
-  return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  return (
+    Number(whole) * MINOR_UNITS_PER_UNIT +
+    Number(fraction.padEnd(2, "0"))
+  );
 }
 
 export function isMinorUnitsValid(value: number): boolean {

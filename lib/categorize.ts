@@ -1,6 +1,5 @@
+import { CATEGORIZATION_KEY } from "./storage";
 import type { Category, ID } from "./types";
-
-export const CATEGORIZATION_KEY = "budget-planner:categorization";
 
 const MAX_LEARNED_ENTRIES = 100;
 

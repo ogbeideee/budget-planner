@@ -1,35 +1,6 @@
 import type { Theme } from "./types";
-import { STORAGE_KEY } from "./storage";
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
-
-function extractThemeFromPayload(raw: string): Theme | undefined {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    const settings = (parsed as { state?: { settings?: { theme?: unknown } } })
-      ?.state?.settings;
-    const theme = settings?.theme;
-    return theme === "light" || theme === "dark" || theme === "system"
-      ? theme
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function readStoredTheme(): Theme {
-  if (typeof window === "undefined") return "system";
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw !== null) {
-      const theme = extractThemeFromPayload(raw);
-      if (theme !== undefined) return theme;
-    }
-  } catch {
-    // fall through to default
-  }
-  return "system";
-}
 
 export function resolveTheme(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;

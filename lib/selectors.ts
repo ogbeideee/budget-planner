@@ -85,6 +85,10 @@ export function budgetProgress(
   };
 }
 
+export function isDeeplyOverBudget(progress: BudgetProgress): boolean {
+  return progress.spent * 5 > progress.limit * 6;
+}
+
 export interface OverBudgetEntry {
   budget: Budget;
   spent: number;
@@ -343,13 +347,14 @@ export interface IncomeTrendPoint {
 }
 
 export function incomeTrendSeries(
+  transactions: Transaction[],
   plans: IncomePlan[],
   months: Month[],
 ): IncomeTrendPoint[] {
   return months.map((month) => ({
     month,
     expected: expectedIncomeForMonth(plans, month),
-    received: receivedIncomeForMonth(plans, month),
+    received: receivedForMonth(transactions, plans, month),
   }));
 }
 
@@ -368,6 +373,7 @@ export interface BudgetUtilizationPoint {
   month: Month;
   limit: number;
   spentTotal: number;
+  pct: number;
 }
 
 export function budgetUtilizationSeries(
@@ -385,7 +391,14 @@ export function budgetUtilizationSeries(
       (sum, budget) => sum + spent(transactions, budget.categoryId, month),
       0,
     );
-    return [{ month, limit, spentTotal }];
+    return [
+      {
+        month,
+        limit,
+        spentTotal,
+        pct: Math.round((100 * spentTotal) / limit),
+      },
+    ];
   });
 }
 

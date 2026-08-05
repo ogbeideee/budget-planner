@@ -1,4 +1,4 @@
-import { isoToDate, todayIso } from "./date";
+import { daysBetween, todayIso } from "./date";
 import type { Transaction } from "./types";
 
 export interface TimelineGroup {
@@ -6,8 +6,6 @@ export interface TimelineGroup {
   label: string;
   items: Transaction[];
 }
-
-const DAY_MS = 86_400_000;
 
 export const TIMELINE_LABELS = [
   "Upcoming",
@@ -18,9 +16,7 @@ export const TIMELINE_LABELS = [
 ];
 
 function dayDiff(iso: string, today: string): number {
-  return Math.round(
-    (isoToDate(iso).getTime() - isoToDate(today).getTime()) / DAY_MS,
-  );
+  return daysBetween(today, iso);
 }
 
 export function timelineLabel(date: string, today: string): string {

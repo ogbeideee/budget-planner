@@ -9,11 +9,11 @@ export function PageSkeleton() {
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
-            className="h-24 animate-pulse rounded-lg bg-surface shadow-card"
+            className="h-24 animate-pulse rounded-xl bg-surface shadow-card"
           />
         ))}
       </div>
-      <div className="h-64 animate-pulse rounded-lg bg-surface shadow-card" />
+      <div className="h-64 animate-pulse rounded-xl bg-surface shadow-card" />
     </div>
   );
 }

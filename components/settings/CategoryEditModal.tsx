@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/Select";
 import { IconPicker } from "@/components/ui/IconPicker";
 import { useToast } from "@/hooks/useToast";
 import { useAppStore } from "@/store/useAppStore";
+import { MAX_CATEGORY_NAME } from "@/lib/validate";
 import { CATEGORY_COLORS } from "./CategoryManager";
 import type { Category } from "@/lib/types";
 
@@ -19,6 +20,7 @@ export function CategoryEditModal({
   category,
   onClose,
 }: CategoryEditModalProps) {
+  const categories = useAppStore((s) => s.state.categories);
   const updateCategory = useAppStore((s) => s.updateCategory);
   const { success, error } = useToast();
 
@@ -34,11 +36,39 @@ export function CategoryEditModal({
       error("Category name is required");
       return;
     }
-    updateCategory(draft.id, {
+    if (name.length > MAX_CATEGORY_NAME) {
+      setErrorMessage(
+        `Category names are limited to ${MAX_CATEGORY_NAME} characters`,
+      );
+      error(`Category names are limited to ${MAX_CATEGORY_NAME} characters`);
+      return;
+    }
+    if (!draft.icon.trim()) {
+      setErrorMessage("Choose an icon for this category");
+      error("Choose an icon for this category");
+      return;
+    }
+    if (
+      categories.some(
+        (item) =>
+          item.id !== draft.id &&
+          item.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      setErrorMessage(`A category named "${name}" already exists`);
+      error(`A category named "${name}" already exists`);
+      return;
+    }
+    const saved = updateCategory(draft.id, {
       name,
       icon: draft.icon,
       color: draft.color,
     });
+    if (!saved) {
+      setErrorMessage("Could not save changes.");
+      error("Could not save changes.");
+      return;
+    }
     success("Category updated.");
     onClose();
   };
@@ -65,6 +95,7 @@ export function CategoryEditModal({
               if (errorMessage) setErrorMessage(null);
             }}
             placeholder="e.g., Groceries"
+            maxLength={MAX_CATEGORY_NAME}
             className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
           {errorMessage && (

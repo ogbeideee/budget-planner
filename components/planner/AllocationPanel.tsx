@@ -5,10 +5,11 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Slider } from "@/components/ui/Slider";
 import { AnimatedMoney } from "@/components/ui/AnimatedNumber";
+import { categoryColor } from "@/lib/accents";
 import { clampAllocation, totalAllocated } from "@/lib/allocation";
 import type { Allocations } from "@/lib/allocation";
 import { monthFinance } from "@/lib/finance";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, MINOR_UNITS_PER_UNIT } from "@/lib/money";
 import { spent } from "@/lib/selectors";
 import type { Budget, Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
@@ -82,6 +83,7 @@ function AllocationControls({
   const allocated = totalAllocated(allocations);
   const unallocated = remaining - allocated;
   const fmt = (value: number) => formatMoney(value, currency);
+  const step = remaining >= MINOR_UNITS_PER_UNIT ? MINOR_UNITS_PER_UNIT : Math.max(1, remaining);
 
   const handleChange = (budgetId: string, next: number) => {
     const otherTotal = totalAllocated(allocations) - (allocations[budgetId] ?? 0);
@@ -124,8 +126,8 @@ function AllocationControls({
                 aria-hidden="true"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base transition-transform duration-150 ease-premium"
                 style={{
-                  backgroundColor: `${category?.color ?? "#6b7280"}1f`,
-                  color: category?.color ?? "#6b7280",
+                  backgroundColor: `${categoryColor(category)}1f`,
+                  color: categoryColor(category),
                 }}
               >
                 {category?.icon ?? ""}
@@ -143,7 +145,7 @@ function AllocationControls({
               </div>
               <span
                 aria-hidden="true"
-                className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted"
+                className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-muted"
               >
                 {pct}% of pool
               </span>
@@ -158,7 +160,7 @@ function AllocationControls({
                 value={value}
                 min={0}
                 max={remaining}
-                step={100}
+                step={step}
                 onChange={(next) => handleChange(budget.id, next)}
                 displayValue={fmt(value)}
               />

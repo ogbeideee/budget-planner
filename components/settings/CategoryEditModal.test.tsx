@@ -185,4 +185,59 @@ describe("CategoryEditModal", () => {
       useToastStore.getState().toasts.some((t) => t.tone === "error"),
     ).toBe(true);
   });
+
+  it("rejects a cleared icon without updating the store", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
+    const picker = screen.getAllByRole("dialog")[1];
+    await user.click(within(picker).getByRole("button", { name: "Clear" }));
+    await user.click(screen.getByRole("button", { name: /Save changes/ }));
+
+    expect(useAppStore.getState().state.categories[0]).toMatchObject({
+      name: "Groceries",
+      icon: "🛒",
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      useToastStore.getState().toasts.some((t) => t.tone === "error"),
+    ).toBe(true);
+  });
+
+  it("rejects renaming to an existing category's name", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const state = useAppStore.getState().state;
+    useAppStore.setState({
+      state: {
+        ...state,
+        categories: [
+          makeCategory(),
+          makeCategory({ id: "cat-2", name: "Rent", icon: "🏠" }),
+        ],
+      },
+    });
+    render(
+      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
+    );
+
+    const nameInput = screen.getByLabelText("Name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "rent");
+    await user.click(screen.getByRole("button", { name: /Save changes/ }));
+
+    expect(useAppStore.getState().state.categories[0].name).toBe("Groceries");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some(
+          (t) => t.tone === "error" && t.message.includes("already exists"),
+        ),
+    ).toBe(true);
+  });
 });

@@ -160,7 +160,7 @@ export function TransactionList() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="sticky top-16 z-30 -mx-6 flex flex-wrap items-end justify-between gap-3 border-b border-border/60 bg-canvas/95 px-6 py-3 backdrop-blur-md lg:top-0">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <TransactionFilters
           month={month}
           onMonthChange={setMonth}
@@ -227,31 +227,31 @@ export function TransactionList() {
                 <tr className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
                   <th
                     scope="col"
-                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-[4.75rem]"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-0"
                   >
                     Date
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-[4.75rem]"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-0"
                   >
                     Category
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-[4.75rem]"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-0"
                   >
                     Note
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 text-right lg:top-[4.75rem]"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-4 py-2.5 text-right lg:top-0"
                   >
                     Amount
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 text-right lg:top-[4.75rem]"
+                    className="sticky top-16 z-10 border-b border-border bg-surface px-4 py-2.5 text-right lg:top-0"
                   >
                     <span className="sr-only">Actions</span>
                   </th>

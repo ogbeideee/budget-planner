@@ -73,8 +73,8 @@ export function BudgetForm({
     [expenseCategories, budgets, formMonth, budget],
   );
 
-  const preview = isMinorUnitsValid(toMinorUnits(limitInput, currency))
-    ? formatMoney(toMinorUnits(limitInput, currency), currency)
+  const preview = isMinorUnitsValid(toMinorUnits(limitInput))
+    ? formatMoney(toMinorUnits(limitInput), currency)
     : null;
 
   const handleSubmit = (event: FormEvent) => {
@@ -84,7 +84,7 @@ export function BudgetForm({
       setError("Choose a category.");
       return;
     }
-    const amount = toMinorUnits(limitInput, currency);
+    const amount = toMinorUnits(limitInput);
     if (!isMinorUnitsValid(amount)) {
       setError("Enter a valid amount with up to 2 decimals.");
       return;
@@ -151,7 +151,7 @@ export function BudgetForm({
               if (
                 error &&
                 !error.startsWith("Choose") &&
-                isMinorUnitsValid(toMinorUnits(next, currency))
+                isMinorUnitsValid(toMinorUnits(next))
               ) {
                 setError(null);
               }

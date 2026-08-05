@@ -263,6 +263,7 @@ export function UpcomingView() {
     label: string,
     items: FutureExpense[],
     quiet = false,
+    isFirst = false,
   ) => {
     const total = items.reduce((sum, expense) => sum + expense.amount, 0);
     return (
@@ -270,7 +271,7 @@ export function UpcomingView() {
         <div
           className={`flex items-baseline justify-between gap-3 border-b border-border/70 py-2.5 ${
             quiet ? "px-3" : "bg-canvas/50 px-5"
-          }`}
+          } ${isFirst ? "rounded-t-2xl" : ""}`}
         >
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">
             {label}
@@ -388,8 +389,10 @@ export function UpcomingView() {
           variant="section"
         >
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col divide-y divide-border/70 overflow-hidden rounded-2xl bg-surface shadow-card">
-              {groups.map((group) => renderGroup(group.label, group.items))}
+            <div className="flex flex-col divide-y divide-border/70 rounded-2xl bg-surface shadow-card">
+              {groups.map((group, index) =>
+                renderGroup(group.label, group.items, false, index === 0),
+              )}
             </div>
 
             {paid.length > 0 && (

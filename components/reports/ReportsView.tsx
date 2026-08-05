@@ -25,15 +25,17 @@ import {
   formatMonthLabel,
   formatMonthShort,
   monthKeyFromIso,
+  monthOffset,
   parseMonth,
 } from "@/lib/date";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, MINOR_UNITS_PER_UNIT } from "@/lib/money";
 import { monthFinance } from "@/lib/finance";
 import { monthStats } from "@/lib/monthStats";
 import { monthlyPredictions } from "@/lib/predictions";
 import { monthsWithTransactions, reportTrends } from "@/lib/reportTrends";
 import {
   spendingByCategory,
+  totals,
   windowMonths,
 } from "@/lib/selectors";
 import type { Budget, Category, Currency, Month, Transaction } from "@/lib/types";
@@ -121,7 +123,7 @@ function SnapshotTile({ label, value, caption, tone = "neutral", wide }: Snapsho
       <span className={`text-2xl font-bold tracking-tight tabular-nums ${toneClass}`}>
         {value}
       </span>
-      <span className="text-[11px] font-medium leading-tight text-muted/80">
+      <span className="text-xs font-medium leading-tight text-muted/80">
         {caption}
       </span>
     </div>
@@ -243,6 +245,7 @@ function TrendInsights({
 
 export function ReportsView() {
   const { month, setMonth } = useMonth();
+  const monthParts = parseMonth(month);
   const months = useMemo(() => windowMonths(month), [month]);
   const transactions = useAppStore((s) => s.state.transactions);
   const budgets = useAppStore((s) => s.state.budgets);
@@ -304,6 +307,12 @@ export function ReportsView() {
     () => monthsWithTransactions(transactions, months),
     [transactions, months],
   );
+  const expensesDelta = useMemo(() => {
+    const current = totals(transactions, month).expenses;
+    const previous = totals(transactions, monthOffset(month, -1)).expenses;
+    return { current, previous, delta: current - previous };
+  }, [transactions, month]);
+  const hasExpenseComparison = expensesDelta.current > 0 || expensesDelta.previous > 0;
   const isCurrentMonth = month === currentMonthKey();
   const expectedDifference = expected - received;
   const savingsRate = stats.savingsRate;
@@ -311,7 +320,7 @@ export function ReportsView() {
   const handleCsvExport = () => {
     setExportOpen(false);
     const rows: string[][] = [
-      ["Date", "Category", "Type", "Amount", "Note"],
+      ["Date", "Category", "Type", "Amount", "Currency", "Note"],
     ];
     const categoryById = new Map(categories.map((c) => [c.id, c]));
     for (const transaction of transactions) {
@@ -321,7 +330,8 @@ export function ReportsView() {
         transaction.date,
         category?.name ?? "Uncategorized",
         transaction.type,
-        String(transaction.amount),
+        (transaction.amount / MINOR_UNITS_PER_UNIT).toFixed(2),
+        currency,
         transaction.note ?? "",
       ]);
     }
@@ -336,7 +346,7 @@ export function ReportsView() {
           title="Reports"
           description={`Six months of history, ending ${formatMonthLabel(month)}`}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <MonthPicker value={month} onChange={setMonth} />
           <div className="relative">
             <button
@@ -428,8 +438,8 @@ export function ReportsView() {
             value={fmt(expenses)}
             tone="expense"
             caption={
-              stats.vsLastMonth
-                ? `${stats.vsLastMonth.delta >= 0 ? "+" : "−"}${fmt(Math.abs(stats.vsLastMonth.delta))} vs last month`
+              hasExpenseComparison
+                ? `${expensesDelta.delta >= 0 ? "+" : "−"}${fmt(Math.abs(expensesDelta.delta))} vs last month`
                 : "No prior month to compare yet"
             }
           />
@@ -504,14 +514,14 @@ export function ReportsView() {
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted">
                   Day {predictions.daysElapsed} of{" "}
-                  {daysInMonth(parseMonth(month).year, parseMonth(month).monthIndex)}
+                  {daysInMonth(monthParts.year, monthParts.monthIndex)}
                 </span>
                 <span className="text-lg font-bold tracking-tight text-ink">
                   {predictions.avgDailySpending !== null
                     ? fmt(predictions.avgDailySpending)
                     : "—"}
                 </span>
-                <span className="text-[11px] font-medium text-muted/80">
+                <span className="text-xs font-medium text-muted/80">
                   average spent per day so far
                 </span>
               </div>
@@ -531,7 +541,7 @@ export function ReportsView() {
                     ? fmt(predictions.projectedSpending)
                     : "—"}
                 </span>
-                <span className="text-[11px] font-medium text-muted/80">
+                <span className="text-xs font-medium text-muted/80">
                   {predictions.projectedSpending !== null
                     ? "if you keep your current pace"
                     : "spend something first"}
@@ -554,7 +564,7 @@ export function ReportsView() {
                     ? fmt(predictions.projectedSavings)
                     : "—"}
                 </span>
-                <span className="text-[11px] font-medium text-muted/80">
+                <span className="text-xs font-medium text-muted/80">
                   {predictions.projectedSavings !== null
                     ? predictions.projectedSavings >= 0
                       ? "left over at month-end"

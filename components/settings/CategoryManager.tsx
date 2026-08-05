@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/icons";
 import { useToast } from "@/hooks/useToast";
 import { useAppStore } from "@/store/useAppStore";
+import { MAX_CATEGORY_NAME } from "@/lib/validate";
 import { DEFAULT_ICON } from "./iconLibrary";
 import { CategoryEditModal } from "./CategoryEditModal";
 import type { Category } from "@/lib/types";
@@ -95,31 +96,65 @@ export function CategoryManager() {
   };
 
   const handleAddExpense = () => {
-    if (!newExpenseName.trim()) {
+    const name = newExpenseName.trim();
+    if (!name) {
       error("Expense category name is required");
       return;
     }
-    addCategory({
-      name: newExpenseName.trim(),
+    if (!newExpenseIcon.trim()) {
+      error("Expense category icon is required");
+      return;
+    }
+    if (
+      categories.some(
+        (category) => category.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      error(`A category named "${name}" already exists`);
+      return;
+    }
+    const added = addCategory({
+      name,
       icon: newExpenseIcon,
       color: newExpenseColor,
       kind: "expense",
     });
+    if (!added) {
+      error("Could not add this category.");
+      return;
+    }
     resetForm();
     success("Expense category added.");
   };
 
   const handleAddIncome = () => {
-    if (!newIncomeName.trim()) {
+    const name = newIncomeName.trim();
+    if (!name) {
       error("Income category name is required");
       return;
     }
-    addCategory({
-      name: newIncomeName.trim(),
+    if (!newIncomeIcon.trim()) {
+      error("Income category icon is required");
+      return;
+    }
+    if (
+      categories.some(
+        (category) => category.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      error(`A category named "${name}" already exists`);
+      return;
+    }
+    const added = addCategory({
+      name,
       icon: newIncomeIcon,
       color: newIncomeColor,
       kind: "income",
     });
+    if (!added) {
+      error("Could not add this category.");
+      return;
+    }
     resetIncomeForm();
     success("Income category added.");
   };
@@ -127,6 +162,11 @@ export function CategoryManager() {
   const handleDelete = () => {
     if (!pendingDelete) return;
     const result = deleteCategory(pendingDelete.id);
+    if (result.reason === "in-use-transactions") {
+      error("Cannot delete — this category is used by transactions");
+      setPendingDelete(null);
+      return;
+    }
     if (result.reason === "in-use-budgets") {
       error("Cannot delete — this category is used by active budgets");
       setPendingDelete(null);
@@ -177,9 +217,10 @@ export function CategoryManager() {
                     {category.name}
                   </span>
                 </div>
-                <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex shrink-0 items-center gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                   <button
                     type="button"
+                    aria-label={`Edit ${category.name}`}
                     onClick={() => setEditing(category)}
                     className="flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500"
                   >
@@ -187,6 +228,7 @@ export function CategoryManager() {
                   </button>
                   <button
                     type="button"
+                    aria-label={`Delete ${category.name}`}
                     onClick={() => setPendingDelete(category)}
                     className="flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:ring-2 focus-visible:ring-danger"
                   >
@@ -205,6 +247,7 @@ export function CategoryManager() {
                 value={newExpenseName}
                 onChange={(e) => setNewExpenseName(e.target.value)}
                 placeholder="e.g., Groceries"
+                maxLength={MAX_CATEGORY_NAME}
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </div>
@@ -263,9 +306,10 @@ export function CategoryManager() {
                     {category.name}
                   </span>
                 </div>
-                <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex shrink-0 items-center gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                   <button
                     type="button"
+                    aria-label={`Edit ${category.name}`}
                     onClick={() => setEditing(category)}
                     className="flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500"
                   >
@@ -273,6 +317,7 @@ export function CategoryManager() {
                   </button>
                   <button
                     type="button"
+                    aria-label={`Delete ${category.name}`}
                     onClick={() => setPendingDelete(category)}
                     className="flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:ring-2 focus-visible:ring-danger"
                   >
@@ -291,6 +336,7 @@ export function CategoryManager() {
                 value={newIncomeName}
                 onChange={(e) => setNewIncomeName(e.target.value)}
                 placeholder="e.g., Salary"
+                maxLength={MAX_CATEGORY_NAME}
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </div>

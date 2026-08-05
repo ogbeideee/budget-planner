@@ -23,7 +23,7 @@ export function MonthPicker({ value, onChange }: MonthPickerProps) {
       </button>
       <span
         aria-live="polite"
-        className="min-w-32 whitespace-nowrap px-2 text-center text-sm font-semibold tabular-nums"
+        className="min-w-0 truncate px-2 text-center text-sm font-semibold tabular-nums"
       >
         {formatMonthLabel(value)}
       </span>
@@ -39,7 +39,7 @@ export function MonthPicker({ value, onChange }: MonthPickerProps) {
         <button
           type="button"
           onClick={() => onChange(currentMonthKey())}
-          className="mr-1 flex h-11 items-center rounded-md px-2.5 text-xs font-semibold text-brand-600 transition-colors duration-200 ease-premium hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset dark:text-brand-400 dark:hover:bg-brand-950"
+          className="mr-1 hidden h-11 items-center rounded-md px-2.5 text-xs font-semibold text-brand-600 transition-colors duration-200 ease-premium hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset dark:text-brand-400 dark:hover:bg-brand-950 sm:flex"
         >
           This month
         </button>

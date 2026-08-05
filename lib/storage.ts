@@ -5,7 +5,7 @@ export const STORAGE_KEY = "budget-planner:state";
 export const CATEGORIZATION_KEY = "budget-planner:categorization";
 export const BACKUP_PREFIX = "budget-planner:backup:";
 
-export const CURRENT_STORAGE_VERSION = 2;
+export const CURRENT_STORAGE_VERSION = 3;
 
 export class CorruptedStateError extends Error {
   constructor(message: string) {
@@ -85,25 +85,17 @@ export function parseStoredState(raw: string): AppState {
   }
 }
 
-export function loadAppState(): AppState | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (raw === null) return null;
-  return parseStoredState(raw);
-}
-
 export function saveAppState(state: AppState): void {
   if (typeof window === "undefined") return;
   if (!writesEnabled) return;
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({ state, version: CURRENT_STORAGE_VERSION }),
-  );
-}
-
-export function removeAppState(): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  try {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ state, version: CURRENT_STORAGE_VERSION }),
+    );
+  } catch {
+    // storage unavailable (quota/security); ignore rather than crash the caller
+  }
 }
 
 export interface BackupMetadata {
@@ -155,29 +147,41 @@ export function uniqueBackupKey(kind: string): string {
 export function writeBackup(kind: string, raw: string): string | null {
   if (typeof window === "undefined") return null;
   const key = uniqueBackupKey(kind);
-  window.localStorage.setItem(
-    key,
-    backupPayload(kind, "unknown", raw),
-  );
+  try {
+    window.localStorage.setItem(
+      key,
+      backupPayload(kind, "unknown", raw),
+    );
+  } catch {
+    return null;
+  }
   return key;
 }
 
 function snapshotLegacyPayload(raw: string, version: number): void {
   if (typeof window === "undefined") return;
   const key = uniqueBackupKey(`auto-v${version}`);
-  window.localStorage.setItem(
-    key,
-    backupPayload(`auto-v${version}`, version, raw),
-  );
+  try {
+    window.localStorage.setItem(
+      key,
+      backupPayload(`auto-v${version}`, version, raw),
+    );
+  } catch {
+    // best-effort snapshot; never block boot on a storage failure
+  }
 }
 
 function snapshotCorruptPayload(raw: string): void {
   if (typeof window === "undefined") return;
   const key = uniqueBackupKey("auto-corrupt");
-  window.localStorage.setItem(
-    key,
-    backupPayload("auto-corrupt", "corrupt", raw),
-  );
+  try {
+    window.localStorage.setItem(
+      key,
+      backupPayload("auto-corrupt", "corrupt", raw),
+    );
+  } catch {
+    // best-effort snapshot; never block boot on a storage failure
+  }
 }
 
 export function snapshotCurrentState(): string | null {
@@ -185,7 +189,11 @@ export function snapshotCurrentState(): string | null {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (raw === null) return null;
   const key = uniqueBackupKey("manual");
-  window.localStorage.setItem(key, backupPayload("manual", "current", raw));
+  try {
+    window.localStorage.setItem(key, backupPayload("manual", "current", raw));
+  } catch {
+    return null;
+  }
   return key;
 }
 

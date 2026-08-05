@@ -9,6 +9,7 @@ import { todayIso } from "@/lib/date";
 import { formatMonthLabel } from "@/lib/date";
 import { formatMoney, isMinorUnitsValid, toMinorUnits } from "@/lib/money";
 import type { Month } from "@/lib/types";
+import { MAX_NOTE_LENGTH } from "@/lib/validate";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/hooks/useToast";
 
@@ -30,14 +31,14 @@ export function QuickAddExpense({ month }: { month: Month }) {
     (category) => category.kind === "expense",
   );
 
-  const preview = isMinorUnitsValid(toMinorUnits(amount, currency))
-    ? formatMoney(toMinorUnits(amount, currency), currency)
+  const preview = isMinorUnitsValid(toMinorUnits(amount))
+    ? formatMoney(toMinorUnits(amount), currency)
     : null;
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    const minor = toMinorUnits(amount, currency);
+    const minor = toMinorUnits(amount);
     if (!isMinorUnitsValid(minor) || minor === 0) {
       setError("Enter an amount greater than 0 with up to 2 decimals.");
       return;
@@ -97,7 +98,7 @@ export function QuickAddExpense({ month }: { month: Month }) {
           <Input
             label="Note (optional)"
             type="text"
-            maxLength={200}
+            maxLength={MAX_NOTE_LENGTH}
             placeholder="What was this for?"
             value={note}
             onChange={(event) => setNote(event.target.value)}

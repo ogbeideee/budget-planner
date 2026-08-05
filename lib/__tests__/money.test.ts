@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactMoney, currencySymbol, formatMoney, isMinorUnitsValid, toMinorUnits } from "../money";
+import { compactMoney, formatMoney, isMinorUnitsValid, toMinorUnits } from "../money";
 
 describe("toMinorUnits", () => {
   it("parses decimal strings to minor units", () => {
@@ -33,13 +33,6 @@ describe("isMinorUnitsValid", () => {
     expect(isMinorUnitsValid(-1)).toBe(false);
     expect(isMinorUnitsValid(1.5)).toBe(false);
     expect(isMinorUnitsValid(NaN)).toBe(false);
-  });
-});
-
-describe("currencySymbol", () => {
-  it("maps currencies to their symbol", () => {
-    expect(currencySymbol("USD")).toBe("$");
-    expect(currencySymbol("NGN")).toBe("₦");
   });
 });
 

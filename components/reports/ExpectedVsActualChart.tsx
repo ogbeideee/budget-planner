@@ -53,7 +53,7 @@ export function ExpectedVsActualChart({ month }: { month: Month }) {
           illustration="chart"
           illustrationClass="bg-income/10 text-income"
           title="No income planned or received"
-          description="Set expected income on the planner or record income, and compare them here."
+          description="Plan your income sources on the planner to compare expected vs received here."
         />
       </ChartCard>
     );

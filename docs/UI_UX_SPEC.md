@@ -184,7 +184,8 @@ reduce`. Category-colored charts (Top categories, Spending this month) use the s
 - **Income vs expenses**: grouped vertical bars per month (income brand-green, expenses
   expense-red), legend.
 - **Income trend**: two lines per month — expected (dashed, muted) vs received (income
-  color, dots) from `incomeTrendSeries` (plan-based).
+  color, dots) from `incomeTrendSeries` (received = `receivedForMonth`: ledger income
+  floor, plans canonical, max avoids double counting — same source as every other chart).
 - **Income sources**: horizontal bars of each source's received amount (top 6), ranked
   descending, income-color opacity ramp (FR-18).
 - **Expected vs actual**: grouped vertical bars per source (expected muted, received

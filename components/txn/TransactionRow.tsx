@@ -52,7 +52,7 @@ export const TransactionRow = memo(function TransactionRow({
       ) : (
         <span
           aria-hidden="true"
-          className="inline-block h-9 w-11"
+          className="inline-block h-9 w-10"
         />
       )}
       <Button
@@ -91,7 +91,7 @@ export const TransactionRow = memo(function TransactionRow({
             )}
           </span>
         </td>
-        <td className="px-4 py-3.5 text-muted">{transaction.note ?? "—"}</td>
+        <td className="break-words px-4 py-3.5 text-muted">{transaction.note ?? "—"}</td>
         <td
           className={`px-4 py-3.5 text-right font-semibold tabular-nums ${
             transaction.type === "income" ? "text-income" : "text-expense"

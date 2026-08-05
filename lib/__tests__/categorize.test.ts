@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { CATEGORIZATION_KEY } from "../storage";
 import {
-  CATEGORIZATION_KEY,
   loadLearnedMappings,
   normalizeTitle,
   rememberMapping,

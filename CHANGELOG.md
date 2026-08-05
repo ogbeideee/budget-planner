@@ -2,6 +2,219 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — Production readiness audit
+
+### Refactors (behavior-preserving)
+
+- **Schema version constant reconciled.** `CURRENT_STORAGE_VERSION` in
+  `lib/storage.ts` was `2` while the app store, seed state, and `validateAppState`
+  all emit schema `3`. It is now `3`: legacy v2 payloads are snapshotted before
+  migration (the corrupt-v2 snapshot test documents the new two-snapshot flow:
+  `auto-v2` + `auto-corrupt`).
+- **One ID generator.** New `lib/ids.ts` `createId()` (crypto.randomUUID with a
+  non-secure-context fallback) replaces 8 raw `crypto.randomUUID()` call sites
+  (store ×6, toast store, seed) and the duplicated fallback inside
+  `lib/validate.ts` migrations. This removes the only code path that would
+  crash entity creation in non-secure contexts (e.g. a packaged desktop shell).
+- **One day-diff implementation.** `daysBetween` in `lib/date.ts` replaces the
+  three `DAY_MS = 86_400_000` constants and the three nearly identical
+  midnight-diff helpers in `lib/timeline.ts`, `lib/upcoming.ts`, and
+  `lib/insights.ts`.
+- **Toast timing owned by the store.** The duplicate 3s auto-dismiss `setTimeout`
+  inside `components/ui/Toast.tsx` is removed; `useToastStore`'s timer is the
+  single source of dismissal.
+- **Storage-write guards.** `localStorage.setItem` in the zustand persist
+  `setItem`, `saveAppState`, and all backup snapshot writers now swallow
+  quota/security exceptions instead of crashing the boot path (previously a
+  failing snapshot write masked the real `CorruptedStateError`).
+- **Dead code removed:** `loadAppState`, `removeAppState` (storage),
+  `readStoredTheme` (theme), `currencySymbol` (money), unused components
+  `KpiStrip`, `Badge`, `Spinner`, and the five starter SVGs in `public/`.
+- **Magic numbers replaced:** `MINOR_UNITS_PER_UNIT` (money) used by
+  `toMinorUnits` and the CSV export; `MAX_NOTE_LENGTH`/`MAX_TITLE_LENGTH`/
+  `MAX_CATEGORY_NAME` now back the input `maxLength` attributes; the shared
+  `CATEGORIZATION_KEY` import replaces the duplicated constant in
+  `lib/categorize.ts`; the `over120` deep-over-budget predicate is a shared
+  `isDeeplyOverBudget` selector used by insights and todo; `parseMonth` hoisted
+  out of a render loop in `ReportsView`.
+- **API cleanup:** `toMinorUnits` drops its never-used `_currency` parameter
+  (31 call sites); `RecoveryPanel` defers `URL.revokeObjectURL` so downloads
+  always fire.
+
+### Tests
+
+- `currencySymbol` spec removed with the dead export. Storage corrupt-snapshot
+  spec updated for the v2-legacy + corrupt double snapshot. Tests 325 → 324;
+  tsc/lint/build green.
+
+## [Unreleased] — Responsive QA pass
+
+### Bug fixes
+- **Month picker overflowed the page at 320px.** The label forced a 128px
+  minimum and the "This month" shortcut appeared alongside, so the control
+  measured ~297px inside a 272px content column when viewing any past or
+  future month (Hero, Reports header, Timeline filters). The label can now
+  shrink (`min-w-0 truncate`) and the "This month" shortcut is hidden below
+  the `sm` breakpoint — the chevrons still navigate there.
+- **Reports header action row overflowed at 320px.** The MonthPicker +
+  Export cluster was a non-wrapping flex row (~320px) in a 272px column; it
+  now wraps, so Export drops to its own line on narrow phones.
+- **The last upcoming expense's menu was invisible.** The Upcoming list
+  container used `overflow-hidden` for its rounded corners, so the row menu
+  (`absolute top-full`) of the last item rendered entirely outside the clip
+  region. The container no longer clips; the first group header takes the
+  top rounding instead (`rounded-t-2xl`).
+- **Category edit/delete buttons were invisible on touch devices.** The
+  category rows revealed their actions with `opacity-0 group-hover:opacity-100`
+  at every breakpoint — phones (no hover) could never see them. The reveal
+  is now `sm:`-gated and includes `group-focus-within`, matching the
+  recurring-rules rows.
+- **Income source rows were unusable at 320px.** Inside the income modal
+  (240px content at 320px viewport) the fixed 144px icon picker + icon +
+  trash button left the name input ~0px wide and clipped the trash button.
+  The row wraps: the name keeps a 144px minimum, and the icon picker drops
+  to a full-width row below on small screens (`w-full sm:w-36`).
+- **Needs-funding stats collided at 320px.** The Allocated/Needed/Missing
+  trio was a 3-column grid at every width; ~74px tracks couldn't hold
+  labels + unbreakable money values. It now stacks one-per-row below `sm`.
+- **Over-budget pills ignored their truncate.** The pill's `truncate` span
+  could never shrink (flex `min-width:auto`), so long category names spilled
+  past the alert card's edge. Pills cap at `max-w-full` and the name
+  truncates (`min-w-0`).
+
+### Tests
+- No new tests (responsive layout only); suite stays 325.
+
+## [Unreleased] — Settings QA pass
+
+### Bug fixes
+- **Importing a non-JSON file crashed the app.** The import confirmation ran
+  `JSON.parse(pendingImport)` outside any try/catch, so picking a corrupt or
+  plain-text `.json` file threw a SyntaxError that took down the whole page.
+  Parsing moved inside `importState`'s existing try/catch: `importState` now
+  accepts a JSON string OR a parsed object and reports a clean error message
+  either way.
+- **Deleting a category used by transactions silently "succeeded".** The store
+  blocks the delete (`in-use-transactions`) but `CategoryManager` didn't handle
+  that reason, so the dialog closed with a "Category deleted." toast while the
+  category stayed. The reason is now handled with an error toast, matching the
+  budgets/upcoming/rules branches.
+- **Clearing the icon picker then saving a category corrupted persisted state.**
+  A category with an empty icon passes the old save paths, but
+  `validateAppState` rejects empty category icons — the next page load threw
+  "Saved data is corrupted" and the app was unusable (data effectively lost).
+  Category add/edit now require an icon (with inline + toast errors), and the
+  store rejects empty icons/names/bad colors at the action level.
+- **Category validation hardening (store + UI):** `addCategory`,
+  `renameCategory`, and `updateCategory` now validate (trimmed non-empty name,
+  `MAX_CATEGORY_NAME = 30` chars, non-empty icon, hex color) and reject
+  case-insensitive duplicate names; all three return a boolean. Add-form and
+  edit-modal inputs cap at 30 characters with precise error messages
+  (duplicate → "A category named "X" already exists", icon → "…icon is
+  required"). `validateAppState` deliberately stays lenient on name length so
+  previously created long names never brick the store on load.
+- **Category row edit/delete icon buttons had no accessible names** — now
+  labeled "Edit {name}" / "Delete {name}".
+
+### Tests
+- New `CategoryManager.test.tsx` (4 cases: in-use delete shows an error toast
+  and keeps the category, duplicate add rejected, cleared-icon add rejected,
+  filter input keeps DOM identity while typing) and 2 new
+  `CategoryEditModal.test.tsx` cases (cleared icon, rename to existing name).
+  9 new store cases (empty icon / bad color / duplicate / over-length / trim +
+  rename-guard, updateCategory icon+duplicate guards, string import invalid +
+  valid round-trip). Suite 310→325; gates green.
+
+## [Unreleased] — Timeline QA pass
+
+### Bug fixes
+- **Sticky filter bar broke the sticky table header.** The timeline's pinned filter bar sat
+  above a pinned table header with a fixed offset (`lg:top-[4.75rem]` = 76px) that never
+  matched the bar's real height (69px on one row, ~125px when the filters wrapped on
+  narrower desktops) — scrolling left a 7px gap of content between the two, or tucked the
+  header under the bar entirely. On mobile the header pinned at `top-0`, hiding it behind
+  the opaque app header and the wrapped filter bar (~180px tall on phones). The filter row
+  is no longer sticky (matches the rest of the app — no other page pins a toolbar), and the
+  table header uses the planner's proven pattern (`sticky top-16 lg:top-0`): flush with the
+  app header on mobile, flush with the viewport on desktop, no overlaps, no gaps.
+- **Long unbroken notes could widen the table past the panel** on desktop (the wrapper only
+  scrolls horizontally on mobile). The note cell now wraps mid-word (`break-words`), so a
+  200-character note (the form's max) can never push the table off the card.
+
+### Tests
+- New `TransactionList.test.tsx` cases: the filter bar stays in flow (no `sticky` class)
+  and every header cell pins via `sticky top-16 lg:top-0`; long unbroken notes get
+  `break-words`. Suite 308→310; gates green.
+
+## [Unreleased] — Reports QA pass
+
+### Bug fixes
+- **Income trend "Received" ignored the ledger.** `incomeTrendSeries` summed plan
+  `receivedAmount` only, so months funded purely by income transactions (no income plan)
+  plotted $0 received while the Income vs expenses chart and the snapshot showed the real
+  income. The series now uses `receivedForMonth` — ledger income floor, plans canonical,
+  max avoids double counting — the same single source every other income number uses.
+- **Budget utilization bars overflowed the 100% axis.** Utilization above 100% rendered a
+  bar taller than the plot area (Y domain is `[0, 100]`). The bar geometry is now clamped at
+  100% (`barPct`) while the tooltip and aria-label keep the true percentage (e.g. 150%).
+  The percentage itself moved into `budgetUtilizationSeries` so chart, tooltip and label
+  share one calculation.
+- **"Expenses vs last month" showed the NET delta.** The snapshot's Expenses caption used
+  `monthStats.vsLastMonth.delta`, which is `net − lastNet`. If income changed too, the
+  caption misattributed a net swing to expenses. ReportsView now computes the true expense
+  delta (`totals(month).expenses − totals(lastMonth).expenses`).
+- **CSV export wrote raw minor-unit integers.** A $1,250.00 transaction exported as
+  `125000`. The Amount column now exports the currency amount (`1250.00`) and a Currency
+  column was added.
+- **Misleading empty-state copy** on Expected vs actual / Income sources promised
+  "record income" would populate them; income sources come from income plans. Copy now
+  directs users to plan sources on the Planner.
+
+### Tests
+- New `incomeTrendSeries` cases (ledger floor, plan canonical, max avoids double counting,
+  ledger-only months), a `budgetUtilizationSeries` over-100% case, and 2
+  `BudgetUtilizationChart` cases (true % in aria-label, empty state). Suite 303→308; gates
+  green.
+
+## [Unreleased] — Planner QA pass
+
+### Bug fixes
+- Allocation sliders were unusable when the remaining balance was below one whole unit
+  (e.g. $0.50): the range input used `step={100}` while `max` was smaller, so zero was the
+  only selectable value. The step now adapts to the balance — `step = min(100, remaining)` —
+  keeping sub-whole-unit balances fully allocatable (50¢ increments for a 50¢ balance,
+  $1 steps otherwise).
+
+### Tests
+- New `AllocationPanel.test.tsx` (6 cases): hidden without budgets, nothing-to-allocate
+  message, sub-unit slider usability, whole-unit step for normal balances, apply raises the
+  budget limit, combined allocations clamp to the remaining balance. Suite 297→303; gates
+  green.
+
+## [Unreleased] — Final UI consistency polish
+
+### Design
+- Single surface radius: `Card`/`Disclosure` quiet and brand variants drop `rounded-2xl` for
+  the same `rounded-xl` used everywhere else — every card surface now shares one radius.
+- One caption scale: every stray `text-[11px]` becomes `text-xs` (SummaryCard hints and the
+  "Edit" pill, Month-at-a-glance labels, AllocationPanel "% of pool" pills, Backup snapshot
+  badges, bottom-nav labels, Reports snapshot/prediction captions).
+- One motion timing: `Disclosure` chevron and height animations move from `duration-[220ms]`
+  to the app-standard `duration-200`.
+- Income trend chart's empty state now uses the shared `EmptyState` illustration treatment
+  (all six report charts are now consistent).
+- Missing category colors fall back to the shared palette (`categoryColor()`) instead of an
+  off-palette raw `#6b7280` in the allocation panel and recurring-rule rows.
+- Timeline income rows: the placeholder slot is `w-10` so Edit/Delete align pixel-perfectly
+  with expense rows (three `sm` buttons ≈ two buttons + placeholder).
+- Theme-toggle icons sized via `h-4 w-4` classes instead of hard-coded 16px SVG attributes.
+- Income modal inputs grow to the app-wide `h-11` control height.
+- Page skeleton blocks use `rounded-xl` so the loading preview mirrors real cards.
+
+### Code refactors
+- `TransactionRow.test.tsx` placeholder-width assertion updated (`w-11`→`w-10`); suite stays
+  at 297 tests, gates green.
+
 ## [Unreleased] — Reports anti-busy pass
 
 ### Design

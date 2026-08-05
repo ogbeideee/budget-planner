@@ -13,8 +13,8 @@ export interface CardProps {
 
 const CHROME = {
   standard: "rounded-xl bg-surface shadow-card",
-  quiet: "rounded-2xl border border-border/60 bg-canvas/40 shadow-none",
-  brand: "rounded-2xl border border-brand-500/20 shadow-card",
+  quiet: "rounded-xl border border-border/60 bg-canvas/40 shadow-none",
+  brand: "rounded-xl border border-brand-500/20 shadow-card",
 } as const;
 
 export function Card({

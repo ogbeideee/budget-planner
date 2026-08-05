@@ -1,7 +1,12 @@
-import { todayIso, monthOffset } from "./date";
+import { todayIso, monthOffset, daysBetween } from "./date";
 import { monthFinance } from "./finance";
 import { formatMoney } from "./money";
-import { budgetProgress, needsFunding, spendingByCategory } from "./selectors";
+import {
+  budgetProgress,
+  isDeeplyOverBudget,
+  needsFunding,
+  spendingByCategory,
+} from "./selectors";
 import type {
   Budget,
   Category,
@@ -33,16 +38,12 @@ export interface InsightsInput {
   currency: Currency;
 }
 
-const DAY_MS = 86_400_000;
-
 function categoryName(categories: Category[], id: ID): string {
   return categories.find((category) => category.id === id)?.name ?? "Category";
 }
 
 function daysUntil(dueDate: string, today: string): number {
-  return Math.round(
-    (new Date(dueDate).getTime() - new Date(today).getTime()) / DAY_MS,
-  );
+  return daysBetween(today, dueDate);
 }
 
 export function insightsFor(input: InsightsInput): Insight[] {
@@ -90,10 +91,9 @@ export function insightsFor(input: InsightsInput): Insight[] {
     });
   }
 
-  const over120 = monthBudgets.find((budget) => {
-    const { spent } = budgetProgress(budget, transactions);
-    return spent * 5 > budget.limit * 6;
-  });
+  const over120 = monthBudgets.find((budget) =>
+    isDeeplyOverBudget(budgetProgress(budget, transactions)),
+  );
   if (over120) {
     const { spent } = budgetProgress(over120, transactions);
     list.push({

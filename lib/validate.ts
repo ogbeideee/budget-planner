@@ -1,4 +1,5 @@
 import { isMonth, isIsoDate, monthKeyFromIso } from "./date";
+import { createId } from "./ids";
 import type {
   AppState,
   Budget,
@@ -19,6 +20,11 @@ import type {
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 export const MAX_NOTE_LENGTH = 200;
 export const MAX_TITLE_LENGTH = 60;
+export const MAX_CATEGORY_NAME = 30;
+
+export function isHexColor(value: string): boolean {
+  return COLOR_RE.test(value);
+}
 
 export class ValidationError extends Error {}
 
@@ -429,10 +435,7 @@ const STANDARD_INCOME_CATEGORIES: ReadonlyArray<{
 ];
 
 function makeId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return createId();
 }
 
 function migrateV1(value: Record<string, unknown>): Record<string, unknown> {

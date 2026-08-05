@@ -106,7 +106,7 @@ export function RecoveryPanel() {
     link.href = url;
     link.download = `recovered-${payload.kind}-${payload.key.split(":").pop()}.json`;
     link.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
     success("Payload downloaded.");
   };
 

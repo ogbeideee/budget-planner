@@ -1,4 +1,4 @@
-import { dateToIso, isoToDate, todayIso } from "./date";
+import { dateToIso, daysBetween, isoToDate, todayIso } from "./date";
 import type { FutureExpense, ID } from "./types";
 
 export interface UpcomingGroup {
@@ -6,8 +6,6 @@ export interface UpcomingGroup {
   label: string;
   items: FutureExpense[];
 }
-
-const DAY_MS = 86_400_000;
 
 export const GROUP_LABELS = [
   "Overdue",
@@ -19,9 +17,7 @@ export const GROUP_LABELS = [
 ];
 
 function dayDiff(iso: string, today: string): number {
-  const due = isoToDate(iso);
-  const base = isoToDate(today);
-  return Math.round((due.getTime() - base.getTime()) / DAY_MS);
+  return daysBetween(today, iso);
 }
 
 function weekStartKey(iso: string): string {

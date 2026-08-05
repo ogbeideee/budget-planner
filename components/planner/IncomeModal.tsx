@@ -38,10 +38,10 @@ function blankRow(key: string): DraftRow {
   };
 }
 
-function parseAmount(raw: string, currency: Currency): number | null {
+function parseAmount(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === "") return 0;
-  const minor = toMinorUnits(trimmed, currency);
+  const minor = toMinorUnits(trimmed);
   if (!isMinorUnitsValid(minor)) return null;
   return minor;
 }
@@ -108,10 +108,10 @@ export function IncomeModal({
       if (draft.name.trim() === "") {
         errors.name = "Enter a source name.";
       }
-      if (parseAmount(draft.expected, currency) === null) {
+      if (parseAmount(draft.expected) === null) {
         errors.expected = "Enter a valid amount.";
       }
-      if (parseAmount(draft.received, currency) === null) {
+      if (parseAmount(draft.received) === null) {
         errors.received = "Enter a valid amount.";
       }
       return { ...draft, errors };
@@ -129,8 +129,8 @@ export function IncomeModal({
     }
     let saved = false;
     for (const draft of nextDrafts) {
-      const expected = parseAmount(draft.expected, currency) ?? 0;
-      const received = parseAmount(draft.received, currency) ?? 0;
+      const expected = parseAmount(draft.expected) ?? 0;
+      const received = parseAmount(draft.received) ?? 0;
       if (draft.planId === null) {
         if (expected === 0 && received === 0) continue;
         setIncomePlan(month, null, {
@@ -223,8 +223,8 @@ function IncomeSourceRow({
   onChange: (key: string, patch: Partial<DraftRow>) => void;
   onRemove: (key: string) => void;
 }) {
-  const expected = parseAmount(draft.expected, currency) ?? 0;
-  const received = parseAmount(draft.received, currency) ?? 0;
+  const expected = parseAmount(draft.expected) ?? 0;
+  const received = parseAmount(draft.received) ?? 0;
   const difference = expected - received;
   const isEmpty =
     draft.expected.trim() === "" && draft.received.trim() === "";
@@ -252,14 +252,14 @@ function IncomeSourceRow({
   return (
     <fieldset className="rounded-xl border border-border/60 bg-canvas/40 p-3.5">
       <legend className="sr-only">{draft.name || "Income source"}</legend>
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <span
           aria-hidden="true"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-base"
         >
           <IconValue value={draft.icon} className="h-5 w-5 text-lg" />
         </span>
-        <label className="min-w-0 flex-1 text-sm text-muted">
+        <label className="min-w-36 flex-1 text-sm text-muted">
           Income name
           <input
             type="text"
@@ -269,7 +269,7 @@ function IncomeSourceRow({
             }
             placeholder="e.g. Salary, Rent, Side gig…"
             aria-invalid={draft.errors.name ? true : undefined}
-            className={`mt-1.5 h-10 w-full rounded-md border bg-surface px-3 text-sm text-ink transition-colors placeholder:text-muted/50 focus:outline-none focus:ring-2 ${
+            className={`mt-1.5 h-11 w-full rounded-md border bg-surface px-3 text-sm text-ink transition-colors placeholder:text-muted/50 focus:outline-none focus:ring-2 ${
               draft.errors.name
                 ? "border-expense/60 focus:border-expense/60 focus:ring-expense/20"
                 : "border-border focus:border-brand-500/60 focus:ring-brand-500/20"
@@ -281,7 +281,7 @@ function IncomeSourceRow({
             </p>
           )}
         </label>
-        <div className="w-36 shrink-0">
+        <div className="w-full shrink-0 sm:w-36">
           <IconPicker
             label=""
             value={draft.icon}
@@ -356,7 +356,7 @@ function AmountField({
             onChange(draft.key, { [name]: event.target.value })
           }
           aria-invalid={error ? true : undefined}
-          className={`h-10 w-full rounded-md border bg-surface pl-7 pr-3 text-sm text-ink tabular-nums transition-colors placeholder:text-muted/50 focus:outline-none focus:ring-2 ${
+          className={`h-11 w-full rounded-md border bg-surface pl-7 pr-3 text-sm text-ink tabular-nums transition-colors placeholder:text-muted/50 focus:outline-none focus:ring-2 ${
             error
               ? "border-expense/60 focus:border-expense/60 focus:ring-expense/20"
               : "border-border focus:border-brand-500/60 focus:ring-brand-500/20"

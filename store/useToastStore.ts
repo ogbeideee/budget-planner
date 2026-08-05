@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { createId } from "@/lib/ids";
 import type { ID } from "@/lib/types";
 
 export type ToastTone = "success" | "error";
@@ -20,7 +21,7 @@ const DISMISS_MS = 3000;
 export const useToastStore = create<ToastStore>()((set) => ({
   toasts: [],
   push: (message, tone = "success") => {
-    const id = crypto.randomUUID();
+    const id = createId();
     set((s) => ({ toasts: [...s.toasts, { id, message, tone }] }));
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));

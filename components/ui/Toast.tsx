@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
-
 import { XIcon } from "./icons";
 
 export type ToastTone = "success" | "error";
@@ -18,11 +16,6 @@ const TONES: Record<ToastTone, string> = {
 };
 
 export function Toast({ message, tone = "success", onDismiss }: ToastProps) {
-  useEffect(() => {
-    const timeout = setTimeout(onDismiss, 3000);
-    return () => clearTimeout(timeout);
-  }, [onDismiss]);
-
   return (
     <div
       role={tone === "error" ? "alert" : "status"}

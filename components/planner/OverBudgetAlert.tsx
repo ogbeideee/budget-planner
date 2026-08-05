@@ -50,12 +50,12 @@ export function OverBudgetAlert({ month }: { month: Month }) {
                 return (
                   <li
                     key={entry.budget.id}
-                    className="flex items-center gap-1.5 rounded-full border border-danger/20 bg-surface px-2.5 py-1 text-xs font-medium text-ink"
+                    className="flex max-w-full items-center gap-1.5 rounded-full border border-danger/20 bg-surface px-2.5 py-1 text-xs font-medium text-ink"
                   >
-                    <span aria-hidden="true" className="text-danger">
+                    <span aria-hidden="true" className="shrink-0 text-danger">
                       {category?.icon ?? ""}
                     </span>
-                    <span className="truncate">
+                    <span className="min-w-0 truncate">
                       {category?.name ?? "Category"}
                     </span>
                     <span className="font-semibold tabular-nums text-danger">

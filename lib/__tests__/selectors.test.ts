@@ -7,6 +7,7 @@ import {
   earned,
   fundingGaps,
   healthTier,
+  incomeTrendSeries,
   monthlySeries,
   needsFunding,
   overBudgetCategories,
@@ -524,8 +525,86 @@ describe("reports selectors (FR-07)", () => {
       windowMonths("2026-08", 3),
     );
     expect(series).toEqual([
-      { month: "2026-07", limit: 150000, spentTotal: 45000 },
+      {
+        month: "2026-07",
+        limit: 150000,
+        spentTotal: 45000,
+        pct: 30,
+      },
     ]);
+  });
+
+  it("budgetUtilizationSeries reports utilization above 100 percent", () => {
+    const budgets = [
+      {
+        id: "b1",
+        categoryId: "cat-a",
+        month: "2026-08",
+        limit: 100000,
+        priority: "high" as const,
+      },
+    ];
+    const transactions = [
+      txn({ id: "t1", categoryId: "cat-a", amount: 150000, date: "2026-08-03" }),
+    ];
+    const series = budgetUtilizationSeries(budgets, transactions, [
+      "2026-08",
+    ]);
+    expect(series[0].pct).toBe(150);
+  });
+
+  it("incomeTrendSeries takes the ledger as the received floor and plans as canonical", () => {
+    const plans = [
+      {
+        id: "p1",
+        month: "2026-07",
+        name: "Salary",
+        icon: "💰",
+        expectedAmount: 200000,
+        receivedAmount: 200000,
+      },
+      {
+        id: "p2",
+        month: "2026-08",
+        name: "Salary",
+        icon: "💰",
+        expectedAmount: 200000,
+        receivedAmount: 100000,
+      },
+    ];
+    const transactions = [
+      txn({ id: "a", type: "income", amount: 50000, date: "2026-07-10" }),
+      txn({ id: "b", type: "income", amount: 200000, date: "2026-08-01" }),
+    ];
+    const series = incomeTrendSeries(transactions, plans, [
+      "2026-06",
+      "2026-07",
+      "2026-08",
+    ]);
+    expect(series[0]).toEqual({
+      month: "2026-06",
+      expected: 0,
+      received: 0,
+    });
+    expect(series[1]).toEqual({
+      month: "2026-07",
+      expected: 200000,
+      received: 200000,
+    });
+    expect(series[2]).toEqual({
+      month: "2026-08",
+      expected: 200000,
+      received: 200000,
+    });
+  });
+
+  it("incomeTrendSeries surfaces ledger-only income when no plan exists", () => {
+    const transactions = [
+      txn({ id: "a", type: "income", amount: 75000, date: "2026-06-15" }),
+    ];
+    const series = incomeTrendSeries(transactions, [], ["2026-06", "2026-07"]);
+    expect(series[0].received).toBe(75000);
+    expect(series[1].received).toBe(0);
   });
 
   it("spendingByCategoryInMonths ranks expense categories across a window, excluding income", () => {

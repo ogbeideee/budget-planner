@@ -159,7 +159,7 @@ export function MonthlyStats({
     <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
       {display.map((cell) => (
         <div key={cell.label} className="min-w-0">
-          <dt className="text-[11px] font-medium tracking-wide text-muted/80">
+          <dt className="text-xs font-medium tracking-wide text-muted/80">
             {cell.label}
           </dt>
           <dd

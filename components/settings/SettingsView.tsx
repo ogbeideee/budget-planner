@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { formatMonthLabel } from "@/lib/date";
+import { categoryColor } from "@/lib/accents";
 import type { RecurrenceRule } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/hooks/useToast";
@@ -119,7 +120,7 @@ export function SettingsView() {
 
   const confirmImport = () => {
     if (pendingImport === null) return;
-    const result = importState(JSON.parse(pendingImport));
+    const result = importState(pendingImport);
     if (result.ok) {
       success("Data imported.");
       setImportError(null);
@@ -282,8 +283,8 @@ export function SettingsView() {
                     aria-hidden="true"
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
                     style={{
-                      backgroundColor: `${category?.color ?? "#6b7280"}1f`,
-                      color: category?.color ?? "#6b7280",
+                      backgroundColor: `${categoryColor(category)}1f`,
+                      color: categoryColor(category),
                     }}
                   >
                     {category?.icon ?? "•"}

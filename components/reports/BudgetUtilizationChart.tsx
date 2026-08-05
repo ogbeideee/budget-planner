@@ -32,7 +32,7 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
     () =>
       budgetUtilizationSeries(budgets, transactions, months).map((point) => ({
         ...point,
-        pct: Math.round((100 * point.spentTotal) / point.limit),
+        barPct: Math.min(100, point.pct),
       })),
     [budgets, transactions, months],
   );
@@ -86,12 +86,15 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
               width={60}
             />
             <Tooltip
-              formatter={(value) => [`${value}%`, "Utilization"]}
+              formatter={(_value, _name, item) => [
+                `${((item as { payload?: { pct?: number } })?.payload?.pct ?? 0)}%`,
+                "Utilization",
+              ]}
               labelFormatter={(label) => formatMonthLabel(String(label))}
               contentStyle={tooltipContentStyle(colors)}
             />
             <Bar
-              dataKey="pct"
+              dataKey="barPct"
               name="Utilization"
               fill={colors.brand}
               radius={[6, 6, 0, 0]}

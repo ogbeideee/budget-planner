@@ -80,8 +80,7 @@ describe("Reports chrome", () => {
   });
 });
 
-describe("Reports chart subtitles", () => {
-  const specs: ChartSpec[] = [
+describe("Reports chart subtitles", () => {  const specs: ChartSpec[] = [
     {
       Chart: IncomeExpenseChart as unknown as ChartSpec["Chart"],
       title: "Income vs expenses",
@@ -137,5 +136,47 @@ describe("Reports chart subtitles", () => {
     expect(container.querySelector("section")).not.toBeNull();
     expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.getByText(subtitle)).toBeInTheDocument();
+  });
+});
+
+describe("Budget utilization data fidelity", () => {
+  it("reports over-100 percent utilization in the accessible label", () => {
+    const state = useAppStore.getState().state;
+    const rentId = state.categories.find((c) => c.name === "Rent")!.id;
+    useAppStore.setState({
+      state: {
+        ...state,
+        budgets: [
+          {
+            id: "b1",
+            categoryId: rentId,
+            month: "2026-08",
+            limit: 100000,
+            priority: "high",
+          },
+        ],
+        transactions: [
+          {
+            id: "t1",
+            categoryId: rentId,
+            amount: 150000,
+            type: "expense",
+            date: "2026-08-03",
+            createdAt: "2026-08-03T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    render(<BudgetUtilizationChart months={MONTHS} />);
+    const image = screen.getByRole("img", {
+      name: /Budget utilization:/,
+    });
+    expect(image.getAttribute("aria-label")).toContain("150%");
+    expect(image.getAttribute("aria-label")).toContain("$1,500.00");
+  });
+
+  it("renders its empty state when the window has no budgets", () => {
+    render(<BudgetUtilizationChart months={MONTHS} />);
+    expect(screen.getByText("No budgets in this window")).toBeInTheDocument();
   });
 });

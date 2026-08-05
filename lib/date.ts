@@ -112,3 +112,9 @@ export function formatDateShort(iso: string): string {
     day: "numeric",
   });
 }
+
+export function daysBetween(isoA: string, isoB: string): number {
+  const a = isoToDate(isoA);
+  const b = isoToDate(isoB);
+  return Math.round((b.getTime() - a.getTime()) / (24 * 60 * 60 * 1000));
+}
