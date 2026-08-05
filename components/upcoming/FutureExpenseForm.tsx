@@ -162,7 +162,7 @@ export function FutureExpenseForm({
               <Button
                 type="button"
                 variant="secondary"
-                className="min-h-8 px-2.5 py-1 text-xs"
+                size="sm"
                 onClick={acceptSuggestion}
               >
                 <CheckIcon className="h-3.5 w-3.5" />

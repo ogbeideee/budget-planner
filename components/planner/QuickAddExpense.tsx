@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { todayIso } from "@/lib/date";
@@ -55,17 +54,15 @@ export function QuickAddExpense({ month }: { month: Month }) {
 
   if (expenseCategories.length === 0) {
     return (
-      <Card title="Quick add expense">
-        <p className="text-sm text-muted">
-          Add an expense category in Settings to use quick add.
-        </p>
-      </Card>
+      <p className="text-sm text-muted">
+        Quick add needs an expense category — create one in Settings and
+        it&apos;ll show up here.
+      </p>
     );
   }
 
   return (
-    <Card title="Quick add expense">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select
             label="Category"
@@ -114,6 +111,5 @@ export function QuickAddExpense({ month }: { month: Month }) {
           month&apos;s budgets.
         </p>
       </form>
-    </Card>
   );
 }

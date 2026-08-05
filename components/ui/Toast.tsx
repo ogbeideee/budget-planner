@@ -26,7 +26,7 @@ export function Toast({ message, tone = "success", onDismiss }: ToastProps) {
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={`pointer-events-auto flex items-center justify-between gap-4 rounded-md border px-4 py-3 shadow-pop animate-[toast-in_150ms_ease-out] ${TONES[tone]}`}
+      className={`pointer-events-auto flex items-center justify-between gap-4 rounded-md border px-4 py-3 shadow-pop animate-[toast-in_150ms_var(--ease-premium)] ${TONES[tone]}`}
     >
       <p className="text-sm font-medium">{message}</p>
       <button

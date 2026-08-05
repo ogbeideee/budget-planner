@@ -9,7 +9,7 @@ import { NAV_ITEMS } from "./nav";
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="sidebar-surface fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-border lg:flex">
+    <aside className="sidebar-surface no-print fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-border lg:flex">
       <div className="flex h-16 items-center gap-2.5 border-b border-border/70 px-4">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-card">
           <WalletIcon className="h-5 w-5" />
@@ -30,7 +30,7 @@ export function Sidebar() {
                   aria-current={active ? "page" : undefined}
                   className={`group flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus:outline-none ${
                     active
-                      ? "bg-brand-50 text-brand-700 shadow-card dark:bg-brand-950 dark:text-brand-300"
+                      ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
                       : "text-muted hover:bg-canvas hover:text-ink"
                   }`}
                 >

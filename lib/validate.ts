@@ -1,4 +1,4 @@
-import { isMonth, isIsoDate } from "./date";
+import { isMonth, isIsoDate, monthKeyFromIso } from "./date";
 import type {
   AppState,
   Budget,
@@ -8,6 +8,7 @@ import type {
   FutureExpense,
   FutureExpenseStatus,
   ID,
+  IncomePlan,
   Priority,
   RecurrenceFrequency,
   RecurrenceRule,
@@ -279,27 +280,36 @@ function validateFutureExpense(
 
 export function validateAppState(value: unknown): AppState {
   if (!isRecord(value)) throw new ValidationError("Invalid state");
-  if (value.version !== 1) throw new ValidationError("Unsupported state version");
-  const categories = requireArray(value.categories, "categories").map(
+  if (value.version !== 1 && value.version !== 2 && value.version !== 3) {
+    throw new ValidationError("Unsupported state version");
+  }
+  const migrated = migrateV2(migrateV1(value));
+  const categories = requireArray(migrated.categories, "categories").map(
     (entry) => validateCategory(entry),
   );
-  const budgets = requireArray(value.budgets, "budgets").map((entry) =>
+  const budgets = requireArray(migrated.budgets, "budgets").map((entry) =>
     validateBudget(entry, categories),
   );
-  const transactions = requireArray(value.transactions, "transactions").map(
+  const transactions = requireArray(migrated.transactions, "transactions").map(
     (entry) => validateTransaction(entry, categories),
   );
   const futureExpenses =
-    value.futureExpenses === undefined || value.futureExpenses === null
+    migrated.futureExpenses === undefined || migrated.futureExpenses === null
       ? []
-      : requireArray(value.futureExpenses, "futureExpenses").map((entry) =>
+      : requireArray(migrated.futureExpenses, "futureExpenses").map((entry) =>
           validateFutureExpense(entry, categories),
         );
   const recurrenceRules = requireArray(
-    value.recurrenceRules,
+    migrated.recurrenceRules,
     "recurrenceRules",
   ).map((entry) => validateRecurrenceRule(entry, categories));
-  const settings = value.settings;
+  const incomePlans =
+    migrated.incomePlans === undefined || migrated.incomePlans === null
+      ? []
+      : requireArray(migrated.incomePlans, "incomePlans").map((entry) =>
+          validateIncomePlan(entry, categories, transactions),
+        );
+  const settings = migrated.settings;
   if (!isRecord(settings)) throw new ValidationError("Invalid settings");
   let currency: Currency = "USD";
   if (settings.currency === "USD" || settings.currency === "NGN") {
@@ -323,12 +333,13 @@ export function validateAppState(value: unknown): AppState {
     theme = settings.theme;
   }
   return {
-    version: 1,
+    version: 3,
     categories,
     budgets,
     transactions,
     futureExpenses,
     recurrenceRules,
+    incomePlans,
     settings: {
       currency,
       recurringEnabled: settings.recurringEnabled,
@@ -336,4 +347,201 @@ export function validateAppState(value: unknown): AppState {
       theme,
     },
   };
+}
+
+function requireAmount(value: unknown, label: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    !Number.isInteger(value) ||
+    value < 0
+  ) {
+    throw new ValidationError(`Invalid ${label}`);
+  }
+  return value;
+}
+
+function validateIncomePlan(
+  value: unknown,
+  categories: Category[],
+  transactions: Transaction[],
+): IncomePlan {
+  if (!isRecord(value)) throw new ValidationError("Invalid income plan");
+  const month = requireString(value.month, "incomePlan.month");
+  if (!isMonth(month)) throw new ValidationError("Invalid incomePlan.month");
+  const legacy = typeof value.categoryId === "string";
+  if (legacy) {
+    const category = categories.find((c) => c.id === value.categoryId);
+    if (!category || category.kind !== "income") {
+      throw new ValidationError("Invalid incomePlan.categoryId: unknown category");
+    }
+    const received = Math.round(
+      transactions
+        .filter(
+          (t) =>
+            t.type === "income" &&
+            t.categoryId === category.id &&
+            monthKeyFromIso(t.date) === month,
+        )
+        .reduce((sum, t) => sum + t.amount, 0),
+    );
+    return {
+      id: requireNonEmptyString(value.id, "incomePlan.id"),
+      month,
+      name: category.name,
+      icon: category.icon,
+      expectedAmount: requireAmount(
+        value.expected,
+        "incomePlan.expected",
+      ),
+      receivedAmount: requireAmount(received, "incomePlan.received"),
+    };
+  }
+  const name = requireNonEmptyString(value.name, "incomePlan.name").trim();
+  if (name.length === 0) throw new ValidationError("Invalid incomePlan.name");
+  return {
+    id: requireNonEmptyString(value.id, "incomePlan.id"),
+    month,
+    name,
+    icon: requireString(value.icon, "incomePlan.icon"),
+    expectedAmount: requireAmount(
+      value.expectedAmount,
+      "incomePlan.expectedAmount",
+    ),
+    receivedAmount: requireAmount(
+      value.receivedAmount,
+      "incomePlan.receivedAmount",
+    ),
+  };
+}
+
+const STANDARD_INCOME_CATEGORIES: ReadonlyArray<{
+  name: string;
+  icon: string;
+  color: string;
+}> = [
+  { name: "Salary", icon: "💰", color: "#0ea5e9" },
+  { name: "Business", icon: "🏪", color: "#8b5cf6" },
+  { name: "Freelancing", icon: "💻", color: "#14b8a6" },
+  { name: "Forex", icon: "💱", color: "#f59e0b" },
+  { name: "Bonus", icon: "🎁", color: "#ec4899" },
+  { name: "Rental Income", icon: "🏘️", color: "#22c55e" },
+];
+
+function makeId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function migrateV1(value: Record<string, unknown>): Record<string, unknown> {
+  if (value.version !== 1) return value;
+  const categories = requireArray(value.categories, "categories") as Array<
+    Record<string, unknown>
+  >;
+  const transactions = requireArray(
+    value.transactions,
+    "transactions",
+  ) as Array<Record<string, unknown>>;
+
+  const incomeCount = categories.filter(
+    (category) => category.kind === "income",
+  ).length;
+  const knownNames = new Set(
+    categories.map((category) =>
+      String(category.name ?? "").toLowerCase().trim(),
+    ),
+  );
+  let nextCategories = categories;
+  if (incomeCount < 3) {
+    const additions: Array<Record<string, unknown>> = [];
+    const now = new Date().toISOString();
+    for (const standard of STANDARD_INCOME_CATEGORIES) {
+      if (knownNames.has(standard.name.toLowerCase())) continue;
+      additions.push({
+        id: makeId(),
+        name: standard.name,
+        icon: standard.icon,
+        color: standard.color,
+        kind: "income",
+        createdAt: now,
+      });
+    }
+    nextCategories = [...categories, ...additions];
+  }
+
+  const plans: Record<string, unknown>[] = [];
+  const seen = new Map<string, Record<string, unknown>>();
+  for (const transaction of transactions) {
+    if (transaction.monthlyIncome !== true || transaction.type !== "income") {
+      continue;
+    }
+    const month = String(transaction.date ?? "").slice(0, 7);
+    const categoryId = String(transaction.categoryId ?? "");
+    if (!isMonth(month) || categoryId.length === 0) continue;
+    seen.set(`${month}:${categoryId}`, {
+      id: makeId(),
+      month,
+      categoryId,
+      expected: Math.round(Number(transaction.amount) || 0),
+    });
+  }
+  for (const plan of seen.values()) plans.push(plan);
+
+  return {
+    ...value,
+    version: 2,
+    categories: nextCategories,
+    incomePlans: plans,
+  };
+}
+
+function migrateV2(value: Record<string, unknown>): Record<string, unknown> {
+  if (value.version !== 2) return value;
+  const categories =
+    value.categories === undefined || value.categories === null
+      ? []
+      : (requireArray(value.categories, "categories") as Array<
+          Record<string, unknown>
+        >);
+  const transactions =
+    value.transactions === undefined || value.transactions === null
+      ? []
+      : (requireArray(value.transactions, "transactions") as Array<
+          Record<string, unknown>
+        >);
+  const receivedByKey = new Map<string, number>();
+  for (const transaction of transactions) {
+    if (transaction.type !== "income") continue;
+    const month = String(transaction.date ?? "").slice(0, 7);
+    const categoryId = String(transaction.categoryId ?? "");
+    if (!isMonth(month) || categoryId.length === 0) continue;
+    const key = `${month}:${categoryId}`;
+    receivedByKey.set(
+      key,
+      (receivedByKey.get(key) ?? 0) + (Number(transaction.amount) || 0),
+    );
+  }
+  const plans =
+    value.incomePlans === undefined || value.incomePlans === null
+      ? []
+      : (requireArray(value.incomePlans, "incomePlans") as Array<
+          Record<string, unknown>
+        >);
+  const incomePlans = plans.map((plan) => {
+    if (typeof plan.name === "string") return plan;
+    const categoryId = String(plan.categoryId ?? "");
+    const category = categories.find((c) => String(c.id) === categoryId);
+    const month = String(plan.month ?? "");
+    const { categoryId: _categoryId, expected: _expected, ...rest } = plan;
+    return {
+      ...rest,
+      name: category ? String(category.name ?? "") : "Income",
+      icon: category ? String(category.icon ?? "💰") : "💰",
+      expectedAmount: Math.round(Number(plan.expected) || 0),
+      receivedAmount: Math.round(receivedByKey.get(`${month}:${categoryId}`) ?? 0),
+    };
+  });
+  return { ...value, version: 3, incomePlans };
 }

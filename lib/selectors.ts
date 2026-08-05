@@ -1,5 +1,13 @@
 import { monthKeyFromIso, monthOffset } from "./date";
-import type { Budget, Category, ID, Month, Transaction } from "./types";
+import type {
+  Budget,
+  Category,
+  FutureExpense,
+  ID,
+  IncomePlan,
+  Month,
+  Transaction,
+} from "./types";
 
 export interface Totals {
   income: number;
@@ -152,6 +160,7 @@ export function budgetHealth(
   budgets: Budget[],
   transactions: Transaction[],
   month: Month,
+  incomePlans: IncomePlan[] = [],
 ): number {
   let health = 100;
   for (const budget of budgets) {
@@ -164,7 +173,13 @@ export function budgetHealth(
       );
     }
   }
-  if (totals(transactions, month).net < 0) health -= 15;
+  if (
+    receivedForMonth(transactions, incomePlans, month) -
+      totals(transactions, month).expenses <
+    0
+  ) {
+    health -= 15;
+  }
   return Math.max(0, Math.min(100, health));
 }
 
@@ -203,10 +218,139 @@ export function needsFunding(
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
+export interface FundingGap {
+  category: Category;
+  target: number;
+  allocated: number;
+  missing: number;
+}
+
+export function fundingGaps(
+  budgets: Budget[],
+  categories: Category[],
+  futureExpenses: FutureExpense[],
+  month: Month,
+): FundingGap[] {
+  const gaps: FundingGap[] = [];
+  for (const category of categories) {
+    if (category.kind !== "expense") continue;
+    const target = futureExpenses
+      .filter(
+        (expense) =>
+          expense.status === "upcoming" &&
+          expense.categoryId === category.id &&
+          expense.dueDate.startsWith(month),
+      )
+      .reduce((sum, expense) => sum + expense.amount, 0);
+    if (target <= 0) continue;
+    const allocated =
+      budgets.find(
+        (budget) => budget.month === month && budget.categoryId === category.id,
+      )?.limit ?? 0;
+    const missing = Math.max(target - allocated, 0);
+    if (missing <= 0) continue;
+    gaps.push({ category, target, allocated, missing });
+  }
+  return gaps.sort(
+    (a, b) =>
+      b.missing - a.missing ||
+      a.category.name.localeCompare(b.category.name),
+  );
+}
+
 export function windowMonths(month: Month, count = 6): Month[] {
   return Array.from({ length: count }, (_, index) =>
     monthOffset(month, -(count - 1 - index)),
   );
+}
+
+export function incomePlansForMonth(
+  plans: IncomePlan[],
+  month: Month,
+): IncomePlan[] {
+  return plans.filter((plan) => plan.month === month);
+}
+
+export function expectedIncomeForMonth(
+  plans: IncomePlan[],
+  month: Month,
+): number {
+  return incomePlansForMonth(plans, month).reduce(
+    (sum, plan) => sum + plan.expectedAmount,
+    0,
+  );
+}
+
+export function receivedIncomeForMonth(
+  plans: IncomePlan[],
+  month: Month,
+): number {
+  return incomePlansForMonth(plans, month).reduce(
+    (sum, plan) => sum + plan.receivedAmount,
+    0,
+  );
+}
+
+/**
+ * Actual money currently available for the month: the sum of `receivedAmount`
+ * on income plans, floored by ledger income transactions. Plans are the
+ * canonical source; transactions only act as a fallback for states that
+ * never migrated to plans. The max avoids double counting because the v2->v3
+ * migration backfilled plan `receivedAmount` from income transactions
+ * without deleting them.
+ */
+export function receivedForMonth(
+  transactions: Transaction[],
+  incomePlans: IncomePlan[],
+  month: Month,
+): number {
+  return Math.max(
+    totals(transactions, month).income,
+    receivedIncomeForMonth(incomePlans, month),
+  );
+}
+
+export interface IncomeBreakdownRow {
+  plan: IncomePlan;
+  expected: number;
+  received: number;
+  difference: number;
+}
+
+export function incomeBreakdownForMonth(
+  plans: IncomePlan[],
+  month: Month,
+): IncomeBreakdownRow[] {
+  return incomePlansForMonth(plans, month)
+    .map((plan) => ({
+      plan,
+      expected: plan.expectedAmount,
+      received: plan.receivedAmount,
+      difference: plan.expectedAmount - plan.receivedAmount,
+    }))
+    .sort(
+      (a, b) =>
+        b.expected - a.expected ||
+        b.received - a.received ||
+        (a.plan.name < b.plan.name ? -1 : 1),
+    );
+}
+
+export interface IncomeTrendPoint {
+  month: Month;
+  expected: number;
+  received: number;
+}
+
+export function incomeTrendSeries(
+  plans: IncomePlan[],
+  months: Month[],
+): IncomeTrendPoint[] {
+  return months.map((month) => ({
+    month,
+    expected: expectedIncomeForMonth(plans, month),
+    received: receivedIncomeForMonth(plans, month),
+  }));
 }
 
 export interface MonthlyTotals extends Totals {

@@ -98,11 +98,29 @@ export function ChevronRightIcon({ className }: IconProps) {
   );
 }
 
+export function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <polyline points="6 9 12 15 18 9" />
+    </Svg>
+  );
+}
+
 export function PlusIcon({ className }: IconProps) {
   return (
     <Svg className={className}>
       <path d="M5 12h14" />
       <path d="M12 5v14" />
+    </Svg>
+  );
+}
+
+export function MoreHorizontalIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <circle cx="12" cy="5" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="12" cy="19" r="1.5" />
     </Svg>
   );
 }
@@ -254,6 +272,69 @@ export function RepeatIcon({ className }: IconProps) {
       <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
       <path d="m7 22-4-4 4-4" />
       <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </Svg>
+  );
+}
+
+export function CalendarClockIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M21 12.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4.5" />
+      <path d="M16 2v4" />
+      <path d="M8 2v4" />
+      <path d="M3 10h18" />
+      <circle cx="18" cy="17" r="3" />
+      <path d="M18 15.5V17l1 1" />
+    </Svg>
+  );
+}
+
+export function ForwardIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M15 18 21 12 15 6" />
+      <path d="M5 18V9a3 3 0 0 1 3-3h13" />
+    </Svg>
+  );
+}
+
+export function PrintIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M6 9V3h12v6" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" rx="1" />
+    </Svg>
+  );
+}
+
+export function DownloadIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M12 15V3" />
+    </Svg>
+  );
+}
+
+export function FileTextIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="M10 9H8" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+    </Svg>
+  );
+}
+
+export function TrendDownIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <polyline points="22 17 13.5 8.5 8.5 13.5 2 7" />
+      <polyline points="16 17 22 17 22 11" />
     </Svg>
   );
 }

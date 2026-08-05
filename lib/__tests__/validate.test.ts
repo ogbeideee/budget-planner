@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../seed";
 import { ValidationError, validateAppState } from "../validate";
-import type { AppState, Budget, Transaction } from "../types";
+import type { AppState, Budget, IncomePlan, Transaction } from "../types";
 
 function validState(): AppState {
   return createInitialState();
@@ -14,14 +14,131 @@ function clone(state: AppState): AppState {
 describe("validateAppState", () => {
   it("accepts a valid initial state", () => {
     const result = validateAppState(validState());
-    expect(result.categories).toHaveLength(6);
+    expect(result.categories).toHaveLength(11);
+    expect(result.incomePlans).toEqual([]);
+    expect(result.version).toBe(3);
     expect(result.settings.firstRunDone).toBe(true);
   });
 
-  it("rejects a wrong version (AC-10)", () => {
+  it("rejects an unsupported version (AC-10)", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 4;
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+  });
+
+  it("migrates a version 2 state to version 3", () => {
     const state = clone(validState());
     (state as { version: number }).version = 2;
+    expect(validateAppState(state).version).toBe(3);
+  });
+
+  it("migrates a version 1 state: backfills income categories and converts monthly income to plans", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 1;
+    state.categories = state.categories.filter((c) => c.kind === "expense");
+    const incomeCategory = { id: "legacy-income", name: "Salary", icon: "💰", color: "#0ea5e9", kind: "income", createdAt: "2026-01-01T00:00:00.000Z" } as never;
+    state.categories = [...state.categories, incomeCategory];
+    state.transactions = [
+      {
+        id: "t1",
+        categoryId: "legacy-income",
+        amount: 250000,
+        type: "income",
+        date: "2026-08-01",
+        note: "Monthly income",
+        createdAt: "2026-08-01T00:00:00.000Z",
+        monthlyIncome: true,
+      },
+    ] as unknown as Transaction[];
+    (state as unknown as Record<string, unknown>).incomePlans = undefined;
+    const result = validateAppState(state);
+    expect(result.version).toBe(3);
+    expect(result.incomePlans).toEqual([
+      expect.objectContaining({
+        month: "2026-08",
+        name: "Salary",
+        icon: "💰",
+        expectedAmount: 250000,
+        receivedAmount: 250000,
+      }),
+    ]);
+    const incomeCount = result.categories.filter((c) => c.kind === "income").length;
+    expect(incomeCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it("migrates fractional monthly income amounts instead of rejecting them", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 1;
+    const incomeCategory = state.categories.find((c) => c.kind === "income")!;
+    state.transactions = [
+      {
+        id: "t1",
+        categoryId: incomeCategory.id,
+        amount: 2500.5,
+        type: "income",
+        date: "2026-08-01",
+        createdAt: "2026-08-01T00:00:00.000Z",
+        monthlyIncome: true,
+      },
+    ] as unknown as Transaction[];
+    (state as unknown as Record<string, unknown>).incomePlans = undefined;
+    const result = validateAppState(state);
+    expect(result.incomePlans[0].expectedAmount).toBe(2501);
+    expect(result.transactions).toHaveLength(1);
+  });
+
+  it("validates income plans", () => {
+    const state = clone(validState());
+    state.incomePlans = [
+      {
+        id: "p1",
+        month: "2026-08",
+        name: "Salary",
+        icon: "💰",
+        expectedAmount: 1000,
+        receivedAmount: 0,
+      },
+    ];
+    expect(() => validateAppState(state)).not.toThrow();
+
+    state.incomePlans = [{ ...state.incomePlans[0], name: "  " }];
     expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.incomePlans = [{ ...state.incomePlans[0], month: "2026-13" }];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.incomePlans = [{ ...state.incomePlans[0], month: "2026-08", expectedAmount: -5 }];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.incomePlans = [{ ...state.incomePlans[0], expectedAmount: 10.5 }];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.incomePlans = [{ ...state.incomePlans[0], receivedAmount: -1 }];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    const expenseCategory = state.categories.find((c) => c.kind === "expense")!;
+    state.incomePlans = [
+      {
+        id: "p1",
+        month: "2026-08",
+        categoryId: expenseCategory.id,
+        expected: 1000,
+      } as unknown as IncomePlan,
+    ];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.incomePlans = [
+      {
+        id: "p1",
+        month: "2026-08",
+        categoryId: "ghost",
+        expected: 1000,
+      } as unknown as IncomePlan,
+    ];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    delete (state as unknown as Record<string, unknown>).incomePlans;
+    expect(validateAppState(state).incomePlans).toEqual([]);
   });
 
   it("rejects missing required arrays (AC-10)", () => {

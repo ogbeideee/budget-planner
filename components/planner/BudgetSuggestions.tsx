@@ -2,8 +2,6 @@
 
 import { useMemo } from "react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { SparklesIcon } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { budgetSuggestions } from "@/lib/recommendations";
 import type { Budget, Month } from "@/lib/types";
@@ -18,76 +16,67 @@ export function BudgetSuggestions({ month, onAdjust }: BudgetSuggestionsProps) {
   const budgets = useAppStore((s) => s.state.budgets);
   const transactions = useAppStore((s) => s.state.transactions);
   const categories = useAppStore((s) => s.state.categories);
+  const incomePlans = useAppStore((s) => s.state.incomePlans);
   const currency = useAppStore((s) => s.state.settings.currency);
 
   const suggestions = useMemo(
-    () => budgetSuggestions({ month, budgets, transactions, categories }),
-    [month, budgets, transactions, categories],
+    () => budgetSuggestions({ month, budgets, transactions, categories, incomePlans }),
+    [month, budgets, transactions, categories, incomePlans],
   );
 
   if (suggestions.length === 0) return null;
 
   const fmt = (value: number) => formatMoney(value, currency);
+  const coveredCount = suggestions.filter((s) => s.coveredByRemaining).length;
 
   return (
-    <Card
-      title="Ways to get back on track"
-      action={
-        <SparklesIcon className="h-4 w-4 text-brand-600 dark:text-brand-400" />
-      }
-    >
-      <ul className="flex flex-col divide-y divide-border/70">
+    <div className="mb-4 rounded-lg border border-warn/15 bg-warn/[0.04] px-4 py-3">
+      <p className="text-sm font-semibold text-ink">
+        A few budgets are over their limits
+      </p>
+      <ul className="mt-2 flex flex-col gap-2 text-sm text-muted">
         {suggestions.map((suggestion) => (
-          <li key={suggestion.budget.id} className="py-3.5 first:pt-0 last:pb-0">
-            <p className="text-sm font-semibold text-ink">
-              <span aria-hidden="true">{suggestion.category?.icon ?? ""}</span>{" "}
-              {suggestion.category?.name ?? "Category"}
-            </p>
-            <ul className="mt-2 flex flex-col gap-2 text-sm text-muted">
-              <li className="flex flex-wrap items-center justify-between gap-2">
-                <span>
-                  Raise the limit to {fmt(suggestion.suggestedLimit)} to cover
-                  what you&apos;ve spent.
-                </span>
-                <Button
-                  variant="secondary"
-                  className="min-h-8 px-3 py-1 text-xs"
-                  onClick={() => onAdjust(suggestion.budget)}
-                >
-                  Adjust
-                </Button>
-              </li>
+          <li
+            key={suggestion.budget.id}
+            className="flex flex-wrap items-center justify-between gap-2"
+          >
+            <div className="min-w-0 flex-1">
+              <p>
+                <span aria-hidden="true">{suggestion.category?.icon ?? ""}</span>{" "}
+                <span className="font-medium text-ink">
+                  {suggestion.category?.name ?? "Category"}
+                </span>{" "}
+                — raise the limit to {fmt(suggestion.suggestedLimit)} to cover
+                what you&apos;ve spent.
+              </p>
               {suggestion.trim && (
-                <li className="flex items-center justify-between gap-3">
-                  <span>
-                    Trim{" "}
-                    <strong className="font-semibold text-ink">
-                      {suggestion.trim.category?.name ?? "a category"}
-                    </strong>{" "}
-                    — it still has{" "}
-                    <span className="font-semibold tabular-nums text-ink">
-                      {fmt(suggestion.trim.remaining)}
-                    </span>{" "}
-                    left.
-                  </span>
-                </li>
+                <p className="mt-0.5 text-xs">
+                  Trim{" "}
+                  <span className="font-medium text-ink">
+                    {suggestion.trim.category?.name ?? "a category"}
+                  </span>{" "}
+                  — it still has {fmt(suggestion.trim.remaining)} left.
+                </p>
               )}
-              <li>
-                Remaining income{" "}
-                <span className="font-semibold tabular-nums text-ink">
-                  {fmt(suggestion.remainingIncome)}
-                </span>{" "}
-                {suggestion.coveredByRemaining ? "covers" : "falls short of"}{" "}
-                the{" "}
-                <span className="font-semibold tabular-nums text-danger">
-                  {fmt(suggestion.overspent)}
-                </span>{" "}
-                overage.
-              </li>
-            </ul>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => onAdjust(suggestion.budget)}
+            >
+              Adjust
+            </Button>
           </li>
         ))}
       </ul>
-    </Card>
+      <p className="mt-2 text-xs text-muted">
+        {coveredCount === suggestions.length
+          ? "Your remaining income covers these overages."
+          : coveredCount === 0
+            ? "Your remaining income won't cover these overages yet."
+            : "Your remaining income covers some of these overages."}
+      </p>
+    </div>
   );
 }

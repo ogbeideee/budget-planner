@@ -1,9 +1,10 @@
 "use client";
 
 import { useId } from "react";
+import type { CSSProperties } from "react";
 
 export interface SliderProps {
-  label: string;
+  label?: string;
   value: number;
   min: number;
   max: number;
@@ -22,18 +23,21 @@ export function Slider({
   displayValue,
 }: SliderProps) {
   const inputId = useId();
+  const fill = max > min ? ((value - min) / (max - min)) * 100 : 0;
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-4">
-        <label htmlFor={inputId} className="text-sm font-medium text-ink">
-          {label}
-        </label>
-        {displayValue !== undefined && (
-          <span className="text-sm font-semibold tabular-nums text-ink">
-            {displayValue}
-          </span>
-        )}
-      </div>
+    <div className="flex flex-col gap-2">
+      {label !== undefined && (
+        <div className="flex items-center justify-between gap-4">
+          <label htmlFor={inputId} className="text-sm font-medium text-ink">
+            {label}
+          </label>
+          {displayValue !== undefined && (
+            <span className="text-sm font-semibold tabular-nums text-ink">
+              {displayValue}
+            </span>
+          )}
+        </div>
+      )}
       <input
         id={inputId}
         type="range"
@@ -43,7 +47,8 @@ export function Slider({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
         aria-valuetext={displayValue}
-        className="h-11 w-full cursor-pointer accent-brand-600 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+        style={{ "--slider-fill": `${fill}%` } as CSSProperties}
+        className="slider-premium h-2 w-full cursor-pointer"
       />
     </div>
   );

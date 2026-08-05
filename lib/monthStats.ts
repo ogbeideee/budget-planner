@@ -1,6 +1,6 @@
 import { isoToDate, monthOffset } from "./date";
-import { totals } from "./selectors";
-import type { Budget, Category, FutureExpense, Month, Transaction } from "./types";
+import { monthFinance } from "./finance";
+import type { Budget, Category, FutureExpense, IncomePlan, Month, Transaction } from "./types";
 
 export interface MonthStat {
   label: string;
@@ -9,7 +9,7 @@ export interface MonthStat {
 }
 
 export interface MonthStatsData {
-  largestExpense: { amount: number; label: string } | null;
+  largestExpense: { amount: number; label: string; categoryId: string | null } | null;
   mostFunded: { categoryName: string; limit: number } | null;
   upcomingPayment: FutureExpense | null;
   savingsRate: number | null;
@@ -23,8 +23,16 @@ export function monthStats(input: {
   budgets: Budget[];
   categories: Category[];
   futureExpenses: FutureExpense[];
+  incomePlans?: IncomePlan[];
 }): MonthStatsData {
-  const { month, transactions, budgets, categories, futureExpenses } = input;
+  const {
+    month,
+    transactions,
+    budgets,
+    categories,
+    futureExpenses,
+    incomePlans = [],
+  } = input;
 
   const monthTransactions = transactions.filter((transaction) =>
     transaction.date.startsWith(month),
@@ -41,6 +49,7 @@ export function monthStats(input: {
           transaction.note?.trim() ??
           category?.name ??
           "Expense",
+        categoryId: category?.id ?? null,
       };
     }
   }
@@ -68,22 +77,24 @@ export function monthStats(input: {
     });
   }
 
-  const { income, net } = totals(transactions, month);
-  const savingsRate = income > 0 ? Math.round((net / income) * 100) : null;
+  const finance = monthFinance(transactions, incomePlans, month);
+  const savingsRate = finance.savingsRate;
 
   const lastMonth = monthOffset(month, -1);
-  const lastNet = totals(transactions, lastMonth).net;
+  const lastNet = monthFinance(transactions, incomePlans, lastMonth).net;
   const vsLastMonth =
-    lastNet !== 0 || net !== 0
-      ? { delta: net - lastNet, lastNet, thisNet: net }
+    lastNet !== 0 || finance.net !== 0
+      ? { delta: finance.net - lastNet, lastNet, thisNet: finance.net }
       : null;
 
   const upcomingInMonth = upcoming
     .filter((expense) => expense.dueDate.startsWith(month))
     .reduce((sum, expense) => sum + expense.amount, 0);
-  const projectedRemaining = monthTransactions.length > 0 || upcomingInMonth > 0
-    ? net - upcomingInMonth
-    : null;
+  const hasActivity = monthTransactions.length > 0 || upcomingInMonth > 0;
+  const projectedRemaining =
+    hasActivity && finance.expected > 0
+      ? finance.projectedRemaining
+      : null;
 
   return {
     largestExpense,

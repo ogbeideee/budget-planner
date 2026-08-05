@@ -3,11 +3,10 @@
 import { Fragment, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Disclosure } from "@/components/ui/Disclosure";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ClockIcon } from "@/components/ui/icons";
-import { formatMonthLabel, monthKeyFromIso, monthOffset } from "@/lib/date";
+import { formatDateShort, formatMonthLabel, monthKeyFromIso, monthOffset } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { sortTransactions, transactionsForMonth } from "@/lib/selectors";
 import { groupTransactionsByTime } from "@/lib/timeline";
@@ -119,6 +118,39 @@ export function TransactionList() {
     success(`Moved to ${formatMonthLabel(destination)}`);
   };
 
+  const renderPreview = () => {
+    if (pageRows.length === 0) return undefined;
+    return (
+      <ul className="flex flex-col divide-y divide-border/60">
+        {filtered.slice(0, 5).map((transaction) => {
+          const category = categories.find(
+            (category) => category.id === transaction.categoryId,
+          );
+          return (
+            <li key={transaction.id} className="flex items-center gap-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-ink">
+                  {transaction.note ?? category?.name ?? "Transaction"}
+                </p>
+                <p className="text-xs text-muted">
+                  {formatDateShort(transaction.date)}
+                </p>
+              </div>
+              <span
+                className={`text-sm font-semibold tabular-nums ${
+                  transaction.type === "income" ? "text-income" : "text-expense"
+                }`}
+              >
+                {transaction.type === "income" ? "+" : "−"}
+                {formatMoney(transaction.amount, currency)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
+
   const confirmDelete = () => {
     if (!pendingDelete) return;
     deleteTransaction(pendingDelete.id);
@@ -128,7 +160,7 @@ export function TransactionList() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="sticky top-16 z-30 -mx-6 flex flex-wrap items-end justify-between gap-3 border-b border-border/60 bg-canvas/95 px-6 py-3 backdrop-blur-md lg:top-0">
         <TransactionFilters
           month={month}
           onMonthChange={setMonth}
@@ -147,75 +179,118 @@ export function TransactionList() {
         </Button>
       </div>
 
-      <Card title={`Timeline · ${formatMonthLabel(month)}`}>
+      <Disclosure
+        id={`timeline:${month}`}
+        title={`Timeline · ${formatMonthLabel(month)}`}
+        preview={() => renderPreview()}
+      >
         {pageRows.length === 0 ? (
           <EmptyState
-            icon={<ClockIcon className="h-5 w-5" />}
-            iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+            illustration="list"
+            illustrationClass={
+              filtered.length === 0
+                ? "bg-canvas text-muted"
+                : "bg-brand-500/10 text-brand-600 dark:text-brand-400"
+            }
             title={
               filtered.length === 0
-                ? "No matching records"
-                : "No records for this month"
+                ? "Nothing matches these filters"
+                : "Nothing recorded yet"
             }
             description={
               filtered.length === 0
-                ? "Adjust the filters or clear the search to see more records."
+                ? "Loosen the filters or clear the search."
                 : "Add your first income or expense — your timeline grows from here."
+            }
+            action={
+              filtered.length === 0 ? (
+                <Button variant="secondary" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => {
+                    setEditing(null);
+                    setFormSession((session) => session + 1);
+                    setFormOpen(true);
+                  }}
+                >
+                  New record
+                </Button>
+              )
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto lg:overflow-visible">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="text-xs uppercase tracking-wide text-muted">
+                <tr className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
                   <th
                     scope="col"
-                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-[4.75rem]"
                   >
                     Date
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-[4.75rem]"
                   >
                     Category
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
+                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 lg:top-[4.75rem]"
                   >
                     Note
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 text-right lg:top-[4.75rem]"
                   >
                     Amount
                   </th>
                   <th
                     scope="col"
-                    className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
+                    className="sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5 text-right lg:top-[4.75rem]"
                   >
-                    Actions
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {groups.map((group) => {
+                {groups.map((group, index) => {
                   const groupTotal = group.items.reduce(
                     (sum, transaction) => sum + transaction.amount,
                     0,
                   );
+                  const isToday = group.key === "Today";
                   return (
                     <Fragment key={group.key}>
+                      {index > 0 && <tr aria-hidden="true" className="h-2" />}
                       <tr>
                         <th
                           colSpan={5}
                           scope="colgroup"
-                          className="bg-canvas/60 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted"
+                          className={`border-b px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] ${
+                            isToday
+                              ? "border-brand-500/20 bg-brand-500/10 text-brand-600 dark:text-brand-300"
+                              : "border-border/60 bg-canvas/60 text-muted"
+                          }`}
                         >
+                          {isToday && (
+                            <span
+                              aria-hidden="true"
+                              className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-brand-500"
+                            />
+                          )}
                           {group.label}
-                          <span className="ml-2 font-medium normal-case tracking-normal">
+                          <span
+                            className={`ml-2 text-sm font-bold normal-case tracking-normal tabular-nums ${
+                              isToday
+                                ? "text-brand-600 dark:text-brand-300"
+                                : "text-ink"
+                            }`}
+                          >
                             {formatMoney(groupTotal, currency)}
                           </span>
                         </th>
@@ -266,7 +341,7 @@ export function TransactionList() {
             </Button>
           </div>
         )}
-      </Card>
+      </Disclosure>
 
       <TransactionForm
         key={formSession}

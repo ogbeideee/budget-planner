@@ -5,6 +5,7 @@ export type ProgressTone = "brand" | "warn" | "danger";
 export interface ProgressBarProps {
   value: number;
   tone?: ProgressTone;
+  className?: string;
 }
 
 const TONES: Record<ProgressTone, string> = {
@@ -13,7 +14,11 @@ const TONES: Record<ProgressTone, string> = {
   danger: "bg-danger",
 };
 
-export function ProgressBar({ value, tone = "brand" }: ProgressBarProps) {
+export function ProgressBar({
+  value,
+  tone = "brand",
+  className = "",
+}: ProgressBarProps) {
   const clamped = Math.min(1, Math.max(0, value));
   const percent = Math.round(clamped * 100);
   return (
@@ -22,7 +27,7 @@ export function ProgressBar({ value, tone = "brand" }: ProgressBarProps) {
       aria-valuenow={percent}
       aria-valuemin={0}
       aria-valuemax={100}
-      className="h-2 w-full overflow-hidden rounded-full bg-canvas"
+      className={`h-2 w-full overflow-hidden rounded-full bg-canvas ${className}`}
     >
       <div
         className={`h-full rounded-full transition-[width] duration-200 ease-out motion-reduce:transition-none ${TONES[tone]}`}

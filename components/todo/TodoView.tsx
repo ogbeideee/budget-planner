@@ -20,12 +20,12 @@ import { useAppStore } from "@/store/useAppStore";
 
 const TONE_STYLES: Record<
   TodoItem["tone"],
-  { icon: (props: IconProps) => ReactNode; accent: string }
+  { icon: (props: IconProps) => ReactNode; iconClass: string }
 > = {
-  danger: { icon: AlertTriangleIcon, accent: "border-l-expense" },
-  warn: { icon: AlertTriangleIcon, accent: "border-l-warn" },
-  success: { icon: CheckIcon, accent: "border-l-income" },
-  neutral: { icon: DotIcon, accent: "border-l-border" },
+  danger: { icon: AlertTriangleIcon, iconClass: "text-danger" },
+  warn: { icon: AlertTriangleIcon, iconClass: "text-warn" },
+  success: { icon: CheckIcon, iconClass: "text-income" },
+  neutral: { icon: DotIcon, iconClass: "text-muted" },
 };
 
 export function TodoView() {
@@ -33,11 +33,12 @@ export function TodoView() {
   const budgets = useAppStore((s) => s.state.budgets);
   const transactions = useAppStore((s) => s.state.transactions);
   const categories = useAppStore((s) => s.state.categories);
+  const incomePlans = useAppStore((s) => s.state.incomePlans);
   const settings = useAppStore((s) => s.state.settings);
 
   const items = useMemo(
-    () => todoFor({ budgets, transactions, categories, settings }, month),
-    [budgets, transactions, categories, settings, month],
+    () => todoFor({ budgets, transactions, categories, incomePlans, settings }, month),
+    [budgets, transactions, categories, incomePlans, settings, month],
   );
 
   return (
@@ -45,27 +46,24 @@ export function TodoView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title="To-Do"
-          description="Actions to keep this month on track, drawn from your planner state."
+          description="A short list of what needs your attention this month."
         />
         <MonthPicker value={month} onChange={setMonth} />
       </div>
       <Card title={`To do · ${formatMonthLabel(month)}`}>
         {items.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted">
-            Nothing to do — you&apos;re all set for this month.
+            All clear — nothing needs your attention this month.
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-2">
             {items.map((item) => {
               const style = TONE_STYLES[item.tone];
               const Icon = style.icon;
               return (
-                <li
-                  key={item.id}
-                  className={`rounded-md border border-border border-l-4 ${style.accent} bg-canvas px-3 py-3`}
-                >
+                <li key={item.id} className="rounded-lg bg-canvas px-3.5 py-3">
                   <div className="flex items-start gap-3">
-                    <span aria-hidden="true" className="mt-0.5">
+                    <span aria-hidden="true" className={`mt-0.5 ${style.iconClass}`}>
                       <Icon className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">

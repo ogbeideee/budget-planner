@@ -9,7 +9,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Bottom navigation"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface lg:hidden"
+      className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface lg:hidden"
     >
       <ul className="grid grid-cols-6">
         {NAV_ITEMS.map((item) => {

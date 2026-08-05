@@ -65,7 +65,11 @@ describe("monthStats", () => {
       categories: state.categories,
       futureExpenses: [],
     });
-    expect(stats.largestExpense).toEqual({ amount: 5000, label: "August rent" });
+    expect(stats.largestExpense).toEqual({
+      amount: 5000,
+      label: "August rent",
+      categoryId: rent.id,
+    });
   });
 
   it("falls back to the category name for unnamed expenses", () => {
@@ -171,21 +175,68 @@ describe("monthStats", () => {
     });
   });
 
-  it("projects remaining balance after upcoming payments this month", () => {
-    const { state, expense, income } = setup();
+  it("projects remaining as expected income minus expenses", () => {
+    const { state, expense } = setup();
     const stats = monthStats({
       month: "2026-08",
-      transactions: [
-        txn(income, 10000, "2026-08-01"),
-        txn(expense[0], 2000, "2026-08-02"),
-      ],
+      transactions: [txn(expense[0], 2000, "2026-08-02")],
       budgets: [],
       categories: state.categories,
       futureExpenses: [
         future(expense[0], 1500, "2026-08-20"),
         future(expense[0], 3000, "2026-09-20"),
       ],
+      incomePlans: [
+        {
+          id: "plan-1",
+          month: "2026-08",
+          name: "Salary",
+          icon: "💰",
+          expectedAmount: 8000,
+          receivedAmount: 0,
+        },
+      ],
     });
-    expect(stats.projectedRemaining).toBe(6500);
+    expect(stats.projectedRemaining).toBe(6000);
+  });
+
+  it("returns null projected remaining without expected income", () => {
+    const { state, expense } = setup();
+    const stats = monthStats({
+      month: "2026-08",
+      transactions: [txn(expense[0], 2000, "2026-08-02")],
+      budgets: [],
+      categories: state.categories,
+      futureExpenses: [],
+    });
+    expect(stats.projectedRemaining).toBeNull();
+  });
+
+  it("uses received income for net and savings rate", () => {
+    const { state, expense } = setup();
+    const stats = monthStats({
+      month: "2026-08",
+      transactions: [txn(expense[0], 2000, "2026-08-02")],
+      budgets: [],
+      categories: state.categories,
+      futureExpenses: [],
+      incomePlans: [
+        {
+          id: "plan-1",
+          month: "2026-08",
+          name: "Salary",
+          icon: "💰",
+          expectedAmount: 10000,
+          receivedAmount: 8000,
+        },
+      ],
+    });
+    expect(stats.vsLastMonth).toEqual({
+      delta: 6000,
+      lastNet: 0,
+      thisNet: 6000,
+    });
+    expect(stats.savingsRate).toBe(75);
+    expect(stats.projectedRemaining).toBe(8000);
   });
 });

@@ -19,7 +19,7 @@ const LIGHT: ChartColors = {
   ink: "#0f172a",
   surface: "#ffffff",
   border: "#e2e8f0",
-  brand: "#0ea5e9",
+  brand: "#5e6ad2",
   income: "#16a34a",
   expense: "#dc2626",
 };

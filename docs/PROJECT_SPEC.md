@@ -101,8 +101,19 @@ Identifiers `FR-01 …` are referenced by acceptance criteria in §7 and by the 
 The Planner replaces the former dashboard and budgets pages. For the selected month it
 shows:
 
-- Summary cards: total income, total expenses, net, and remaining balance
-  (`max(0, net)` — the allocatable balance).
+- Summary cards: **Expected income** ("Set expected income" until anything is planned; once
+  planned it shows the month's total with a received + remaining-to-collect hint and an Edit
+  affordance — opens the Expected income modal, FR-18), **Expenses**, **Net**, and
+  **Remaining** (`max(0, net)` — the allocatable balance).
+- **Net/Remaining semantics (centralized in `lib/finance.ts`):** `Received = max(income
+  transactions, Σ incomePlans.receivedAmount)` — income plans are the canonical source and
+  the transaction floor keeps legacy/transaction-only states correct without double
+  counting. `Net = Received − Expenses` (all other derived values use Received; none may
+  substitute Expected or transaction income for it). `Remaining = max(0, Net)` (the
+  allocatable balance, FR-11) and **Projected remaining = Expected − Expenses** (what
+  remains if the full expected income arrives). Every screen derives these from
+  `monthFinance`/`financeSeries` — summary cards, allocation, budgets, health gauge, hero,
+  monthly stats, recommendations, insights, to-dos, reports, KPIs and charts.
 - Month selector (header row).
 - Needs Funding section: a checklist of the month's expense categories that have no
   budget yet (or a limit of 0). Each row has a "Fund" action that opens the budget form
@@ -221,7 +232,10 @@ existing pure selectors; no new persisted state.
   transition ≤ 150 ms ease-out; mount animation is a two-pass `requestAnimationFrame`
   (`width 0 → target`) so bars grow into place.
 - Planner "Expense breakdown" panel: per-category spending for the month, ranked
-  descending, bar fill in the category color, amount + % label (AC-22).
+  descending, bar fill in the category color, amount + % beside each bar in a right-aligned
+  column, longest bar capped at 80% of the track with proportions preserved, hover tooltip
+  (Category, Amount, Percentage, Budget limit, Spent), and a >5-category collapse behind a
+  "Show N more categories" button with an animated entrance (AC-22).
 - `ProgressBar` uses the same width transition.
 - All animation disabled under `prefers-reduced-motion: reduce`; bars are read via
   `role="img"` + `aria-label` with exact values.
@@ -249,6 +263,27 @@ existing pure selectors; no new persisted state.
   listing deferred items with their total; History shows them as ordinary records with a
   small "Deferred" indicator.
 - A month with no deferred expenses shows the section in a neutral empty state.
+
+### FR-18 — Income planning (expected vs received)
+
+- Expected income is a standalone, month-scoped collection of sources — **not** derived from
+  income categories. Each entry carries its own `id`, editable `name`, `icon`, `expectedAmount`
+  and `receivedAmount` (both integer minor units, `>= 0`).
+- The Planner's Expected income card opens a modal listing the month's sources. For each
+  source the user can edit the name, pick an icon (see UI_UX_SPEC §4 `IconPicker`), and type
+  either amount. A live **Difference** row shows the per-source status: "Not set yet",
+  "Expected X · Y received · Z to collect", "Collected in full", or "Exceeded by Z".
+- Sources are added inline ("Add income source") and removed per-row; deleting a source's
+  amounts while both are blank removes its plan. Saving one source never touches another
+  month's or source's data.
+- `setIncomePlan(month, id | null, patch)` in the store upserts a single source (create when
+  `id` is `null`, otherwise merge onto the entry with that `id`); entries are independent, so
+  editing one source cannot wipe others (regression covered by a store test).
+- Income categories still exist for transactions (History, reports, KPI income) but no longer
+  control the planning list; deleting an income category is no longer blocked by income plans.
+- On load, version-2 states migrate automatically: each category-bound plan becomes a
+  standalone entry named/iconed after its category, `expectedAmount` from the old `expected`,
+  and `receivedAmount` backfilled from that category's income transactions in that month.
 
 ## 6. Data Model
 
@@ -295,6 +330,15 @@ interface RecurrenceRule {
   exceptions: Record<Month, ID[] | "skipped">; // month -> ids of generated txn that were edited/deleted
 }
 
+interface IncomePlan {     // FR-18 — standalone expected-income source
+  id: ID;
+  month: Month;            // "YYYY-MM"
+  name: string;            // user-editable source name, non-blank
+  icon: string;            // emoji char OR a "Line icons" key, e.g. "wallet" (see iconLibrary)
+  expectedAmount: number;  // minor units, >= 0 (expected from this source)
+  receivedAmount: number;  // minor units, >= 0 (actually collected from this source)
+}
+
 interface Transaction {
   id: ID;
   categoryId: ID;
@@ -315,19 +359,23 @@ interface Settings {
 }
 
 interface AppState {
-  version: 1;
+  version: 3;
   categories: Category[];
   budgets: Budget[];
   transactions: Transaction[];
+  futureExpenses: FutureExpense[];
   recurrenceRules: RecurrenceRule[];
+  incomePlans: IncomePlan[];   // FR-18
   settings: Settings;
 }
 ```
 
-Migration (additive; `version` stays `1`): states exported before FR-10/FR-16 carry
-`settings.currencySymbol` and budgets without `priority`. `validateAppState` normalizes on
-load: `currencySymbol === "₦"` → `NGN`, any other → `USD`; missing `priority` → `"medium"`
-(AC-16).
+Migration (additive): version-1 states get standard income categories backfilled and tagged
+`monthlyIncome` transactions converted into category-bound plans, which the version-2→3 step
+then rewrites as standalone `IncomePlan` entries (name/icon from the category,
+`receivedAmount` backfilled from the category's income transactions that month). `validateAppState`
+accepts versions 1–3 and normalizes legacy shapes defensively (e.g. `currencySymbol === "₦"`
+→ `NGN`; missing budget `priority` → `"medium"`; AC-16).
 
 ### 6.2 Invariants
 
@@ -339,11 +387,16 @@ load: `currencySymbol === "₦"` → `NGN`, any other → `USD`; missing `priori
   `moveTransactionToNextMonth` (FR-12/FR-17).
 - `month` values are always zero-padded `YYYY-MM`.
 - `crypto.randomUUID()` is the only ID source.
+- `IncomePlan.expectedAmount` / `IncomePlan.receivedAmount` are non-negative integers; the
+  name is non-blank. Plans are standalone — a source's amounts are independent of income
+  transactions (FR-18).
 
 ### 6.3 Derived values (computed, never stored)
 
 - `spent(categoryId, month)` = sum of expense transactions in that month.
 - `earned(categoryId, month)` = sum of income transactions in that month.
+- `expectedIncomeForMonth(month)` = Σ `incomePlans.expectedAmount` for the month.
+- `receivedIncomeForMonth(month)` = Σ `incomePlans.receivedAmount` for the month.
 - `totalIncome(month)`, `totalExpenses(month)`, `net(month) = income - expenses`.
 - `budgetRemaining(budget) = budget.limit - spent(budget.categoryId, budget.month)`.
 - `progress(budget) = min(1, spent / limit)` when `limit > 0`, else `0`.

@@ -12,6 +12,7 @@ export interface ChartCardProps {
 export function ChartCard({ title, subtitle, children }: ChartCardProps) {
   return (
     <Card
+      variant="quiet"
       title={title}
       action={
         subtitle ? (

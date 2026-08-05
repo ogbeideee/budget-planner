@@ -1,13 +1,19 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { isIsoDate, monthKeyFromIso, nextMonthDate } from "@/lib/date";
+import { isIsoDate, isMonth, monthKeyFromIso, nextMonthDate } from "@/lib/date";
 import { hasGeneratedInstance, recordException } from "@/lib/recurrence";
 import { createInitialState } from "@/lib/seed";
-import { parseStoredState, STORAGE_KEY } from "@/lib/storage";
+import {
+  isWritesEnabled,
+  loadBackupSnapshot,
+  parseExportPayload,
+  parseStoredState,
+  setWritesEnabled,
+  STORAGE_KEY,
+} from "@/lib/storage";
 import {
   MAX_NOTE_LENGTH,
   MAX_TITLE_LENGTH,
-  validateAppState,
 } from "@/lib/validate";
 import type {
   AppState,
@@ -27,18 +33,36 @@ import type {
   TransactionInput,
 } from "@/lib/types";
 
-const STORE_VERSION = 1;
+const STORE_VERSION = 3;
+
+export interface AppStoreErrors {
+  hydrateError: string | null;
+  setHydrateError(error: string | null): void;
+}
+
+export const useAppStoreErrors = create<AppStoreErrors>()((set) => ({
+  hydrateError: null,
+  setHydrateError: (error) => set({ hydrateError: error }),
+}));
 
 export interface AppStore {
   state: AppState;
-  hydrateError: string | null;
   addTransaction(input: TransactionInput): void;
   updateTransaction(id: ID, patch: Partial<TransactionInput>): void;
   deleteTransaction(id: ID): void;
   moveTransactionToNextMonth(id: ID): void;
-  setMonthlyIncome(month: Month, amount: number): boolean;
+  setIncomePlan(
+    month: Month,
+    id: ID | null,
+    patch: {
+      name?: string;
+      icon?: string;
+      expectedAmount?: number;
+      receivedAmount?: number;
+    },
+  ): boolean;
   addBudget(input: BudgetInput): boolean;
-  updateBudget(id: ID, patch: Partial<Pick<Budget, "limit" | "priority">>): void;
+  updateBudget(id: ID, patch: Partial<Pick<Budget, "categoryId" | "limit" | "priority">>): void;
   deleteBudget(id: ID): void;
   addFutureExpense(input: FutureExpenseInput): boolean;
   updateFutureExpense(id: ID, patch: Partial<FutureExpenseInput>): void;
@@ -52,20 +76,17 @@ export interface AppStore {
   deleteRecurrenceRule(id: ID): void;
   setSettings(patch: Partial<Settings>): void;
   importState(json: unknown): { ok: boolean; error?: string };
+  recoverFromBackup(key: string): { ok: boolean; error?: string };
   resetAll(): void;
   addGeneratedInstances(instances: Transaction[]): void;
-  setHydrateError(error: string | null): void;
 }
 
 export function createAppStore() {
-  let setState: (partial: Partial<AppStore>) => void;
   const store = create<AppStore>()(
     persist(
       (set, get) => {
-        setState = set;
         return {
         state: createInitialState(),
-        hydrateError: null,
 
         addTransaction: (input) =>
           set((s) => ({
@@ -169,26 +190,47 @@ export function createAppStore() {
             };
           }),
 
-        setMonthlyIncome: (month, amount) => {
-          if (!Number.isInteger(amount) || amount < 0) return false;
+        setIncomePlan: (month, id, patch) => {
+          if (!isMonth(month)) return false;
+          if (patch.name !== undefined) {
+            const name = patch.name.trim();
+            if (name.length === 0) return false;
+            patch = { ...patch, name };
+          }
+          if (patch.icon !== undefined && typeof patch.icon !== "string") {
+            return false;
+          }
+          for (const amount of [
+            patch.expectedAmount,
+            patch.receivedAmount,
+          ]) {
+            if (
+              amount !== undefined &&
+              (!Number.isInteger(amount) || amount < 0)
+            ) {
+              return false;
+            }
+          }
           const { state } = get();
-          const incomeCategory = state.categories.find(
-            (category) => category.kind === "income",
-          );
-          if (!incomeCategory) return false;
-          const existing = state.transactions.find(
-            (transaction) =>
-              transaction.monthlyIncome === true &&
-              transaction.type === "income" &&
-              monthKeyFromIso(transaction.date) === month,
-          );
-          if (amount === 0) {
+          const existing =
+            id === null
+              ? undefined
+              : state.incomePlans.find((plan) => plan.id === id);
+          if (id !== null && !existing) return false;
+          const nextName =
+            patch.name?.trim() ?? existing?.name ?? "Income";
+          const nextIcon = patch.icon ?? existing?.icon ?? "💰";
+          const nextExpected =
+            patch.expectedAmount ?? existing?.expectedAmount ?? 0;
+          const nextReceived =
+            patch.receivedAmount ?? existing?.receivedAmount ?? 0;
+          if (nextExpected === 0 && nextReceived === 0) {
             if (!existing) return true;
             set((s) => ({
               state: {
                 ...s.state,
-                transactions: s.state.transactions.filter(
-                  (transaction) => transaction.id !== existing.id,
+                incomePlans: s.state.incomePlans.filter(
+                  (plan) => plan.id !== existing.id,
                 ),
               },
             }));
@@ -198,10 +240,16 @@ export function createAppStore() {
             set((s) => ({
               state: {
                 ...s.state,
-                transactions: s.state.transactions.map((transaction) =>
-                  transaction.id === existing.id
-                    ? { ...transaction, amount }
-                    : transaction,
+                incomePlans: s.state.incomePlans.map((plan) =>
+                  plan.id === existing.id
+                    ? {
+                        ...plan,
+                        name: nextName,
+                        icon: nextIcon,
+                        expectedAmount: nextExpected,
+                        receivedAmount: nextReceived,
+                      }
+                    : plan,
                 ),
               },
             }));
@@ -209,18 +257,16 @@ export function createAppStore() {
             set((s) => ({
               state: {
                 ...s.state,
-                transactions: [
+                incomePlans: [
                   {
                     id: crypto.randomUUID(),
-                    categoryId: incomeCategory.id,
-                    amount,
-                    type: "income",
-                    date: `${month}-01`,
-                    note: "Monthly income",
-                    monthlyIncome: true,
-                    createdAt: new Date().toISOString(),
+                    month,
+                    name: nextName,
+                    icon: nextIcon,
+                    expectedAmount: nextExpected,
+                    receivedAmount: nextReceived,
                   },
-                  ...s.state.transactions,
+                  ...s.state.incomePlans,
                 ],
               },
             }));
@@ -256,7 +302,9 @@ export function createAppStore() {
 
         updateBudget: (id, patch) =>
           set((s) => {
-            const next: Partial<Pick<Budget, "limit" | "priority">> = {};
+            const target = s.state.budgets.find((budget) => budget.id === id);
+            if (!target) return s;
+            const next: Partial<Pick<Budget, "categoryId" | "limit" | "priority">> = {};
             if (
               patch.limit !== undefined &&
               Number.isInteger(patch.limit) &&
@@ -270,6 +318,19 @@ export function createAppStore() {
               patch.priority === "low"
             ) {
               next.priority = patch.priority;
+            }
+            if (
+              patch.categoryId !== undefined &&
+              patch.categoryId !== target.categoryId &&
+              patch.categoryId !== "" &&
+              !s.state.budgets.some(
+                (budget) =>
+                  budget.categoryId === patch.categoryId &&
+                  budget.month === target.month &&
+                  budget.id !== id,
+              )
+            ) {
+              next.categoryId = patch.categoryId;
             }
             if (Object.keys(next).length === 0) return s;
             return {
@@ -511,7 +572,9 @@ export function createAppStore() {
 
         importState: (json) => {
           try {
-            const validated = validateAppState(json);
+            const validated = parseExportPayload(json);
+            setWritesEnabled(true);
+            useAppStoreErrors.getState().setHydrateError(null);
             set({ state: validated });
             return { ok: true };
           } catch (error) {
@@ -523,7 +586,31 @@ export function createAppStore() {
           }
         },
 
-        resetAll: () => set({ state: createInitialState(), hydrateError: null }),
+        recoverFromBackup: (key) => {
+          const snapshot = loadBackupSnapshot(key);
+          if (!snapshot) {
+            return { ok: false, error: "Backup not found" };
+          }
+          try {
+            const validated = parseStoredState(snapshot.raw);
+            setWritesEnabled(true);
+            useAppStoreErrors.getState().setHydrateError(null);
+            set({ state: validated });
+            return { ok: true };
+          } catch (error) {
+            return {
+              ok: false,
+              error:
+                error instanceof Error ? error.message : "Backup could not be read",
+            };
+          }
+        },
+
+        resetAll: () => {
+          setWritesEnabled(true);
+          useAppStoreErrors.getState().setHydrateError(null);
+          set({ state: createInitialState() });
+        },
 
         addGeneratedInstances: (instances) =>
           set((s) => {
@@ -546,7 +633,6 @@ export function createAppStore() {
             };
           }),
 
-        setHydrateError: (error) => set({ hydrateError: error }),
         };
       },
       {
@@ -563,9 +649,9 @@ export function createAppStore() {
             };
           },
           setItem: (name, value) => {
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem(name, JSON.stringify(value));
-            }
+            if (typeof window === "undefined") return;
+            if (!isWritesEnabled()) return;
+            window.localStorage.setItem(name, JSON.stringify(value));
           },
           removeItem: (name) => {
             if (typeof window !== "undefined") {
@@ -580,7 +666,12 @@ export function createAppStore() {
             : current,
         onRehydrateStorage: () => (_state, error) => {
           queueMicrotask(() => {
-            setState({ hydrateError: error ? "corrupt" : null });
+            if (error) {
+              setWritesEnabled(false);
+            }
+            useAppStoreErrors.getState().setHydrateError(
+              error ? "corrupt" : null,
+            );
           });
         },
       },

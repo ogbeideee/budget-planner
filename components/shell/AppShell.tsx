@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import type { ReactNode } from "react";
 import { CorruptedStateError } from "@/lib/storage";
-import { useAppStore } from "@/store/useAppStore";
+import { useAppStoreErrors } from "@/store/useAppStore";
 import { ToastHost } from "@/components/ui/ToastHost";
 import { useRecurring } from "@/hooks/useRecurring";
 import { useTheme } from "@/hooks/useTheme";
@@ -12,7 +12,7 @@ import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const hydrateError = useAppStore((s) => s.hydrateError);
+  const hydrateError = useAppStoreErrors((s) => s.hydrateError);
   useRecurring();
   useTheme();
   if (hydrateError) {

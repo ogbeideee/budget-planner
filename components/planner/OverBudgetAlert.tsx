@@ -23,13 +23,13 @@ export function OverBudgetAlert({ month }: { month: Month }) {
   return (
     <div
       role="alert"
-      className="animate-[list-in_200ms_ease-out] rounded-xl border border-danger/25 bg-danger/[0.04] px-5 py-4 shadow-card"
+      className="animate-[list-in_200ms_var(--ease-premium)] rounded-xl border border-danger/25 bg-danger/[0.04] px-5 py-4 shadow-card"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <span
             aria-hidden="true"
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-danger/20 bg-danger/10 text-danger"
+            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/10 text-danger"
           >
             <AlertTriangleIcon className="h-4 w-4" />
           </span>
@@ -39,8 +39,8 @@ export function OverBudgetAlert({ month }: { month: Month }) {
             </p>
             <p className="mt-0.5 text-xs text-muted">
               {entries.length === 1
-                ? "1 category has exceeded its limit."
-                : `${entries.length} categories have exceeded their limits.`}
+                ? "One category is over its limit."
+                : `${entries.length} categories are over their limits.`}
             </p>
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {entries.map((entry) => {

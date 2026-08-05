@@ -6,7 +6,8 @@ import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { Card } from "@/components/ui/Card";
 import { CheckIcon, XIcon } from "@/components/ui/icons";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { budgetHealth, healthTier, needsFunding, overBudgetCategories, totals } from "@/lib/selectors";
+import { budgetHealth, fundingGaps, healthTier, overBudgetCategories } from "@/lib/selectors";
+import { monthFinance } from "@/lib/finance";
 import type { HealthTier } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
@@ -45,20 +46,25 @@ export function BudgetHealthCard({ month }: { month: Month }) {
   const transactions = useAppStore((s) => s.state.transactions);
   const budgets = useAppStore((s) => s.state.budgets);
   const categories = useAppStore((s) => s.state.categories);
+  const incomePlans = useAppStore((s) => s.state.incomePlans);
+  const futureExpenses = useAppStore((s) => s.state.futureExpenses);
 
   const health = useMemo(
-    () => budgetHealth(budgets, transactions, month),
-    [budgets, transactions, month],
+    () => budgetHealth(budgets, transactions, month, incomePlans),
+    [budgets, transactions, month, incomePlans],
   );
   const overCount = useMemo(
     () => overBudgetCategories(budgets, transactions, month).length,
     [budgets, transactions, month],
   );
   const unfundedCount = useMemo(
-    () => needsFunding(budgets, categories, month).length,
-    [budgets, categories, month],
+    () => fundingGaps(budgets, categories, futureExpenses, month).length,
+    [budgets, categories, futureExpenses, month],
   );
-  const net = useMemo(() => totals(transactions, month).net, [transactions, month]);
+  const net = useMemo(
+    () => monthFinance(transactions, incomePlans, month).net,
+    [transactions, incomePlans, month],
+  );
   const tier = healthTier(health);
   const animatedHealth = useAnimatedNumber(health);
 
@@ -83,14 +89,14 @@ export function BudgetHealthCard({ month }: { month: Month }) {
 
   return (
     <Card title="Budget health">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <p className="flex items-baseline gap-1">
+          <p className="flex items-baseline gap-1.5">
             <AnimatedNumber
               value={health}
-              className="text-4xl font-bold tracking-tight tabular-nums text-ink"
+              className="text-5xl font-bold tracking-tight tabular-nums text-ink"
             />
-            <span className="text-sm font-semibold text-muted">/100</span>
+            <span className="text-base font-semibold text-muted">/100</span>
           </p>
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${TIER_BADGE[tier]}`}
@@ -102,38 +108,38 @@ export function BudgetHealthCard({ month }: { month: Month }) {
             {TIER_LABEL[tier]}
           </span>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <ProgressBar value={animatedHealth / 100} tone={TIER_TONE[tier]} />
+        <div className="flex flex-col gap-1">
+          <ProgressBar
+            value={animatedHealth / 100}
+            tone={TIER_TONE[tier]}
+            className="h-1"
+          />
           <p className="text-xs text-muted">{TIER_DESCRIPTION[tier]}</p>
         </div>
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-0.5 border-t border-border/50 pt-2">
           {checklist.map((item) => (
             <li
               key={item.label}
-              className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors duration-200 ${
-                item.ok
-                  ? "border-income/20 bg-income/[0.04]"
-                  : "border-danger/25 bg-danger/[0.05]"
-              }`}
+              className="flex items-center justify-between gap-3 rounded-md px-1.5 py-1.5"
             >
-              <span className="flex items-center gap-2.5 text-sm font-medium text-ink">
+              <span className="flex items-center gap-2 text-sm text-ink">
                 <span
                   aria-hidden="true"
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                    item.ok ? "bg-income/15 text-income" : "bg-danger/10 text-danger"
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                    item.ok ? "bg-income/10 text-income" : "bg-danger/10 text-danger"
                   }`}
                 >
                   {item.ok ? (
-                    <CheckIcon className="h-3.5 w-3.5" />
+                    <CheckIcon className="h-3 w-3" />
                   ) : (
-                    <XIcon className="h-3.5 w-3.5" />
+                    <XIcon className="h-3 w-3" />
                   )}
                 </span>
                 {item.label}
               </span>
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                  item.ok ? "bg-income/10 text-income" : "bg-danger/10 text-danger"
+                className={`text-xs font-medium ${
+                  item.ok ? "text-muted" : "text-danger"
                 }`}
               >
                 {item.status}

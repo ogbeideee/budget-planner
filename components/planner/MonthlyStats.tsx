@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
+import {
+  ArrowUpRightIcon,
+  TrendDownIcon,
+  WalletIcon,
+} from "@/components/ui/icons";
 import { formatDateShort, formatMonthShort, monthOffset } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { monthStats } from "@/lib/monthStats";
@@ -13,28 +19,63 @@ interface StatCell {
   value: string;
   caption?: string;
   valueClass?: string;
+  indicator?: ReactNode;
 }
 
-export function MonthlyStats({ month }: { month: Month }) {
+const PREVIEW_PREFERRED = ["Largest expense", "Savings rate", "Projected remaining"];
+
+export function MonthlyStats({
+  month,
+  bare = false,
+  preview = false,
+}: {
+  month: Month;
+  bare?: boolean;
+  preview?: boolean;
+}) {
   const transactions = useAppStore((s) => s.state.transactions);
   const budgets = useAppStore((s) => s.state.budgets);
   const categories = useAppStore((s) => s.state.categories);
   const futureExpenses = useAppStore((s) => s.state.futureExpenses);
+  const incomePlans = useAppStore((s) => s.state.incomePlans);
   const currency = useAppStore((s) => s.state.settings.currency);
 
   const stats = useMemo(
-    () => monthStats({ month, transactions, budgets, categories, futureExpenses }),
-    [month, transactions, budgets, categories, futureExpenses],
+    () =>
+      monthStats({
+        month,
+        transactions,
+        budgets,
+        categories,
+        futureExpenses,
+        incomePlans,
+      }),
+    [month, transactions, budgets, categories, futureExpenses, incomePlans],
   );
 
   const cells = useMemo(() => {
     const fmt = (value: number) => formatMoney(value, currency);
     const list: StatCell[] = [];
     if (stats.largestExpense) {
+      const category = categories.find(
+        (c) => c.id === stats.largestExpense?.categoryId,
+      );
       list.push({
         label: "Largest expense",
         value: fmt(stats.largestExpense.amount),
         caption: stats.largestExpense.label,
+        indicator: category ? (
+          <span
+            aria-hidden="true"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-xs"
+            style={{
+              backgroundColor: `${category.color}1f`,
+              color: category.color,
+            }}
+          >
+            {category.icon}
+          </span>
+        ) : undefined,
       });
     }
     if (stats.mostFunded) {
@@ -57,6 +98,18 @@ export function MonthlyStats({ month }: { month: Month }) {
         value: `${stats.savingsRate}%`,
         caption: "of income saved",
         valueClass: stats.savingsRate >= 0 ? "text-income" : "text-expense",
+        indicator:
+          stats.savingsRate >= 0 ? (
+            <ArrowUpRightIcon
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 text-income"
+            />
+          ) : (
+            <TrendDownIcon
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 text-expense"
+            />
+          ),
       });
     }
     if (stats.vsLastMonth) {
@@ -73,34 +126,63 @@ export function MonthlyStats({ month }: { month: Month }) {
         value: fmt(stats.projectedRemaining),
         caption: "after upcoming payments",
         valueClass: stats.projectedRemaining < 0 ? "text-expense" : undefined,
+        indicator: (
+          <WalletIcon
+            aria-hidden="true"
+            className="h-4 w-4 shrink-0 text-muted"
+          />
+        ),
       });
     }
     return list;
-  }, [stats, currency, month]);
+  }, [stats, currency, month, categories]);
 
   if (cells.length === 0) return null;
 
+  const display = preview
+    ? (() => {
+        const byLabel = new Map(cells.map((cell) => [cell.label, cell]));
+        const picked: StatCell[] = [];
+        for (const label of PREVIEW_PREFERRED) {
+          const cell = byLabel.get(label);
+          if (cell) picked.push(cell);
+        }
+        for (const cell of cells) {
+          if (picked.length >= 3) break;
+          if (!picked.includes(cell)) picked.push(cell);
+        }
+        return picked;
+      })()
+    : cells;
+
+  const grid = (
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+      {display.map((cell) => (
+        <div key={cell.label} className="min-w-0">
+          <dt className="text-[11px] font-medium tracking-wide text-muted/80">
+            {cell.label}
+          </dt>
+          <dd
+            className={`mt-0.5 flex items-center gap-1.5 text-2xl font-bold tracking-tight tabular-nums ${
+              cell.valueClass ?? ""
+            }`}
+          >
+            {cell.indicator}
+            <span className="min-w-0 truncate">{cell.value}</span>
+          </dd>
+          {cell.caption && (
+            <p className="truncate text-xs text-muted">{cell.caption}</p>
+          )}
+        </div>
+      ))}
+    </dl>
+  );
+
+  if (bare) return grid;
+
   return (
     <Card title="Month at a glance">
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cells.map((cell) => (
-          <div key={cell.label} className="min-w-0">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-              {cell.label}
-            </dt>
-            <dd
-              className={`mt-0.5 truncate text-lg font-bold tracking-tight tabular-nums ${
-                cell.valueClass ?? ""
-              }`}
-            >
-              {cell.value}
-            </dd>
-            {cell.caption && (
-              <p className="truncate text-xs text-muted">{cell.caption}</p>
-            )}
-          </div>
-        ))}
-      </dl>
+      {grid}
     </Card>
   );
 }

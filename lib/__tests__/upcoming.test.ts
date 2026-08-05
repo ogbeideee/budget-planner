@@ -31,16 +31,16 @@ describe("groupLabel", () => {
     expect(groupLabel("2026-08-02", TODAY)).toBe("Overdue");
     expect(groupLabel("2026-08-03", TODAY)).toBe("Today");
     expect(groupLabel("2026-08-04", TODAY)).toBe("Tomorrow");
-    expect(groupLabel("2026-08-07", TODAY)).toBe("Friday");
+    expect(groupLabel("2026-08-07", TODAY)).toBe("This week");
     expect(groupLabel("2026-08-10", TODAY)).toBe("Next week");
     expect(groupLabel("2026-08-13", TODAY)).toBe("Next week");
-    expect(groupLabel("2026-08-17", TODAY)).toBe("Next month");
-    expect(groupLabel("2026-09-01", TODAY)).toBe("Next month");
+    expect(groupLabel("2026-08-17", TODAY)).toBe("Later");
+    expect(groupLabel("2026-09-01", TODAY)).toBe("Later");
     expect(groupLabel("2026-12-01", TODAY)).toBe("Later");
   });
 
-  it("uses the weekday name only within the same week", () => {
-    expect(groupLabel("2026-08-09", TODAY)).toBe("Sunday");
+  it("groups the rest of the current week together", () => {
+    expect(groupLabel("2026-08-09", TODAY)).toBe("This week");
     expect(groupLabel("2026-08-14", TODAY)).toBe("Next week");
   });
 });
@@ -59,7 +59,7 @@ describe("groupFutureExpenses", () => {
     expect(groups.map((group) => group.label)).toEqual([
       "Today",
       "Tomorrow",
-      "Friday",
+      "This week",
       "Later",
     ]);
     expect(groups[0].items.map((item) => item.id)).toEqual(["today"]);

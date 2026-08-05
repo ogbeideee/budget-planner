@@ -1,5 +1,6 @@
-import { budgetProgress, totals } from "./selectors";
-import type { Budget, Category, Month, Transaction } from "./types";
+import { monthFinance } from "./finance";
+import { budgetProgress } from "./selectors";
+import type { Budget, Category, IncomePlan, Month, Transaction } from "./types";
 
 export interface TrimCandidate {
   budget: Budget;
@@ -22,8 +23,9 @@ export function budgetSuggestions(input: {
   budgets: Budget[];
   transactions: Transaction[];
   categories: Category[];
+  incomePlans?: IncomePlan[];
 }): BudgetSuggestion[] {
-  const { month, budgets, transactions, categories } = input;
+  const { month, budgets, transactions, categories, incomePlans = [] } = input;
   const monthBudgets = budgets.filter((budget) => budget.month === month);
   const categoryOf = (id: string) =>
     categories.find((category) => category.id === id);
@@ -35,7 +37,7 @@ export function budgetSuggestions(input: {
   const over = withProgress.filter((entry) => entry.progress.over);
   if (over.length === 0) return [];
 
-  const remainingIncome = Math.max(0, totals(transactions, month).net);
+  const remainingIncome = monthFinance(transactions, incomePlans, month).remaining;
 
   const trimmable = withProgress
     .filter((entry) => entry.progress.remaining > 0)

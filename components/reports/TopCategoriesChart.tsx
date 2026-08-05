@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { TargetIcon } from "@/components/ui/icons";
+import { categoryColor } from "@/lib/accents";
 import { compactMoney, formatMoney } from "@/lib/money";
 import { spendingByCategoryInMonths } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -20,6 +20,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useChartColors } from "@/hooks/useChartColors";
 import { ChartCard } from "./ChartCard";
+import { axisTickStyle, tooltipContentStyle } from "./chartStyles";
 
 const TOP_COUNT = 5;
 
@@ -43,20 +44,20 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
           rawLabel.length > 26 ? `${rawLabel.slice(0, 25)}…` : rawLabel,
         amount: spend.amount,
         pct,
-        color: category?.color ?? "#0ea5e9",
+        color: categoryColor(category),
       };
     });
   }, [transactions, categories, months]);
 
   if (data.length === 0) {
     return (
-      <ChartCard title="Top categories" subtitle={`Across the 6-month window`}>
-<EmptyState
-        icon={<TargetIcon className="h-5 w-5" />}
-        iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
-        title="No spending in this window"
-        description="Add expenses and your top categories will show up here."
-      />
+      <ChartCard title="Top categories" subtitle="Last 6 months">
+        <EmptyState
+          illustration="chart"
+          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          title="No spending in this window"
+          description="Add expenses and your biggest categories will surface here."
+        />
       </ChartCard>
     );
   }
@@ -69,9 +70,9 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
     .join("; ")}`;
 
   return (
-    <ChartCard title="Top categories" subtitle="Across the 6-month window">
+    <ChartCard title="Top categories" subtitle="Last 6 months">
       <div role="img" aria-label={ariaLabel}>
-        <ResponsiveContainer width="100%" height={Math.max(120, data.length * 48)}>
+        <ResponsiveContainer width="100%" height={Math.max(160, data.length * 48)}>
           <BarChart
             data={data}
             layout="vertical"
@@ -86,14 +87,14 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
             <XAxis
               type="number"
               tickFormatter={(value) => compactMoney(Number(value), currency)}
-              tick={{ fill: colors.tick, fontSize: 12 }}
+              tick={axisTickStyle(colors)}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               type="category"
               dataKey="label"
-              tick={{ fill: colors.ink, fontSize: 13 }}
+              tick={{ fill: colors.ink, fontSize: 12.5 }}
               axisLine={false}
               tickLine={false}
               width={130}
@@ -103,18 +104,12 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
                 formatMoney(Number(value), currency),
                 undefined,
               ]}
-              contentStyle={{
-                borderRadius: 8,
-                border: `1px solid ${colors.border}`,
-                background: colors.surface,
-                fontSize: 13,
-                color: colors.ink,
-              }}
+              contentStyle={tooltipContentStyle(colors)}
             />
             <Bar
               dataKey="amount"
               name="Spent"
-              radius={[0, 3, 3, 0]}
+              radius={[0, 6, 6, 0]}
               isAnimationActive={!reduced}
             >
               {data.map((entry) => (

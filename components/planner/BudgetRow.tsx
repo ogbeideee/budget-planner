@@ -33,8 +33,8 @@ export const BudgetRow = memo(function BudgetRow({
   const pct = budget.limit > 0 ? Math.round(progress.progress * 100) : 0;
   const stateClass = progress.over
     ? progress.spent * 5 > budget.limit * 6
-      ? "bg-red-50 dark:bg-red-950/60"
-      : "bg-amber-50 dark:bg-amber-950/60"
+      ? "bg-danger/10"
+      : "bg-warn/10"
     : "";
   const name = category?.name ?? "Category";
 

@@ -63,9 +63,19 @@ health card (1/3 width) → **Allocated** budget table (full width, with funding
 "Allocate remaining" sliders panel → grid: Quick Add Expense (1/2 width) + Deferred
 expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 width).
 
-- Summary cards: **Income** (monthly income), **Expenses**, **Net** (green if ≥ 0, red if
-  < 0), **Remaining** (`max(0, net)` — the allocatable balance; amber when expenses exceed
-  income). Each card: label (sm, muted), value (2xl, bold), 8 px icon chip.
+- Summary cards: **Expected income** (label "Set expected income" until planned, then
+  "Expected income"; value = planned total; hint shows `Received X · +Y to collect` (or
+  `−Y over received`); Edit chip; clicking opens the Expected income modal), **Expenses**,
+  **Net** (green if ≥ 0, red if < 0), **Remaining** (`max(0, net)` — the allocatable
+  balance; amber when expenses exceed income). Each card: label (sm, muted), value (2xl,
+  bold), 8 px icon chip.
+- **Expected income modal** (FR-18): one card per income source — icon tile, "Income name"
+  text input, icon picker button, remove action; "Expected" and "Received" amount inputs
+  side by side; a "Difference" row below with the live status ("Not set yet" ·
+  "Expected X · Y received · Z to collect" · "Collected in full" · "Exceeded by Z").
+  "Add income source" button appends a blank source; Save persists per source (clearing
+  both amounts removes the source). The modal lists only planned sources — nothing is
+  auto-derived from categories.
 - Over-budget alert: `card bg-red-50 border-red-200` listing categories > 100 % with
   "View budgets" link (anchor to the allocated table); hidden when none.
 - **Needs Funding** checklist: the month's expense categories with no budget or a limit
@@ -104,8 +114,14 @@ expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 wid
   the action target. Tone accent: 4 px left border in the tone color. Order is the FR-13
   deterministic order. Empty month → single neutral row "No data for this month".
 - Expense breakdown: horizontal animated bars per expense category (icon, name, amount, %
-  of total), bar fill = category color, ranked descending (FR-15). `role="img"` with
-  values in the aria-label (AC-22).
+  of total), bar fill = category color, ranked descending (FR-15). Amount and percentage
+  form a right-aligned column beside each bar (amount on top, % underneath, tabular). The
+  longest bar spans 80% of the track and shorter bars keep the same ratios. Hovering a row
+  reveals a tooltip with Category, Amount, Percentage, Budget limit (or "Not budgeted"), and
+  Spent — categories with a budget show a "X of Y" readout and turn red when over budget.
+  More than five categories collapse to five behind a "Show N more categories" button that
+  reveals the rest with an animated entrance; in the Planner's collapsed preview the button
+  expands the panel. `role="img"` with values in the aria-label (AC-22).
 
 ### 3.2 To-Do `/todo`
 
@@ -129,10 +145,15 @@ expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 wid
 - Filters persist to URL (`?month=&type=&category=&q=&sort=`); page param `&page=N`.
 - Table: Date | Category | Note | Amount (right-aligned, colored by type) | Actions.
   Sorted date-desc, 25/page with pagination footer (Prev / "1 of N" / Next; disabled
-  states). Deferred records show a small "Deferred" chip next to the category.
-- Row actions (icon buttons, `aria-label`): edit, "Move to next month" (expense
-  transactions only; income rows show edit/delete only), delete. Move → toast "Moved to
-  MMMM YYYY".
+  states). Deferred records show a small "Deferred" chip next to the category. Rows light up
+  with a stronger `hover:bg-canvas` fill; date groups are separated by a small spacer row.
+- Group headers ("Today", "Yesterday", "Last week", …) carry the group's running total as a
+  prominent bold `text-ink` amount. The **Today** group gets a subtle brand accent (tinted
+  band, colored label, small brand dot) so today stands out at a glance.
+- Row actions (compact `sm` icon buttons, `aria-label`): edit, "Move to next month"
+  (expense transactions only; income rows render an invisible fixed-width placeholder in the
+  same slot so the delete icon stays perfectly aligned across every row), delete. Move →
+  toast "Moved to MMMM YYYY".
 - Transaction form (modal): type toggle (Income/Expense), amount, category (filtered by
   type), date (default today), note (optional, max 200 chars). Validation: amount > 0 and
   parseable, category required.
@@ -146,15 +167,28 @@ expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 wid
 Analytical-only page: no forms, no mutations, no Quick Add — just charts and numbers.
 Month picker in header defaults to the current month; every chart covers the 6-month
 window ending at the selected month (5 previous months + selected). Charts render with
-**Recharts** inside `ChartCard`s (Card + title + optional subtitle); each chart uses
-`ResponsiveContainer` (height ≈ 260 px), `CartesianGrid` (light), X axis with short month
-labels ("Aug 26"), Y axis with compact money ticks (`$1.2K`), exact-value tooltips
-(`formatMoney`), and `isAnimationActive` off under `prefers-reduced-motion: reduce`.
+**Recharts** inside `ChartCard`s rendered with the calm **quiet** treatment (canvas wash,
+hairline border, no shadow) so the page never competes card-against-card; only the
+Financial snapshot tiles stay raised, on a softened `--shadow-card`. Section titles use the
+larger `SectionHeading` (`text-sm`); sections and grids breathe at `gap-8`/`gap-6`. Every
+chart carries a concise subtitle — **"Last 6 months"** for window charts, **"This month"**
+for month-scoped ones — so each card reads "Spending by category / Last 6 months". Each
+chart uses `ResponsiveContainer` (height ≈ 260 px), `CartesianGrid` (light), X axis with
+short month labels ("Aug 26"), Y axis with compact money ticks (`$1.2K`), exact-value
+tooltips (`formatMoney`), and `isAnimationActive` off under `prefers-reduced-motion:
+reduce`. Category-colored charts (Top categories, Spending this month) use the shared
+`categoryColor()` helper so they always match the Planner's category colors.
 
 - **Snapshot** (selected month): two stat cards — **Savings** (`net`, green when ≥ 0, red
   otherwise) and **Remaining balance** (`max(0, net)`). Compact, below the header.
 - **Income vs expenses**: grouped vertical bars per month (income brand-green, expenses
   expense-red), legend.
+- **Income trend**: two lines per month — expected (dashed, muted) vs received (income
+  color, dots) from `incomeTrendSeries` (plan-based).
+- **Income sources**: horizontal bars of each source's received amount (top 6), ranked
+  descending, income-color opacity ramp (FR-18).
+- **Expected vs actual**: grouped vertical bars per source (expected muted, received
+  income), top 6 sources.
 - **Monthly spending trend**: area/line of total expenses per month, brand color, smooth
   curve.
 - **Savings & remaining**: two lines per month (savings ink, remaining brand), zero line
@@ -194,6 +228,8 @@ Sections as cards:
 | `Modal` | **open**, **onClose**, **title**, **children**, `footer?` | `role="dialog" aria-modal`; focus trap; Esc closes; backdrop click closes; scroll locked |
 | `ConfirmDialog` | **open**, **title**, **message**, **confirmLabel**, **onConfirm**, **onClose**, `danger?` | Renders via `Modal`; confirm button autofocus when `danger` |
 | `ProgressBar` | **value** (0–1), `tone` (`brand`\|`warn`\|`danger`) | `<div role="progressbar" aria-valuenow>` |
+| `IconPicker` | **value**, **onChange**, `label?`, `className?`, `vectors?` (default `true`) | Combobox + modal grid picker: searchable, categorised, recents + favourites (localStorage `settings:recent-icons` / `settings:favourite-icons`), emoji + "Line icons" (vector) set, full grid/arrow-key/Enter navigation, live preview tile. `vectors={false}` restricts to emoji (used for categories). |
+| `IconValue` | **value**, `className?` | Renders an icon string: emoji text or the matching vector component (see `iconLibrary`); falls back to `DEFAULT_ICON` for blank values. |
 | `Badge` | **children**, `tone` | Income/expense/neutral |
 | `EmptyState` | **title**, **description**, **action?** | Centered, muted |
 | `Toast` | **message**, `tone` (`success`\|`error`), `onDismiss` | Auto-dismiss 3 s, `role="status"` |

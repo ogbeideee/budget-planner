@@ -1,6 +1,7 @@
 import type { InsightTone } from "./insights";
+import { monthFinance } from "./finance";
 import { formatMoney } from "./money";
-import { budgetProgress, deferredExpenses, spendingByCategory, totals } from "./selectors";
+import { budgetProgress, deferredExpenses, spendingByCategory } from "./selectors";
 import type { AppState, ID, Month } from "./types";
 
 export interface TodoItem {
@@ -14,15 +15,18 @@ export interface TodoItem {
 const PLANNER_HREF = "/";
 
 export function todoFor(
-  state: Pick<AppState, "budgets" | "transactions" | "categories" | "settings">,
+  state: Pick<
+    AppState,
+    "budgets" | "transactions" | "categories" | "settings" | "incomePlans"
+  >,
   month: Month,
 ): TodoItem[] {
-  const { budgets, transactions, categories, settings } = state;
+  const { budgets, transactions, categories, settings, incomePlans } = state;
   const monthBudgets = budgets.filter((budget) => budget.month === month);
   const monthTransactions = transactions.filter((transaction) =>
     transaction.date.startsWith(month),
   );
-  const { net } = totals(transactions, month);
+  const { net } = monthFinance(transactions, incomePlans, month);
   const fmt = (minor: number) => formatMoney(minor, settings.currency);
   const categoryName = (id: ID) =>
     categories.find((category) => category.id === id)?.name ?? "Category";

@@ -72,13 +72,23 @@ export interface Settings {
   theme: Theme;
 }
 
+export interface IncomePlan {
+  id: ID;
+  month: Month;
+  name: string;
+  icon: string;
+  expectedAmount: number;
+  receivedAmount: number;
+}
+
 export interface AppState {
-  version: 1;
+  version: 3;
   categories: Category[];
   budgets: Budget[];
   transactions: Transaction[];
   futureExpenses: FutureExpense[];
   recurrenceRules: RecurrenceRule[];
+  incomePlans: IncomePlan[];
   settings: Settings;
 }
 
@@ -128,4 +138,5 @@ export type CategoryDeleteReason =
   | "in-use-transactions"
   | "in-use-budgets"
   | "in-use-rules"
-  | "in-use-future-expenses";
+  | "in-use-future-expenses"
+  | "in-use-income-plans";

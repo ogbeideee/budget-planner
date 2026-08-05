@@ -63,7 +63,10 @@ lib/
   selectors.ts               # spent(), earned(), totals(), budgetProgress(), spendingByCategory(),
                              # budgetHealth(), needsFunding(), deferredExpenses(), sortTransactions(),
                              # windowMonths(), monthlySeries(), budgetUtilizationSeries(),
-                             # spendingByCategoryInMonths() (pure)
+                             # spendingByCategoryInMonths(), incomePlan selectors, receivedForMonth() (pure)
+  finance.ts                 # monthFinance(transactions, incomePlans, month) + financeSeries() —
+                             # the single source of truth for Received / Expected / Expenses /
+                             # Net / Remaining / Projected remaining / Savings rate (pure)
   allocation.ts              # clampAllocation(), totalAllocated() (pure, FR-11)
   insights.ts                # insightsFor(...) -> Insight[] (pure, FR-13)
   todo.ts                    # todoFor(state, month) -> TodoItem[] (pure, FR-17)
@@ -113,6 +116,9 @@ interface AppStore {
   updateRecurrenceRule(id: ID, patch: Partial<RecurrenceRule>): void;
   deleteRecurrenceRule(id: ID): void;
   setSettings(patch: Partial<Settings>): void;
+  setIncomePlan(month: Month, id: ID | null, patch: {
+    name?: string; icon?: string; expectedAmount?: number; receivedAmount?: number;
+  }): boolean;                     // FR-18 — upsert one standalone source (null id = create)
   importState(json: unknown): void;         // validate + replace
   resetAll(): void;
 }
@@ -124,10 +130,14 @@ interface ToastStore {                      // store/useToastStore.ts — NOT pe
 }
 ```
 
-- Persistence: `persist(state, { name: "budget-planner:state", version: 1 })` from
+- Persistence: `persist(state, { name: "budget-planner:state", version: 3 })` from
   `zustand/middleware`. `migrate`/`onRehydrateStorage` handle version mismatch → throw to
-  trigger `app/error.tsx`. Persisted `version` stays `1`; additive migration (currency /
-  priority defaults) happens inside `validateAppState` (AC-16).
+  trigger `app/error.tsx`. `validateAppState` accepts versions 1–3 and normalizes on load:
+  v1 backfills income categories + converts tagged monthly-income transactions into plans;
+  v2 rewrites category-bound plans into standalone `IncomePlan` entries (name/icon from the
+  category, `receivedAmount` backfilled from income transactions); legacy fields
+  (`currencySymbol` → currency, missing budget `priority` → `"medium"`) are normalized
+  (AC-16).
 - All actions are synchronous, pure updates on an immutable `AppState` copy. Derived values
   are computed in selectors, never stored.
 - No action may write to `localStorage` directly; persistence is the middleware's job
@@ -145,6 +155,16 @@ interface ToastStore {                      // store/useToastStore.ts — NOT pe
 
 ### 3.3 Allocation & move-to-next-month
 
+- **Finance rules (single source of truth):** `lib/finance.ts` `monthFinance()` is the one
+  place that defines Received / Expected / Expenses / Net / Remaining / Projected remaining /
+  Savings rate. Received = `max(income transactions, Σ plan.receivedAmount)` (plans are
+  canonical; transactions are a fallback floor so legacy and transaction-only states don't
+  collapse; the max prevents double counting after the v2→v3 backfill). Net = Remaining
+  (before clamping) = Received − Expenses; Remaining clamps at 0 (allocatable balance);
+  Projected remaining = Expected − Expenses. Every screen — summary cards, allocation,
+  budget lists/health, hero, monthly stats, recommendations, insights, to-dos, reports,
+  KPIs and charts — derives these from `monthFinance`/`financeSeries`; no component
+  reimplements the math.
 - **Allocation (FR-11):** slider values are component-local state in `AllocationPanel`.
   `lib/allocation.ts` provides `clampAllocation(current, next, remaining, otherTotal)` and
   `totalAllocated(allocations)`; integer arithmetic only. Applying dispatches one

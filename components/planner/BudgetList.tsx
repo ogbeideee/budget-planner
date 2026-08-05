@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Disclosure } from "@/components/ui/Disclosure";
+import type { DisclosureHandle } from "@/components/ui/Disclosure";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { ChevronRightIcon, TargetIcon } from "@/components/ui/icons";
 import { formatMonthLabel } from "@/lib/date";
+import { monthFinance } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
-import { budgetProgress, totals } from "@/lib/selectors";
+import { budgetProgress } from "@/lib/selectors";
 import type { Budget, Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/hooks/useToast";
@@ -29,6 +30,7 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
   const budgets = useAppStore((s) => s.state.budgets);
   const transactions = useAppStore((s) => s.state.transactions);
   const categories = useAppStore((s) => s.state.categories);
+  const incomePlans = useAppStore((s) => s.state.incomePlans);
   const currency = useAppStore((s) => s.state.settings.currency);
   const deleteBudget = useAppStore((s) => s.deleteBudget);
   const { success } = useToast();
@@ -38,8 +40,10 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
   const [formSession, setFormSession] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<Budget | null>(null);
   const [reviewActive, setReviewActive] = useState(false);
+  const [focusedBudgetId, setFocusedBudgetId] = useState<string | null>(null);
 
   const sectionRef = useRef<HTMLDivElement>(null);
+  const disclosureRef = useRef<DisclosureHandle>(null);
 
   const monthBudgets = useMemo(
     () =>
@@ -79,6 +83,7 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
   useEffect(() => {
     if (!focusOver || overBudgets.length === 0) return;
     const scrollTimer = window.setTimeout(() => {
+      disclosureRef.current?.expand();
       sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       setReviewActive(true);
       document
@@ -92,9 +97,37 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
     };
   }, [focusOver, overBudgets]);
 
+  useEffect(() => {
+    const onFocusBudget = (event: Event) => {
+      const budgetId = (event as CustomEvent<{ budgetId?: string }>).detail
+        ?.budgetId;
+      if (!budgetId || !monthBudgets.some((budget) => budget.id === budgetId)) {
+        return;
+      }
+      disclosureRef.current?.expand();
+      setFocusedBudgetId(budgetId);
+      window.setTimeout(() => {
+        document
+          .getElementById(`budget-row-${budgetId}`)
+          ?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+        const slider = document.getElementById(
+          `allocation-slider-${budgetId}`,
+        );
+        slider?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+        slider
+          ?.querySelector<HTMLInputElement>('input[type="range"]')
+          ?.focus({ preventScroll: true });
+      }, 60);
+      window.setTimeout(() => setFocusedBudgetId(null), 4000);
+    };
+    window.addEventListener("planner:focus-budget", onFocusBudget);
+    return () =>
+      window.removeEventListener("planner:focus-budget", onFocusBudget);
+  }, [monthBudgets]);
+
   const allocatable = useMemo(
-    () => Math.max(0, totals(transactions, month).net),
-    [transactions, month],
+    () => monthFinance(transactions, incomePlans, month).remaining,
+    [transactions, incomePlans, month],
   );
   const committed = useMemo(
     () => monthBudgets.reduce((sum, budget) => sum + budget.limit, 0),
@@ -180,7 +213,10 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
                 category={categoryOf(budget)}
                 progress={progress}
                 currency={currency}
-                highlighted={reviewActive && progress.over}
+                highlighted={
+                  (reviewActive && progress.over) ||
+                  focusedBudgetId === budget.id
+                }
                 rowId={`budget-row-${budget.id}`}
                 onEdit={() => {
                   setEditing(budget);
@@ -197,19 +233,15 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
   );
 
   return (
-    <div ref={sectionRef} className="flex scroll-mt-24 flex-col gap-6">
-      <BudgetSuggestions
-        month={month}
-        onAdjust={(budget) => {
-          setEditing(budget);
-          setFormSession((session) => session + 1);
-          setFormOpen(true);
-        }}
-      />
-      <Card
+    <div ref={sectionRef} className="flex scroll-mt-24 flex-col gap-5">
+      <Disclosure
+        ref={disclosureRef}
+        id={`budgets:${month}`}
         title={`Allocated · ${formatMonthLabel(month)}`}
-        action={
+        variant="brand"
+        action={() => (
           <Button
+            variant="secondary"
             onClick={() => {
               setEditing(null);
               setFormSession((session) => session + 1);
@@ -218,71 +250,92 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
           >
             New budget
           </Button>
-        }
+        )}
       >
-        {showFundingBar && (
-          <div className="flex flex-col gap-1.5 border-b border-border pb-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted">
-                Committed{" "}
-                <span className="font-semibold tabular-nums text-ink">
-                  {fmt(committed)}
-                </span>{" "}
-                of{" "}
-                <span className="font-semibold tabular-nums text-ink">
-                  {fmt(allocatable)}
-                </span>{" "}
-                allocatable
-              </p>
-              <span
-                className={`text-sm font-semibold tabular-nums ${
-                  overCommitted ? "text-warn" : "text-muted"
-                }`}
-              >
-                {Math.round(Math.min(1, fundedPct) * 100)}%
-              </span>
-            </div>
-            <ProgressBar
-              value={Math.min(1, fundedPct)}
-              tone={overCommitted ? "warn" : "brand"}
-            />
-            {overCommitted && (
-              <p className="text-xs text-warn">
-                Limits exceed the allocatable balance — reduce a limit or add income.
-              </p>
-            )}
-          </div>
-        )}
-        {monthBudgets.length === 0 ? (
-          <EmptyState
-            icon={<TargetIcon className="h-5 w-5" />}
-            iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
-            title="Nothing planned yet"
-            description="Create your first budget to begin — it's the first step to feeling in control."
+        <div className="flex flex-col gap-6">
+          <BudgetSuggestions
+            month={month}
+            onAdjust={(budget) => {
+              setEditing(budget);
+              setFormSession((session) => session + 1);
+              setFormOpen(true);
+            }}
           />
-        ) : (
-          renderTable(monthBudgets)
-        )}
-      </Card>
+          {showFundingBar && (
+            <div className="flex flex-col gap-1.5 border-b border-border pb-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted">
+                  Committed{" "}
+                  <span className="font-semibold tabular-nums text-ink">
+                    {fmt(committed)}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-semibold tabular-nums text-ink">
+                    {fmt(allocatable)}
+                  </span>{" "}
+                  allocatable
+                </p>
+                <span
+                  className={`text-sm font-semibold tabular-nums ${
+                    overCommitted ? "text-warn" : "text-muted"
+                  }`}
+                >
+                  {Math.round(Math.min(1, fundedPct) * 100)}%
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(1, fundedPct)}
+                tone={overCommitted ? "warn" : "brand"}
+              />
+              {overCommitted && (
+                <p className="text-xs text-warn">
+                  Limits exceed the allocatable balance — reduce a limit or add income.
+                </p>
+              )}
+            </div>
+          )}
+          {monthBudgets.length === 0 ? (
+            <EmptyState
+              illustration="target"
+              illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+              title="Nothing planned yet"
+              description="Create your first budget to begin — it's the first step to feeling in control."
+              action={
+                <Button
+                  onClick={() => {
+                    setEditing(null);
+                    setFormSession((session) => session + 1);
+                    setFormOpen(true);
+                  }}
+                >
+                  Create a budget
+                </Button>
+              }
+            />
+          ) : (
+            renderTable(monthBudgets)
+          )}
+        </div>
+      </Disclosure>
 
       {pastMonths.length > 0 && (
-        <Card title="Past months">
+        <div className="flex flex-col gap-4 rounded-xl bg-surface p-5 shadow-card">
+          <h2 className="text-base font-semibold tracking-tight">Past months</h2>
           <div className="flex flex-col gap-4">
             {pastMonths.map((pastMonth) => (
-              <details key={pastMonth} className="group">
-                <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-2 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-canvas [&::-webkit-details-marker]:hidden">
-                  <span>{formatMonthLabel(pastMonth)}</span>
-                  <ChevronRightIcon className="h-4 w-4 text-muted transition-transform duration-150 group-open:rotate-90" />
-                </summary>
-                <div className="mt-2">
-                  {renderTable(
-                    pastBudgets.filter((budget) => budget.month === pastMonth),
-                  )}
-                </div>
-              </details>
+              <Disclosure
+                key={pastMonth}
+                id={`past-months:${pastMonth}`}
+                title={formatMonthLabel(pastMonth)}
+                variant="section"
+              >
+                {renderTable(
+                  pastBudgets.filter((budget) => budget.month === pastMonth),
+                )}
+              </Disclosure>
             ))}
           </div>
-        </Card>
+        </div>
       )}
 
       <AllocationPanel month={month} />

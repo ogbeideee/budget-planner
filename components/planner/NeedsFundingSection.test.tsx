@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createInitialState } from "@/lib/seed";
 import { useAppStore } from "@/store/useAppStore";
 import { NeedsFundingSection } from "./NeedsFundingSection";
+import type { FutureExpense } from "@/lib/types";
 
 afterEach(cleanup);
 
@@ -18,51 +19,133 @@ function categoryId(name: string): string {
     .state.categories.find((category) => category.name === name)!.id;
 }
 
-function checklistNames(): string[] {
+function seedFutureExpenses(
+  expenses: Array<
+    [name: string, amount: number, dueDate: string, status?: "upcoming" | "paid"]
+  >,
+) {
+  const state = useAppStore.getState().state;
+  const now = new Date().toISOString();
+  const futureExpenses: FutureExpense[] = [
+    ...state.futureExpenses,
+    ...expenses.map(
+      ([name, amount, dueDate, status = "upcoming"]) => ({
+        id: crypto.randomUUID(),
+        categoryId: categoryId(name),
+        amount,
+        title: name,
+        dueDate,
+        recurring: false,
+        priority: "medium" as const,
+        status,
+        createdAt: now,
+      }),
+    ),
+  ];
+  useAppStore.setState({ state: { ...state, futureExpenses } });
+}
+
+function seedTypicalGaps() {
+  seedFutureExpenses([
+    ["Rent", 150000, "2026-08-10"],
+    ["Utilities", 80000, "2026-08-25"],
+    ["Groceries", 50000, "2026-08-15"],
+    ["Transport", 0, "2026-08-20"],
+  ]);
+}
+
+function gapNames(): string[] {
   return screen
     .getAllByRole("listitem")
     .map((item) => item.querySelector("p")?.textContent ?? "");
 }
 
-describe("NeedsFundingSection (AC-25)", () => {
-  it("lists exactly the unfunded expense categories sorted by name, excluding income", () => {
+describe("NeedsFundingSection (upcoming-obligation driven)", () => {
+  it("lists only categories with unpaid upcoming expenses, sorted by missing desc", () => {
+    seedTypicalGaps();
     render(<NeedsFundingSection month="2026-08" />);
 
-    expect(checklistNames()).toEqual([
-      "Entertainment",
-      "Groceries",
-      "Rent",
-      "Transport",
-      "Utilities",
-    ]);
-    expect(screen.queryByText("Salary")).not.toBeInTheDocument();
-    expect(screen.getByText("5 categories")).toBeInTheDocument();
+    expect(gapNames()).toEqual(["Rent", "Utilities", "Groceries"]);
+    expect(screen.getByText("3 categories needing funding")).toBeInTheDocument();
   });
 
-  it("excludes categories that already have a funded budget this month", () => {
+  it("excludes paid expenses, expenses in other months, and income categories", () => {
+    seedTypicalGaps();
+    seedFutureExpenses([
+      ["Entertainment", 40000, "2026-08-20", "paid"],
+      ["Transport", 30000, "2026-09-05"],
+      ["Salary", 500000, "2026-08-05"],
+    ]);
+    render(<NeedsFundingSection month="2026-08" />);
+
+    expect(gapNames()).toEqual(["Rent", "Utilities", "Groceries"]);
+    expect(screen.queryByText("Transport")).not.toBeInTheDocument();
+    expect(screen.queryByText("Entertainment")).not.toBeInTheDocument();
+    expect(screen.queryByText("Salary")).not.toBeInTheDocument();
+  });
+
+  it("renders Allocated, Needed, Missing and progress for each gap", () => {
+    seedTypicalGaps();
+    render(<NeedsFundingSection month="2026-08" />);
+
+    const rentRow = screen.getByText("Rent").closest("li")!;
+    expect(within(rentRow).getByText("$0.00")).toBeInTheDocument();
+    expect(within(rentRow).getAllByText("$1,500.00")).toHaveLength(2);
+    expect(within(rentRow).getByText("Allocated")).toBeInTheDocument();
+    expect(within(rentRow).getByText("Needed")).toBeInTheDocument();
+    expect(within(rentRow).getByText("Missing")).toBeInTheDocument();
+    expect(within(rentRow).getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "0",
+    );
+    expect(within(rentRow).getByText("0%")).toBeInTheDocument();
+  });
+
+  it("accounts for partial budgets: allocated counts toward the target", () => {
+    seedTypicalGaps();
+    useAppStore.getState().addBudget({
+      categoryId: categoryId("Groceries"),
+      month: "2026-08",
+      limit: 20000,
+      priority: "medium",
+    });
+    render(<NeedsFundingSection month="2026-08" />);
+
+    const groceriesRow = screen.getByText("Groceries").closest("li")!;
+    expect(within(groceriesRow).getByText("$200.00")).toBeInTheDocument();
+    expect(within(groceriesRow).getByText("$500.00")).toBeInTheDocument();
+    expect(within(groceriesRow).getByText("$300.00")).toBeInTheDocument();
+    expect(within(groceriesRow).getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "40",
+    );
+    expect(within(groceriesRow).getByText("40%")).toBeInTheDocument();
+  });
+
+  it("hides categories fully covered by their budget", () => {
+    seedTypicalGaps();
     useAppStore.getState().addBudget({
       categoryId: categoryId("Rent"),
       month: "2026-08",
-      limit: 100000,
+      limit: 150000,
       priority: "high",
     });
-
     render(<NeedsFundingSection month="2026-08" />);
 
-    expect(checklistNames()).toEqual([
-      "Entertainment",
-      "Groceries",
-      "Transport",
-      "Utilities",
-    ]);
+    expect(gapNames()).toEqual(["Utilities", "Groceries"]);
   });
 
-  it("shows the empty state when everything is funded", () => {
-    for (const name of ["Rent", "Groceries", "Transport", "Utilities", "Entertainment"]) {
+  it("shows the empty state when every upcoming expense is covered", () => {
+    seedTypicalGaps();
+    for (const [name, amount] of [
+      ["Rent", 150000],
+      ["Utilities", 80000],
+      ["Groceries", 50000],
+    ] as const) {
       useAppStore.getState().addBudget({
         categoryId: categoryId(name),
         month: "2026-08",
-        limit: 50000,
+        limit: amount,
         priority: "medium",
       });
     }
@@ -70,10 +153,27 @@ describe("NeedsFundingSection (AC-25)", () => {
     render(<NeedsFundingSection month="2026-08" />);
 
     expect(screen.getByText(/Everything is funded/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/covers every upcoming expense this month/),
+    ).toBeInTheDocument();
   });
 
-  it("Fund opens the budget form with the category preselected", async () => {
+  it("attentionOnly preview shows the top 3 gaps and a view-all affordance", () => {
+    seedTypicalGaps();
+    seedFutureExpenses([["Entertainment", 30000, "2026-08-30"]]);
+    render(
+      <NeedsFundingSection month="2026-08" attentionOnly onExpand={vi.fn()} />,
+    );
+
+    expect(gapNames()).toEqual(["Rent", "Utilities", "Groceries"]);
+    expect(
+      screen.getByRole("button", { name: /View all 4 categories/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("Fund opens the budget form preselected and prefilled with the missing amount", async () => {
     const user = userEvent.setup();
+    seedTypicalGaps();
     render(<NeedsFundingSection month="2026-08" />);
 
     const rentRow = screen.getByText("Rent").closest("li")!;
@@ -85,30 +185,79 @@ describe("NeedsFundingSection (AC-25)", () => {
       "Category",
     ) as HTMLSelectElement;
     expect(categorySelect.value).toBe(categoryId("Rent"));
+    const limitInput = within(dialog).getByLabelText("Limit") as HTMLInputElement;
+    expect(limitInput.value).toBe("1500");
   });
 
-  it("funding a category removes it from the checklist and persists the budget", async () => {
+  it("saving the budget dispatches planner:focus-budget for the new budget", async () => {
     const user = userEvent.setup();
-    render(<NeedsFundingSection month="2026-08" />);
+    seedTypicalGaps();
+    const focusSpy = vi.fn();
+    window.addEventListener("planner:focus-budget", focusSpy);
 
+    render(<NeedsFundingSection month="2026-08" />);
     const rentRow = screen.getByText("Rent").closest("li")!;
     await user.click(within(rentRow).getByRole("button", { name: "Fund" }));
     const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("Limit"), "1000");
     await user.click(within(dialog).getByRole("button", { name: "Add budget" }));
 
     const { state } = useAppStore.getState();
     const rentBudget = state.budgets.find(
       (budget) => budget.categoryId === categoryId("Rent"),
     );
-    expect(rentBudget?.limit).toBe(100000);
+    expect(rentBudget?.limit).toBe(150000);
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    const detail = (focusSpy.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.budgetId).toBe(rentBudget!.id);
+    window.removeEventListener("planner:focus-budget", focusSpy);
+  });
 
-    expect(screen.queryByText("Rent")).not.toBeInTheDocument();
-    expect(checklistNames()).toEqual([
-      "Entertainment",
-      "Groceries",
-      "Transport",
-      "Utilities",
-    ]);
+  it("Fund with an existing budget jumps straight to it without a dialog", async () => {
+    const user = userEvent.setup();
+    seedTypicalGaps();
+    useAppStore.getState().addBudget({
+      categoryId: categoryId("Groceries"),
+      month: "2026-08",
+      limit: 20000,
+      priority: "medium",
+    });
+    const focusSpy = vi.fn();
+    window.addEventListener("planner:focus-budget", focusSpy);
+
+    render(<NeedsFundingSection month="2026-08" />);
+    const groceriesRow = screen.getByText("Groceries").closest("li")!;
+    await user.click(within(groceriesRow).getByRole("button", { name: "Fund" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    const detail = (focusSpy.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.budgetId).toBe(
+      useAppStore
+        .getState()
+        .state.budgets.find((budget) => budget.categoryId === categoryId("Groceries"))!
+        .id,
+    );
+    window.removeEventListener("planner:focus-budget", focusSpy);
+  });
+
+  it("funding a category removes it from the list and persists the budget", async () => {
+    const user = userEvent.setup();
+    seedTypicalGaps();
+    render(<NeedsFundingSection month="2026-08" />);
+
+    const rentRow = screen.getByText("Rent").closest("li")!;
+    await user.click(within(rentRow).getByRole("button", { name: "Fund" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Add budget" }));
+
+    const { state } = useAppStore.getState();
+    expect(
+      state.budgets.some(
+        (budget) =>
+          budget.categoryId === categoryId("Rent") &&
+          budget.month === "2026-08",
+      ),
+    ).toBe(true);
+    expect(gapNames()).toEqual(["Utilities", "Groceries"]);
   });
 });

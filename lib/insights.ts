@@ -1,6 +1,17 @@
+import { todayIso, monthOffset } from "./date";
+import { monthFinance } from "./finance";
 import { formatMoney } from "./money";
-import { budgetProgress, spendingByCategory, totals } from "./selectors";
-import type { Budget, Category, Currency, ID, Month, Transaction } from "./types";
+import { budgetProgress, needsFunding, spendingByCategory } from "./selectors";
+import type {
+  Budget,
+  Category,
+  Currency,
+  FutureExpense,
+  ID,
+  IncomePlan,
+  Month,
+  Transaction,
+} from "./types";
 
 export type InsightTone = "danger" | "warn" | "success" | "neutral";
 
@@ -16,21 +27,39 @@ export interface InsightsInput {
   budgets: Budget[];
   transactions: Transaction[];
   categories: Category[];
+  futureExpenses?: FutureExpense[];
+  incomePlans?: IncomePlan[];
   month: Month;
   currency: Currency;
 }
+
+const DAY_MS = 86_400_000;
 
 function categoryName(categories: Category[], id: ID): string {
   return categories.find((category) => category.id === id)?.name ?? "Category";
 }
 
+function daysUntil(dueDate: string, today: string): number {
+  return Math.round(
+    (new Date(dueDate).getTime() - new Date(today).getTime()) / DAY_MS,
+  );
+}
+
 export function insightsFor(input: InsightsInput): Insight[] {
-  const { budgets, transactions, categories, month, currency } = input;
+  const {
+    budgets,
+    transactions,
+    categories,
+    month,
+    currency,
+    futureExpenses = [],
+    incomePlans = [],
+  } = input;
   const monthBudgets = budgets.filter((budget) => budget.month === month);
   const monthTransactions = transactions.filter((transaction) =>
     transaction.date.startsWith(month),
   );
-  const { net } = totals(transactions, month);
+  const { net } = monthFinance(transactions, incomePlans, month);
   const fmt = (minor: number) => formatMoney(minor, currency);
   const list: Insight[] = [];
 
@@ -108,6 +137,80 @@ export function insightsFor(input: InsightsInput): Insight[] {
     });
   }
 
+  const almostExhausted = monthBudgets.find((budget) => {
+    const { spent, over } = budgetProgress(budget, transactions);
+    return !over && budget.limit > 0 && spent >= budget.limit * 0.8;
+  });
+  if (almostExhausted) {
+    const { progress } = budgetProgress(almostExhausted, transactions);
+    list.push({
+      id: "almost-exhausted",
+      tone: "warn",
+      title: "Budget almost exhausted",
+      detail: `${categoryName(categories, almostExhausted.categoryId)} is at ${Math.floor(progress * 100)}% of its limit — nearly gone.`,
+      action: { label: "Review budgets", href: "/" },
+    });
+  }
+
+  const lastMonth = monthOffset(month, -1);
+  const lastByCategory = new Map(
+    spendingByCategory(transactions, lastMonth).map((spend) => [
+      spend.categoryId,
+      spend.amount,
+    ]),
+  );
+  let biggestIncrease: { categoryId: ID; pct: number } | null = null;
+  for (const spend of spendingByCategory(transactions, month)) {
+    const previous = lastByCategory.get(spend.categoryId) ?? 0;
+    if (previous <= 0 || spend.amount <= previous) continue;
+    const pct = Math.round((100 * (spend.amount - previous)) / previous);
+    if (pct >= 10 && (!biggestIncrease || pct > biggestIncrease.pct)) {
+      biggestIncrease = { categoryId: spend.categoryId, pct };
+    }
+  }
+  if (biggestIncrease) {
+    list.push({
+      id: "vs-last-month",
+      tone: "warn",
+      title: "Spending is up this month",
+      detail: `You're spending ${biggestIncrease.pct}% more on ${categoryName(categories, biggestIncrease.categoryId)} than last month.`,
+    });
+  }
+
+  const dueThisWeek = futureExpenses.filter((expense) => {
+    if (expense.status !== "upcoming" || !expense.recurring) return false;
+    const days = daysUntil(expense.dueDate, todayIso());
+    return days >= 0 && days <= 7;
+  });
+  if (dueThisWeek.length > 0) {
+    const totalDue = dueThisWeek.reduce((sum, expense) => sum + expense.amount, 0);
+    list.push({
+      id: "recurring-due",
+      tone: "warn",
+      title:
+        dueThisWeek.length === 1
+          ? "One recurring bill is due this week"
+          : `${dueThisWeek.length} recurring bills are due this week`,
+      detail: `${dueThisWeek
+        .map((expense) => categoryName(categories, expense.categoryId))
+        .join(", ")} — ${fmt(totalDue)} coming up.`,
+    });
+  }
+
+  const unfunded = needsFunding(budgets, categories, month);
+  if (unfunded.length >= 3) {
+    list.push({
+      id: "needs-funding",
+      tone: "warn",
+      title: `${unfunded.length} categories need funding`,
+      detail: `${unfunded
+        .slice(0, 3)
+        .map((category) => category.name)
+        .join(", ")}${unfunded.length > 3 ? " and more" : ""} have no budget yet this month.`,
+      action: { label: "Fund them", href: "/" },
+    });
+  }
+
   const highOnTrack = monthBudgets.find(
     (budget) =>
       budget.priority === "high" &&
@@ -121,6 +224,15 @@ export function insightsFor(input: InsightsInput): Insight[] {
       tone: "success",
       title: "On track",
       detail: `${categoryName(categories, highOnTrack.categoryId)} is at ${Math.floor(progress * 100)}% of its budget.`,
+    });
+  }
+
+  if (list.length === 0) {
+    list.push({
+      id: "all-clear",
+      tone: "success",
+      title: "No issues detected this month",
+      detail: "Budgets are holding, spending is in line, and nothing is overdue.",
     });
   }
 

@@ -11,7 +11,6 @@ import {
   YAxis,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { TargetIcon } from "@/components/ui/icons";
 import { formatMonthLabel, formatMonthShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { budgetUtilizationSeries } from "@/lib/selectors";
@@ -20,6 +19,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useChartColors } from "@/hooks/useChartColors";
 import { ChartCard } from "./ChartCard";
+import { axisTickStyle, tooltipContentStyle } from "./chartStyles";
 
 export function BudgetUtilizationChart({ months }: { months: Month[] }) {
   const transactions = useAppStore((s) => s.state.transactions);
@@ -39,13 +39,13 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
 
   if (data.length === 0) {
     return (
-      <ChartCard title="Budget utilization" subtitle="Spent vs. limits">
-<EmptyState
-        icon={<TargetIcon className="h-5 w-5" />}
-        iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
-        title="No budgets in this window"
-        description="Create budgets on the Planner and utilization will appear here."
-      />
+      <ChartCard title="Budget utilization" subtitle="Last 6 months">
+        <EmptyState
+          illustration="target"
+          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          title="No budgets in this window"
+          description="Set budgets on the Planner and you'll see how each one holds up."
+        />
       </ChartCard>
     );
   }
@@ -58,9 +58,9 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
     .join("; ")}`;
 
   return (
-    <ChartCard title="Budget utilization" subtitle="Spent vs. limits">
+    <ChartCard title="Budget utilization" subtitle="Last 6 months">
       <div role="img" aria-label={ariaLabel}>
-        <ResponsiveContainer width="100%" height={260}>
+        <ResponsiveContainer width="100%" height={240}>
           <BarChart
             data={data}
             margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
@@ -73,14 +73,14 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
             <XAxis
               dataKey="month"
               tickFormatter={formatMonthShort}
-              tick={{ fill: colors.tick, fontSize: 12 }}
+              tick={axisTickStyle(colors)}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               tickFormatter={(value) => `${value}%`}
               domain={[0, 100]}
-              tick={{ fill: colors.tick, fontSize: 12 }}
+              tick={axisTickStyle(colors)}
               axisLine={false}
               tickLine={false}
               width={60}
@@ -88,19 +88,13 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
             <Tooltip
               formatter={(value) => [`${value}%`, "Utilization"]}
               labelFormatter={(label) => formatMonthLabel(String(label))}
-              contentStyle={{
-                borderRadius: 8,
-                border: `1px solid ${colors.border}`,
-                background: colors.surface,
-                fontSize: 13,
-                color: colors.ink,
-              }}
+              contentStyle={tooltipContentStyle(colors)}
             />
             <Bar
               dataKey="pct"
               name="Utilization"
               fill={colors.brand}
-              radius={[3, 3, 0, 0]}
+              radius={[6, 6, 0, 0]}
               isAnimationActive={!reduced}
             />
           </BarChart>

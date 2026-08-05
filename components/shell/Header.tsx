@@ -10,7 +10,7 @@ export function Header() {
   const subtitle = usePlannerStatus(month);
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-border bg-surface px-4 lg:hidden">
+    <header className="no-print sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-border bg-surface px-4 lg:hidden">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
         <WalletIcon className="h-5 w-5" />
       </span>

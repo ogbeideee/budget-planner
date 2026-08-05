@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -16,6 +16,7 @@ export interface BudgetFormProps {
   month: Month;
   budget?: Budget | null;
   presetCategoryId?: string;
+  presetLimit?: number;
 }
 
 const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
@@ -30,6 +31,7 @@ export function BudgetForm({
   month,
   budget,
   presetCategoryId,
+  presetLimit,
 }: BudgetFormProps) {
   const categories = useAppStore((s) => s.state.categories);
   const budgets = useAppStore((s) => s.state.budgets);
@@ -41,11 +43,16 @@ export function BudgetForm({
     budget?.categoryId ?? presetCategoryId ?? "",
   );
   const [limitInput, setLimitInput] = useState(
-    budget ? minorToInput(budget.limit) : "",
+    budget
+      ? minorToInput(budget.limit)
+      : presetLimit !== undefined
+        ? minorToInput(presetLimit)
+        : "",
   );
   const [priority, setPriority] = useState<Priority>(budget?.priority ?? "medium");
   const [error, setError] = useState<string | null>(null);
 
+  const formId = useId();
   const formMonth = budget?.month ?? month;
 
   const expenseCategories = useMemo(
@@ -83,7 +90,7 @@ export function BudgetForm({
       return;
     }
     if (budget) {
-      updateBudget(budget.id, { limit: amount, priority });
+      updateBudget(budget.id, { categoryId, limit: amount, priority });
       onClose();
       return;
     }
@@ -105,13 +112,13 @@ export function BudgetForm({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="budget-form">
+          <Button type="submit" form={formId}>
             {budget ? "Save changes" : "Add budget"}
           </Button>
         </>
       }
     >
-      <form id="budget-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <form id={formId} onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Select
           label="Category"
           options={available.map((category) => ({
@@ -119,7 +126,10 @@ export function BudgetForm({
             label: `${category.icon} ${category.name}`,
           }))}
           value={categoryId}
-          onChange={(event) => setCategoryId(event.target.value)}
+          onChange={(event) => {
+            setCategoryId(event.target.value);
+            if (error?.startsWith("Choose")) setError(null);
+          }}
           error={error?.startsWith("Choose") ? error : undefined}
         />
         <Input
@@ -135,7 +145,17 @@ export function BudgetForm({
             inputMode="decimal"
             placeholder="0.00"
             value={limitInput}
-            onChange={(event) => setLimitInput(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              setLimitInput(next);
+              if (
+                error &&
+                !error.startsWith("Choose") &&
+                isMinorUnitsValid(toMinorUnits(next, currency))
+              ) {
+                setError(null);
+              }
+            }}
             error={
               error && !error.startsWith("Choose") ? error : undefined
             }
