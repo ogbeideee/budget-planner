@@ -2,6 +2,61 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — Desktop migration: native desktop features
+
+### Added
+
+- **Native application menu** (`electron/menu.cjs`) with keyboard shortcuts:
+  File (Import `Ctrl+O`, Export `Ctrl+S`, Back up now `Ctrl+B`, Restore latest
+  backup `Ctrl+Shift+B`, Open backup folder `Ctrl+Shift+O`, Reveal data folder
+  `Ctrl+Shift+D`, Quit `Ctrl+Q`), Edit (standard clipboard roles so copy/paste
+  works in inputs), View (reload, devtools, zoom, full screen), Window, and
+  Help (About dialog with the data folder paths). Menu items that need renderer
+  state (import/export/backup/restore) send `desktop:menu:action` to the
+  focused window; folder actions and About run entirely in the main process.
+- **Native file dialogs + safe file IPC.** The preload bridge exposes
+  `dialog.open/save` (generic, validated options) and restricted
+  `fs.writeText/readText` (absolute paths only, `.json`-only writes, 16 MB
+  cap). Composite `desktop:import` (open dialog → destructive-action
+  confirmation → read) and `desktop:export` (save dialog → atomic write) power
+  the Import/Export buttons and the menu items. Browser mode keeps its
+  download/file-input behaviour unchanged.
+- **Desktop notifications.** `desktop:notify` (`Notification.isSupported()`
+  guarded; AUMID already set). Used for backup failures and restore results;
+  available to the renderer for future alerts.
+- **Automatic file backups.** New `electron/backups.cjs`: atomic writes
+  (temp + rename), content dedupe (unchanged payloads are skipped), and
+  pruning to the newest 30 files in `<userData>/backups/`. Renderer-driven
+  schedule (`lib/desktopBootstrap.ts` + `startAutoBackups`): once at boot after
+  hydration, every 30 minutes, and a final flush on `beforeunload` (the create
+  channel is synchronous, like the storage seam). Failures surface as a toast
+  and a desktop notification.
+- **Restore backup workflow.** File backups appear in Settings → Data →
+  BackupsManager as "Backup files" (list, restore with confirmation, download
+  via save dialog, delete). "Restore latest backup" (`Ctrl+Shift+B`) reads the
+  newest file in the main process, confirms natively, and restores through the
+  existing `importState` path. Export files and file backups share the same
+  `{ state, version }` envelope, so both restore through the validated import
+  flow.
+- **Open Backup Folder / Reveal Data Folder.** `shell.openPath` /
+  `shell.showItemInFolder` via IPC; buttons in Settings (Data + BackupsManager)
+  and the File menu. The About card and Data card show the real folder paths.
+
+### Changed
+
+- `electron/main.cjs` registers the desktop feature handlers and installs the
+  application menu at startup; the smoke test now asserts the menu groups and
+  accelerators, the full bridge surface, and a create/list/read/delete backup
+  roundtrip against the real backups folder (cleaned up after).
+
+### Verification
+
+- Smoke green in dev and prod modes: menu groups `File/Edit/View/Window/Help`,
+  bridge surface (dialog, fs, shell, notify, paths, backups, menu), backup
+  roundtrip.
+- Gates: `npx tsc --noEmit`, `npm run lint`, `npm run test` (337/337, +7
+  `electron/backups.test.ts` cases), `npm run build`.
+
 ## [Unreleased] — Desktop migration: SQLite persistence
 
 ### Changed
@@ -29,6 +84,14 @@ All notable changes to this project are documented in this file.
     is restorable from `BackupsManager`) **before** the migrated rows and the
     `migration:browser:done` marker, all in one transaction. Idempotent (marker +
     non-empty-db guard).
+  - **Migration failure handling.** The whole migration (including the marker and
+    backup checks) returns a structured error instead of throwing across IPC. A failure
+    rolls the transaction back, so nothing is written, the browser data is never touched
+    and the marker is absent — the app retries automatically on the next launch. The
+    main process notifies the user with a native error dialog (skipped in smoke mode)
+    and both processes log the failure. `npm run db:check` now exercises both the
+    success path (backup + marker + rows) and a forced-failure path (error returned, 0
+    rows left, retry-ready).
   - Top-level `productName: "Budget Planner"` so the desktop app owns its userData
     profile (now `Roaming\Budget Planner`).
 - **Toolchain.** `better-sqlite3` needs a native rebuild for Electron; `postinstall` is

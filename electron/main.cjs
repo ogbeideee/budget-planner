@@ -4,22 +4,29 @@ const {
   app,
   BrowserWindow,
   dialog,
+  Notification,
   protocol,
   net,
   ipcMain,
+  Menu,
+  shell,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const pkg = require("../package.json");
 const { openDatabase } = require("./db.cjs");
+const backupStore = require("./backups.cjs");
+const { MENU_ACTIONS, buildApplicationMenu } = require("./menu.cjs");
 
 const APP_SCHEME = "app";
 const APP_HOST = "bundle";
 const OUT_DIR = path.join(__dirname, "..", "out");
 const DEV_URL = process.env.ELECTRON_DEV_URL || "http://localhost:3000";
+const MAX_TEXT_BYTES = 16 * 1024 * 1024; // 16 MB cap for fs reads/writes
 
 let db = null;
+let mainWindow = null;
 
 function storageChannel(key) {
   return `desktop:storage:${key}`;
@@ -53,10 +60,319 @@ function registerStorageHandlers() {
     event.returnValue = db.info().count === 0;
   });
   ipcMain.on(storageChannel("migrate"), (event, kv) => {
-    event.returnValue =
+    const result =
       typeof kv === "object" && kv !== null && !Array.isArray(kv)
         ? db.migrateBrowserData(kv)
-        : { migrated: false, backupKey: null };
+        : { migrated: false, backupKey: null, error: "invalid payload" };
+    if (result.error) {
+      // Migration failed. The transaction rolled back, the browser data was
+      // never touched, and the marker is absent, so nothing was lost and the
+      // migration retries on the next launch. Tell the user instead of
+      // failing silently (skip the blocking dialog in smoke mode).
+      console.error(`[desktop] browser-data migration failed: ${result.error}`);
+      if (!isSmokeMode()) {
+        dialog.showErrorBox(
+          "Budget Planner",
+          "Your browser data could not be migrated to the desktop database.\n\n" +
+            "Nothing was lost: the migration is atomic, your original browser " +
+            "data is still intact, and the app will retry automatically on the " +
+            "next launch.",
+        );
+      }
+    }
+    event.returnValue = result;
+  });
+}
+
+// ---- Phase 3: native desktop features (all through IPC) ----
+
+function dataPaths() {
+  const userData = app.getPath("userData");
+  return {
+    userData,
+    backupsDir: backupStore.backupsDir(userData),
+    dbFile: path.join(userData, "budget-planner.sqlite3"),
+  };
+}
+
+function windowFor(event) {
+  return BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+}
+
+function isAbsolutePath(target) {
+  return typeof target === "string" && path.isAbsolute(target);
+}
+
+function safeFilters(filters) {
+  return Array.isArray(filters)
+    ? filters.filter(
+        (filter) =>
+          typeof filter === "object" &&
+          filter !== null &&
+          typeof filter.name === "string" &&
+          Array.isArray(filter.extensions) &&
+          filter.extensions.every(
+            (extension) =>
+              typeof extension === "string" && /^[a-z0-9]+$/i.test(extension),
+          ),
+      )
+    : undefined;
+}
+
+function registerDesktopHandlers() {
+  // Native file dialogs (generic).
+  ipcMain.handle("desktop:dialog:open", async (event, options) => {
+    const opts = typeof options === "object" && options !== null ? options : {};
+    const filters = safeFilters(opts.filters);
+    const result = await dialog.showOpenDialog(windowFor(event), {
+      title: typeof opts.title === "string" ? opts.title : undefined,
+      defaultPath: isAbsolutePath(opts.defaultPath) ? opts.defaultPath : undefined,
+      filters,
+      properties: Array.isArray(opts.properties)
+        ? opts.properties.filter((p) => typeof p === "string")
+        : ["openFile"],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    return { canceled: false, filePath: result.filePaths[0] };
+  });
+
+  ipcMain.handle("desktop:dialog:save", async (event, options) => {
+    const opts = typeof options === "object" && options !== null ? options : {};
+    let defaultPath;
+    if (typeof opts.defaultName === "string" && opts.defaultName.length > 0) {
+      // Only the basename travels across IPC; the dialog is bound to a folder.
+      defaultPath = path.join(
+        app.getPath("documents"),
+        path.basename(opts.defaultName),
+      );
+    }
+    const result = await dialog.showSaveDialog(windowFor(event), {
+      title: typeof opts.title === "string" ? opts.title : undefined,
+      defaultPath,
+      filters: safeFilters(opts.filters) ?? [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    return { canceled: false, filePath: result.filePath };
+  });
+
+  // File reads/writes. Restricted: absolute paths only, .json-only writes,
+  // 16 MB size cap. Never expose a generic fs module to the renderer.
+  ipcMain.handle("desktop:fs:writeText", (event, payload) => {
+    const { target, content } =
+      typeof payload === "object" && payload !== null ? payload : {};
+    if (
+      !isAbsolutePath(target) ||
+      !target.toLowerCase().endsWith(".json") ||
+      typeof content !== "string" ||
+      Buffer.byteLength(content, "utf8") > MAX_TEXT_BYTES
+    ) {
+      return { ok: false, error: "invalid target or content" };
+    }
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      const tmpPath = `${target}.tmp`;
+      fs.writeFileSync(tmpPath, content, "utf8");
+      fs.renameSync(tmpPath, target);
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("desktop:fs:readText", (event, payload) => {
+    const { target } = typeof payload === "object" && payload !== null ? payload : {};
+    if (!isAbsolutePath(target)) {
+      return { ok: false, error: "invalid target" };
+    }
+    try {
+      const stats = fs.statSync(target);
+      if (!stats.isFile() || stats.size > MAX_TEXT_BYTES) {
+        return { ok: false, error: "file too large or not a file" };
+      }
+      return { ok: true, content: fs.readFileSync(target, "utf8") };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  // Folder actions.
+  ipcMain.handle("desktop:shell:openPath", async (event, target) => {
+    if (!isAbsolutePath(target)) return { ok: false, error: "invalid path" };
+    const result = await shell.openPath(target);
+    return result === "" ? { ok: true } : { ok: false, error: result };
+  });
+
+  ipcMain.handle("desktop:shell:showItemInFolder", (event, target) => {
+    if (!isAbsolutePath(target)) return { ok: false, error: "invalid path" };
+    shell.showItemInFolder(target);
+    return { ok: true };
+  });
+
+  // Desktop notifications (Windows toast). AUMID is set at startup, so
+  // packaged toasts have an identity; isSupported() guards the rest.
+  ipcMain.handle("desktop:notify", (event, payload) => {
+    const { title, body, silent } =
+      typeof payload === "object" && payload !== null ? payload : {};
+    if (!Notification.isSupported()) {
+      return { ok: false, error: "notifications not supported" };
+    }
+    if (typeof title !== "string" || title.length === 0) {
+      return { ok: false, error: "invalid notification" };
+    }
+    new Notification({
+      title,
+      body: typeof body === "string" && body.length > 0 ? body : undefined,
+      silent: silent === true,
+    }).show();
+    return { ok: true };
+  });
+
+  // Read-only paths for the About/Data UI.
+  ipcMain.handle("desktop:paths", () => dataPaths());
+
+  // File-based backups. create is synchronous so the renderer can flush the
+  // final backup during beforeunload (small state payloads, mirrors the
+  // storage channels); the rest are async.
+  ipcMain.on("desktop:backup:create", (event, content) => {
+    if (
+      typeof content !== "string" ||
+      content.length === 0 ||
+      Buffer.byteLength(content, "utf8") > MAX_TEXT_BYTES
+    ) {
+      event.returnValue = { error: "invalid payload" };
+      return;
+    }
+    try {
+      const entry = backupStore.writeBackup(dataPaths().backupsDir, content);
+      event.returnValue = entry;
+    } catch (error) {
+      event.returnValue = {
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("desktop:backup:list", () =>
+    backupStore.listBackups(dataPaths().backupsDir),
+  );
+
+  ipcMain.handle("desktop:backup:read", (event, payload) => {
+    const { name } = typeof payload === "object" && payload !== null ? payload : {};
+    const content = backupStore.readBackup(dataPaths().backupsDir, name);
+    if (content === null) return { ok: false, error: "backup not found" };
+    return { ok: true, content };
+  });
+
+  ipcMain.handle("desktop:backup:delete", (event, payload) => {
+    const { name } = typeof payload === "object" && payload !== null ? payload : {};
+    return { ok: backupStore.deleteBackup(dataPaths().backupsDir, name) };
+  });
+
+  // Composite import: native open dialog -> destructive-confirmation dialog
+  // -> read. The renderer only receives the content (or a cancellation).
+  ipcMain.handle("desktop:import", async (event) => {
+    const win = windowFor(event);
+    const opened = await dialog.showOpenDialog(win, {
+      title: "Import data",
+      filters: [{ name: "Budget Planner data", extensions: ["json"] }],
+      properties: ["openFile"],
+    });
+    if (opened.canceled || opened.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    const target = opened.filePaths[0];
+    const confirmed = await dialog.showMessageBox(win, {
+      type: "warning",
+      title: "Import data",
+      message: "Importing replaces all of your current data.",
+      detail: "This cannot be undone. Continue?",
+      buttons: ["Cancel", "Import"],
+      defaultId: 1,
+      cancelId: 0,
+    });
+    if (confirmed.response !== 1) return { canceled: true };
+    try {
+      const stats = fs.statSync(target);
+      if (!stats.isFile() || stats.size > MAX_TEXT_BYTES) {
+        return { ok: false, error: "file too large or not a file" };
+      }
+      return {
+        ok: true,
+        content: fs.readFileSync(target, "utf8"),
+        fileName: path.basename(target),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  // Composite export: renderer supplies the JSON, main shows the native save
+  // dialog and writes it atomically.
+  ipcMain.handle("desktop:export", async (event, payload) => {
+    const { content, defaultName } =
+      typeof payload === "object" && payload !== null ? payload : {};
+    if (
+      typeof content !== "string" ||
+      content.length === 0 ||
+      Buffer.byteLength(content, "utf8") > MAX_TEXT_BYTES
+    ) {
+      return { ok: false, error: "invalid export payload" };
+    }
+    const win = windowFor(event);
+    const saved = await dialog.showSaveDialog(win, {
+      title: "Export data",
+      defaultPath:
+        typeof defaultName === "string" && defaultName.length > 0
+          ? path.join(app.getPath("documents"), path.basename(defaultName))
+          : undefined,
+      filters: [{ name: "Budget Planner data", extensions: ["json"] }],
+    });
+    if (saved.canceled || !saved.filePath) return { canceled: true };
+    try {
+      const tmpPath = `${saved.filePath}.tmp`;
+      fs.writeFileSync(tmpPath, content, "utf8");
+      fs.renameSync(tmpPath, saved.filePath);
+      return { ok: true, filePath: saved.filePath };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  // Composite restore: main picks the newest file backup, confirms, reads it.
+  ipcMain.handle("desktop:backup:restoreLatest", async (event) => {
+    const dir = dataPaths().backupsDir;
+    const latest = backupStore.listBackups(dir)[0];
+    if (!latest) return { ok: false, error: "no backups yet" };
+    const win = windowFor(event);
+    const confirmed = await dialog.showMessageBox(win, {
+      type: "warning",
+      title: "Restore latest backup",
+      message: `Restore the backup from ${latest.createdAt}?`,
+      detail: "Restoring replaces everything currently in the app. The backup file is kept.",
+      buttons: ["Cancel", "Restore"],
+      defaultId: 1,
+      cancelId: 0,
+    });
+    if (confirmed.response !== 1) return { canceled: true };
+    const content = backupStore.readBackup(dir, latest.name);
+    if (content === null) return { ok: false, error: "backup could not be read" };
+    return { ok: true, content };
   });
 }
 
@@ -132,6 +448,11 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
   });
 
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -289,9 +610,83 @@ async function runSmokeTest(win) {
       throw new Error(`sqlite file missing at ${expectedFile}`);
     }
 
+    // Phase 3: the native menu must be installed with the expected top-level
+    // groups and accelerators.
+    const menu = Menu.getApplicationMenu();
+    const menuLabels = menu ? menu.items.map((item) => item.label) : [];
+    for (const label of ["File", "Edit", "View", "Window", "Help"]) {
+      if (!menuLabels.includes(label)) {
+        throw new Error(`native menu missing "${label}" group`);
+      }
+    }
+    const fileSubmenu = menu.items.find((item) => item.label === "File").submenu;
+    const accelerators = fileSubmenu.items
+      .map((item) => `${item.label ?? ""}:${item.accelerator ?? ""}`)
+      .join("|");
+    for (const needle of ["Import data…:CmdOrCtrl+O", "Export data…:CmdOrCtrl+S"]) {
+      if (!accelerators.includes(needle)) {
+        throw new Error(`native menu missing accelerator for ${needle}`);
+      }
+    }
+
+    // Phase 3: the renderer bridge must expose the desktop feature surface.
+    const surface = await win.webContents.executeJavaScript(`
+      (() => ({
+        dialog: typeof window.budgetPlannerDesktop?.dialog?.open === 'function'
+          && typeof window.budgetPlannerDesktop?.dialog?.save === 'function',
+        fs: typeof window.budgetPlannerDesktop?.fs?.writeText === 'function'
+          && typeof window.budgetPlannerDesktop?.fs?.readText === 'function',
+        shell: typeof window.budgetPlannerDesktop?.shell?.openPath === 'function'
+          && typeof window.budgetPlannerDesktop?.shell?.showItemInFolder === 'function',
+        notify: typeof window.budgetPlannerDesktop?.notify === 'function',
+        paths: typeof window.budgetPlannerDesktop?.paths === 'function',
+        backups: typeof window.budgetPlannerDesktop?.backups?.list === 'function'
+          && typeof window.budgetPlannerDesktop?.backups?.create === 'function'
+          && typeof window.budgetPlannerDesktop?.backups?.read === 'function'
+          && typeof window.budgetPlannerDesktop?.backups?.delete === 'function',
+        menu: typeof window.budgetPlannerDesktop?.menu?.on === 'function',
+      }))()
+    `);
+    for (const key of ["dialog", "fs", "shell", "notify", "paths", "backups", "menu"]) {
+      if (surface[key] !== true) {
+        throw new Error(`bridge surface missing: ${key}`);
+      }
+    }
+
+    // Phase 3: file-based backup roundtrip through the bridge (create -> list
+    // -> read -> delete) against the real backups folder, cleaned up after.
+    const backupContent = JSON.stringify({
+      smoke: true,
+      at: new Date().toISOString(),
+    });
+    const created = await win.webContents.executeJavaScript(`
+      window.budgetPlannerDesktop.backups.create(${JSON.stringify(backupContent)})
+    `);
+    if (!created || typeof created.name !== "string") {
+      throw new Error(`backup create failed: ${JSON.stringify(created)}`);
+    }
+    const listed = await win.webContents.executeJavaScript(`
+      window.budgetPlannerDesktop.backups.list()
+    `);
+    if (!Array.isArray(listed) || !listed.some((b) => b.name === created.name)) {
+      throw new Error("backup list did not include the created file");
+    }
+    const backupRead = await win.webContents.executeJavaScript(`
+      window.budgetPlannerDesktop.backups.read(${JSON.stringify({ name: created.name })})
+    `);
+    if (!backupRead.ok || backupRead.content !== backupContent) {
+      throw new Error(`backup read mismatch: ${JSON.stringify(backupRead)}`);
+    }
+    const deleted = await win.webContents.executeJavaScript(`
+      window.budgetPlannerDesktop.backups.delete(${JSON.stringify({ name: created.name })})
+    `);
+    if (!deleted.ok) {
+      throw new Error("backup delete failed");
+    }
+
     clearTimeout(timeout);
     console.log(
-      `SMOKE_OK title="${state.title}" url=${state.url} bodyChars=${state.bodyText} bridge=${info.name}@${info.version} sqlite=${dbInfo.file} rows=${dbInfo.count} migrated=${dbInfo.migrated}`,
+      `SMOKE_OK title="${state.title}" url=${state.url} bodyChars=${state.bodyText} bridge=${info.name}@${info.version} sqlite=${dbInfo.file} rows=${dbInfo.count} migrated=${dbInfo.migrated} menu=${menuLabels.join("/")}`,
     );
     app.exit(0);
   } catch (error) {
@@ -314,6 +709,13 @@ app.whenReady().then(() => {
     isPackaged: app.isPackaged,
   }));
   registerStorageHandlers();
+  registerDesktopHandlers();
+
+  buildApplicationMenu({
+    getFocusedWindow: () => BrowserWindow.getFocusedWindow() ?? mainWindow,
+    getBackupsDir: () => dataPaths().backupsDir,
+    getDataDir: () => dataPaths().userData,
+  });
 
   if (!isDevMode() && !fs.existsSync(path.join(OUT_DIR, "index.html"))) {
     const message =

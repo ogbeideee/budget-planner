@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import {
+  FolderIcon,
   PencilIcon,
   RepeatIcon,
   TrashIcon,
@@ -19,6 +20,13 @@ import { categoryColor } from "@/lib/accents";
 import type { RecurrenceRule } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/hooks/useToast";
+import { isDesktop } from "@/lib/desktop";
+import type { DesktopPaths } from "@/lib/desktop";
+import {
+  desktopExportToFile,
+  desktopImportFromFile,
+  getDesktopPaths,
+} from "@/lib/desktopFeatures";
 import { RecurrenceForm } from "../txn/RecurrenceForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { CategoryManager } from "./CategoryManager";
@@ -82,7 +90,7 @@ export function SettingsView() {
   const deleteRecurrenceRule = useAppStore((s) => s.deleteRecurrenceRule);
   const importState = useAppStore((s) => s.importState);
   const resetAll = useAppStore((s) => s.resetAll);
-  const { success } = useToast();
+  const { success, error: toastError } = useToast();
 
   const [ruleFormOpen, setRuleFormOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<RecurrenceRule | null>(null);
@@ -92,21 +100,53 @@ export function SettingsView() {
   const [importError, setImportError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetText, setResetText] = useState("");
+  const [desktopPaths, setDesktopPaths] = useState<DesktopPaths | null>(null);
+
+  useEffect(() => {
+    void getDesktopPaths().then((next) => {
+      if (next) setDesktopPaths(next);
+    });
+  }, []);
 
   const categoryOf = (id: string) =>
     categories.find((category) => category.id === id);
 
   const handleExport = () => {
-    const blob = new Blob([serializeExport(useAppStore.getState().state)], {
+    const json = serializeExport(useAppStore.getState().state);
+    const name = `budget-planner-export-${new Date().toISOString().slice(0, 10)}.json`;
+    if (isDesktop()) {
+      void desktopExportToFile(json, name).then((result) => {
+        if (result.canceled) return;
+        if (result.ok) {
+          success("Export saved to file.");
+        } else {
+          toastError(result.error ?? "Export failed.");
+        }
+      });
+      return;
+    }
+    const blob = new Blob([json], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `budget-planner-export-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = name;
     link.click();
     URL.revokeObjectURL(url);
     success("Export downloaded.");
+  };
+
+  const handleDesktopImport = () => {
+    void desktopImportFromFile().then((result) => {
+      if (result.status === "canceled") return;
+      if (result.status !== "ok") {
+        setImportError(result.error ?? "That file couldn't be read.");
+        return;
+      }
+      setPendingImport(result.content);
+      setImportError(null);
+    });
   };
 
   const handleImportFile = (file: File) => {
@@ -341,19 +381,25 @@ export function SettingsView() {
             <Button variant="secondary" onClick={handleExport}>
               Export JSON
             </Button>
-            <label className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-200 ease-premium hover:bg-canvas hover:border-border/80 focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2">
-              Import JSON
-              <input
-                type="file"
-                accept="application/json,.json"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) handleImportFile(file);
-                  event.target.value = "";
-                }}
-              />
-            </label>
+            {isDesktop() ? (
+              <Button variant="secondary" onClick={handleDesktopImport}>
+                Import JSON
+              </Button>
+            ) : (
+              <label className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-200 ease-premium hover:bg-canvas hover:border-border/80 focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2">
+                Import JSON
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) handleImportFile(file);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            )}
           </div>
           {importError && (
             <p role="alert" className="mt-3 text-sm text-expense">
@@ -363,6 +409,16 @@ export function SettingsView() {
           <div className="mt-6 border-t border-border/60 pt-4">
             <BackupsManager />
           </div>
+          {desktopPaths && (
+            <p className="mt-3 text-xs text-muted">
+              The desktop app writes an automatic backup at startup, every 30
+              minutes, and when it closes — kept in{" "}
+              <code className="rounded bg-surface px-1.5 py-0.5">
+                {desktopPaths.backupsDir}
+              </code>
+              . The newest 30 are kept automatically.
+            </p>
+          )}
           <div className="mt-4 border-t border-border/60 pt-4">
             <Button
               variant="danger"
@@ -393,6 +449,15 @@ export function SettingsView() {
                 Every byte stays in this browser — your data never leaves the
                 device.
               </p>
+              {desktopPaths && (
+                <p className="mt-2 flex flex-wrap items-center gap-1 text-xs text-muted">
+                  <FolderIcon className="h-3.5 w-3.5" />
+                  Data folder:{" "}
+                  <code className="rounded bg-surface px-1.5 py-0.5">
+                    {desktopPaths.userData}
+                  </code>
+                </p>
+              )}
             </div>
           </div>
         </Card>

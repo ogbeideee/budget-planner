@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## Verification gates (must all pass before finishing a task)
 - Typecheck: `npx tsc --noEmit`
 - Lint: `npm run lint`
-- Tests: `npm run test` (vitest; currently 330 tests across 35 files)
+- Tests: `npm run test` (vitest; currently 337 tests across 36 files)
 - Build: `npm run build`
 
 On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside commands.
@@ -30,6 +30,18 @@ On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside
   `budget-planner:backup:migration-browser:*` + rows + marker in one transaction).
   `better-sqlite3` is Electron-ABI only — never import it in code loaded by vitest.
   `npm run db:check` verifies the native module.
+- **Desktop features also go through IPC** (`lib/desktop.ts` types the whole bridge:
+  `storage`, `dialog`, `fs`, `shell`, `notify`, `paths`, `backups`, `menu`). Renderer
+  helpers live in `lib/desktopFeatures.ts` (bridge wrappers + `startAutoBackups`);
+  `lib/desktopBootstrap.ts` wires auto-backups + native-menu actions into the store and
+  is initialized once from `components/shell/AppShell.tsx`. Rules: never call
+  `dialog`/`shell`/`fs` APIs from the renderer directly; never write outside
+  `<userData>` except through the save dialog (main enforces absolute paths +
+  `.json`-only writes + 16 MB cap); keep every feature a no-op when `isDesktop()` is
+  false (browser mode is unchanged). File backups live in `<userData>/backups/`
+  (`electron/backups.cjs`: atomic writes, content dedupe, prune to newest 30). The
+  native menu is `electron/menu.cjs`; menu items that need app state send
+  `desktop:menu:action` to the renderer.
 - `IncomePlan` is a **standalone** source: `{ id, month, name, icon, expectedAmount, receivedAmount }`.
   It is NOT tied to income categories. `setIncomePlan(month, id | null, patch)` in
   store/useAppStore.ts upserts ONE source (merge by id; `null` creates). Never rewrite the

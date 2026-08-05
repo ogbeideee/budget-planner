@@ -193,6 +193,45 @@ interface ToastStore {                      // store/useToastStore.ts — NOT pe
   appears in `BackupsManager`) **before** the migrated rows and the
   `migration:browser:done` marker — all in one SQLite transaction. Migration is
   idempotent (marker + non-empty-db guard).
+- **Migration failure semantics.** The entire migration (marker check, backup, rows,
+  marker insert) returns a structured error rather than throwing across IPC. A failure
+  rolls the transaction back: nothing is written, the marker is absent, and the browser
+  localStorage (the source of truth) was never modified — so the original data is
+  restored by construction and the migration retries automatically on the next launch.
+  The main process notifies the user with a native error dialog (suppressed in smoke
+  mode) and logs the failure; the preload logs it too.
+- **File-based backups** (`electron/backups.cjs`, desktop only). A second safety net
+  beside the in-store snapshots: full state payloads written atomically
+  (temp file + rename) into `<userData>/backups/budget-planner-backup-<ISO>.json`,
+  deduped (an identical newest backup is skipped) and pruned to the newest 30 files.
+  The renderer schedules them (see below); restores read the file and go through the
+  same validated `importState` path as exports.
+- **Native desktop features** (Phase 3, desktop only) — all over IPC, nothing exposed
+  that the renderer doesn't need:
+  - `electron/menu.cjs`: native application menu. File (Import `Ctrl+O`, Export
+    `Ctrl+S`, Back up now `Ctrl+B`, Restore latest backup `Ctrl+Shift+B`, Open backup
+    folder `Ctrl+Shift+O`, Reveal data folder `Ctrl+Shift+D`, Quit `Ctrl+Q`), Edit
+    (standard clipboard roles — needed for copy/paste in inputs), View (reload,
+    devtools, zoom, full screen), Window, Help (About with folder paths). Items that
+    need renderer state send `desktop:menu:action` to the focused window; folder
+    actions and About run entirely in main.
+  - `electron/main.cjs` handlers: generic `desktop:dialog:open/save` (validated
+    options); restricted `desktop:fs:writeText/readText` (absolute paths only,
+    `.json`-only writes, 16 MB cap); composite `desktop:import` (open dialog →
+    destructive-action `showMessageBox` → read) and `desktop:export` (save dialog →
+    atomic write); `desktop:shell:openPath/showItemInFolder`; `desktop:notify`
+    (`Notification.isSupported()`-guarded; AUMID set at startup); `desktop:paths`
+    (userData/backupsDir/dbFile for the Settings UI); `desktop:backup:*`
+    (create is **sync** so the renderer can flush on `beforeunload`; list/read/
+    delete/restore-latest are async; restore-latest confirms natively in main).
+  - `electron/preload.cjs` exposes `window.budgetPlannerDesktop.{dialog,fs,shell,
+    notify,paths,backups,menu}` in addition to the existing `storage`/`getAppInfo`;
+    `lib/desktop.ts` types the whole surface.
+  - Renderer wiring: `lib/desktopFeatures.ts` (bridge wrappers + `startAutoBackups`),
+    `lib/desktopBootstrap.ts` (auto-backup hooks + menu-action dispatcher, initialized
+    once from `AppShell`). Automatic backups run at boot (after hydration), every
+    30 minutes, and on `beforeunload`; failures surface as a toast + desktop
+    notification. Browser mode is untouched — every feature degrades to a no-op.
 - On rehydrate, `onRehydrateStorage` sets `useAppStoreErrors.hydrateError` and disables
   writes (`setWritesEnabled(false)`) when the payload is corrupt, so nothing can overwrite
   the unreadable state until the user recovers. `app/error.tsx` detects the corrupt state

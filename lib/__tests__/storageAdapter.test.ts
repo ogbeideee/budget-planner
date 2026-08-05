@@ -30,6 +30,34 @@ function installBridge(
       removeItem: (key) => overrides.removeItem?.(key) ?? true,
       keys: () => overrides.keys?.() ?? [],
     },
+    dialog: {
+      open: async () => ({ canceled: true }),
+      save: async () => ({ canceled: true }),
+    },
+    fs: {
+      writeText: async () => ({ ok: true }),
+      readText: async () => ({ ok: false, error: "n/a" }),
+    },
+    shell: {
+      openPath: async () => ({ ok: true }),
+      showItemInFolder: async () => ({ ok: true }),
+    },
+    notify: async () => ({ ok: true }),
+    paths: async () => ({
+      userData: "C:\\data",
+      backupsDir: "C:\\data\\backups",
+      dbFile: "C:\\data\\budget-planner.sqlite3",
+    }),
+    backups: {
+      create: () => null,
+      list: async () => [],
+      read: async () => ({ ok: false, error: "n/a" }),
+      delete: async () => ({ ok: true }),
+      restoreLatest: async () => ({ status: "canceled" }),
+    },
+    menu: {
+      on: () => () => {},
+    },
   };
 }
 

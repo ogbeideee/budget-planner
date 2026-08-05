@@ -67,36 +67,49 @@ function openDatabase(userDataDir) {
     // the browser data is written BEFORE the migrated rows, so a migration
     // failure can never destroy the source of truth.
     migrateBrowserData(kv) {
-      if (api.get(MIGRATION_MARKER) !== null || api.count() > 0) {
-        return { migrated: false, backupKey: null };
-      }
-      const entries = Object.entries(kv).filter(
-        ([key, value]) =>
-          typeof key === "string" &&
-          key.length > 0 &&
-          typeof value === "string",
-      );
-      if (entries.length === 0) {
-        return { migrated: false, backupKey: null };
-      }
-      const backupKey = `${MIGRATION_BACKUP_PREFIX}${timestampToken()}`;
-      const backupValue = JSON.stringify({
-        app: "budget-planner",
-        backup: true,
-        kind: "migration-browser",
-        createdAt: new Date().toISOString(),
-        sourceVersion: "browser",
-        raw: JSON.stringify(Object.fromEntries(entries)),
-      });
-      const run = db.transaction(() => {
-        insertStmt.run(backupKey, backupValue);
-        for (const [key, value] of entries) {
-          insertStmt.run(key, value);
+      try {
+        if (api.get(MIGRATION_MARKER) !== null || api.count() > 0) {
+          return { migrated: false, backupKey: null };
         }
-        insertStmt.run(MIGRATION_MARKER, new Date().toISOString());
-      });
-      run();
-      return { migrated: true, backupKey };
+        const entries = Object.entries(kv).filter(
+          ([key, value]) =>
+            typeof key === "string" &&
+            key.length > 0 &&
+            typeof value === "string",
+        );
+        if (entries.length === 0) {
+          return { migrated: false, backupKey: null };
+        }
+        const backupKey = `${MIGRATION_BACKUP_PREFIX}${timestampToken()}`;
+        const backupValue = JSON.stringify({
+          app: "budget-planner",
+          backup: true,
+          kind: "migration-browser",
+          createdAt: new Date().toISOString(),
+          sourceVersion: "browser",
+          raw: JSON.stringify(Object.fromEntries(entries)),
+        });
+        const run = db.transaction(() => {
+          insertStmt.run(backupKey, backupValue);
+          for (const [key, value] of entries) {
+            insertStmt.run(key, value);
+          }
+          insertStmt.run(MIGRATION_MARKER, new Date().toISOString());
+        });
+        run();
+        return { migrated: true, backupKey };
+      } catch (error) {
+        // The transaction rolled back: nothing was written and the marker is
+        // absent, so the original browser data is untouched and the migration
+        // will be retried on the next launch. The source of truth (browser
+        // localStorage) is never modified by this function, so "restore" is
+        // a no-op by construction — the caller notifies the user.
+        return {
+          migrated: false,
+          backupKey: null,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     },
     info() {
       return {

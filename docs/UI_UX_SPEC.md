@@ -216,7 +216,12 @@ Sections as cards:
 3. **General** — currency select (USD / NGN); symbol preview (`$` / `₦`) shown next to it.
 4. **Data** — "Export data" (download), "Import data" (file input, inline error slot), "Reset
    all data" (two-step confirm: first modal, then confirm-text dialog typing `RESET`).
+   Desktop only: Export/Import use native save/open dialogs (import confirms natively);
+   a "Backup files" list shows automatic file backups (`<userData>/backups/`) with
+   restore/download/delete; "Open backup folder" and "Reveal data folder" buttons; the
+   backup-folder path and auto-backup cadence are described under the list.
 5. URL param `?action=import` auto-opens the import file picker (used by `app/error.tsx`).
+6. **About** — desktop only: the data folder path is displayed under the app info.
 
 ## 4. Component inventory
 

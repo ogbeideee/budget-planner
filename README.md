@@ -34,11 +34,30 @@ npm run electron:rebuild  # rebuild native deps for Electron (auto-run on npm in
   (`<userData>/budget-planner.sqlite3`). Browser-era data auto-migrates on
   first launch with a pre-migration backup.
 - `npm run desktop:smoke` / `npx electron . --smoke` boots the app, exercises
-  routing, and asserts the bridge + SQLite roundtrip (also works on the
-  packaged exe).
+  routing, and asserts the bridge + SQLite roundtrip + native menu + backup
+  file roundtrip (also works on the packaged exe).
 - Installer is an assisted NSIS setup (install-dir choice, shortcuts,
   uninstall support). Packaging requires the native toolchain (Python +
   MSVC build tools) for better-sqlite3.
+
+### Desktop features
+
+- **Native menu + shortcuts:** File — Import `Ctrl+O`, Export `Ctrl+S`, Back up
+  now `Ctrl+B`, Restore latest backup `Ctrl+Shift+B`, Open backup folder
+  `Ctrl+Shift+O`, Reveal data folder `Ctrl+Shift+D`, Quit `Ctrl+Q`. Edit
+  (clipboard), View (reload/devtools/zoom/full screen), Window, Help (About).
+- **Native file dialogs:** Settings → Data → Export/Import JSON use save/open
+  dialogs with a destructive-action confirmation on import.
+- **Desktop notifications:** backup failures and restore results (Windows
+  toasts).
+- **Automatic backups:** full state written to `<userData>/backups/` at
+  startup, every 30 minutes, and on exit — deduplicated, newest 30 kept.
+  Restore from the Settings list, or `Ctrl+Shift+B` for the latest.
+- **Folders:** "Open backup folder" / "Reveal data folder" in Settings and the
+  File menu; the About card shows the real paths.
+
+All desktop features cross IPC into the main process (`electron/main.cjs`,
+`electron/preload.cjs`); the renderer never touches the file system directly.
 
 ## Quality gates
 

@@ -7,9 +7,14 @@ import { useAppStoreErrors } from "@/store/useAppStore";
 import { ToastHost } from "@/components/ui/ToastHost";
 import { useRecurring } from "@/hooks/useRecurring";
 import { useTheme } from "@/hooks/useTheme";
+import { initDesktopBootstrap } from "@/lib/desktopBootstrap";
 import { BottomNav } from "./BottomNav";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
+
+// Desktop-only integrations (auto-backups, native menu actions). No-op in a
+// plain browser and on the server; idempotent across hot reloads.
+initDesktopBootstrap();
 
 export function AppShell({ children }: { children: ReactNode }) {
   const hydrateError = useAppStoreErrors((s) => s.hydrateError);

@@ -30,13 +30,16 @@ engineer can implement them without further clarification.
 - All four phases are delivered. The app is feature-complete per `PROJECT_SPEC.md`
   (incl. FR-18 income planning) and is in stabilization: QA passes only, no feature work.
 - Verification gates — all green at the latest commit:
-  `npx tsc --noEmit` · `npm run lint` · `npm run test` (330 tests / 35 files) ·
+  `npx tsc --noEmit` · `npm run lint` · `npm run test` (337 tests / 36 files) ·
   `npm run build` (all 6 routes statically prerendered).
 - State schema **version 3**: `validateAppState` (`lib/validate.ts`) accepts 1–3 and
   migrates; `CURRENT_STORAGE_VERSION = 3` (`lib/storage.ts`).
 - Desktop persistence: SQLite (`better-sqlite3`) in the Electron main process at
   `<userData>/budget-planner.sqlite3`; browser-era data auto-migrates on first launch
   with a pre-migration backup (2026-08-05).
+- Desktop features: native menu + shortcuts, native file dialogs (import/export),
+  desktop notifications, automatic file backups (`<userData>/backups/`, newest 30),
+  restore-backup workflow, open backup / reveal data folder (2026-08-05).
 
 ### Architecture & folder structure
 
@@ -222,6 +225,12 @@ preserved; browser mode untouched):
   (`budget-planner:backup:migration-browser:*`, appears in BackupsManager) then the rows
   and the `migration:browser:done` marker in ONE transaction (atomic, idempotent —
   verified: 10 rows incl. backup on first launch, unchanged on relaunch).
+- **Migration failure handling:** the whole migration returns a structured error instead
+  of throwing across IPC; on failure the transaction rolls back (nothing written, marker
+  absent, browser localStorage untouched) so the original data is preserved and the
+  migration retries next launch. The main process shows a native error dialog (skipped
+  in smoke mode) and both processes log it. `npm run db:check` exercises both the success
+  path and a forced-failure path (error returned, 0 rows left, retry-ready).
 - **Native toolchain:** machine needed Python (installed 3.12 via winget) + VS 2022 C++
   for node-gyp; `postinstall` = `electron-builder install-app-deps` keeps the local
   module matched to Electron; `npm run db:check` verifies the native module + optional
@@ -230,6 +239,39 @@ preserved; browser mode untouched):
   db file's existence under userData (dev + prod + packaged exe all green); tests
   324→330 (6 storageAdapter cases); tsc/lint/build green. Profile note: the desktop app
   now uses `Roaming\Budget Planner` (was `Roaming\budget-planner` pre-productName).
+
+### Delivered: desktop migration step 4 — native desktop features (2026-08-05)
+
+Web behaviour preserved; every feature is additive and desktop-only:
+
+- **Native application menu** (`electron/menu.cjs`): File (Import `Ctrl+O`,
+  Export `Ctrl+S`, Back up now `Ctrl+B`, Restore latest backup `Ctrl+Shift+B`,
+  Open backup folder `Ctrl+Shift+O`, Reveal data folder `Ctrl+Shift+D`, Quit
+  `Ctrl+Q`), Edit (standard clipboard roles — required for copy/paste in inputs
+  on Windows), View (reload/devtools/zoom/full screen), Window, Help (About
+  dialog). Actions that need renderer state send `desktop:menu:action` to the
+  focused window; folder actions + About run in main only.
+- **Native file dialogs + safe file IPC:** generic `dialog.open/save` and
+  restricted `fs.writeText/readText` (absolute paths, `.json`-only writes,
+  16 MB cap). Composite `desktop:import` (open → destructive confirm → read)
+  and `desktop:export` (save dialog → atomic write) drive the Settings buttons
+  and menu items. Browser mode unchanged.
+- **Desktop notifications** via `desktop:notify` (guarded by
+  `Notification.isSupported()`); used for backup failure + restore results.
+- **Automatic file backups** (`electron/backups.cjs`): atomic temp+rename
+  writes, content dedupe, prune to newest 30 in `<userData>/backups/`; schedule
+  = boot (after hydration) + every 30 min + `beforeunload` flush (sync IPC,
+  like the storage seam). Failures → toast + desktop notification.
+- **Restore backup workflow:** file backups listed in Settings → Data
+  (BackupsManager "Backup files" section): restore w/ confirmation, download
+  via save dialog, delete. Menu "Restore latest backup" reads the newest file
+  in main, confirms natively, restores via `importState`. File backups and
+  exports share the `{ state, version }` envelope.
+- **Open Backup Folder / Reveal Data Folder** via `shell` IPC; buttons in
+  Settings and the File menu; real paths shown in the About/Data cards.
+- **Verification:** smoke asserts menu groups + accelerators, full bridge
+  surface, and a create/list/read/delete backup roundtrip (dev + prod green);
+  tests 330→337 (+7 `electron/backups.test.ts`); tsc/lint/build green.
 
 ### Future roadmap (candidates, not committed)
 
@@ -273,4 +315,5 @@ preserved; browser mode untouched):
 | 2026-08-05 | **Final UI consistency polish (visual only, no redesign):** single surface radius — `Card`/`Disclosure` quiet+brand `rounded-2xl`→`rounded-xl`; single caption scale — all `text-[11px]`→`text-xs` (SummaryCards hint + Edit pill, MonthlyStats labels, AllocationPanel % pill, BackupsManager badge, BottomNav labels, ReportsView snapshot + prediction captions); single motion timing — Disclosure chevron/height `duration-[220ms]`→`duration-200`; Income trend chart empty state upgraded from a plain `<p>` to the shared `EmptyState` (all 6 report charts consistent); missing category colors now resolve via shared `categoryColor()` (replaces raw `#6b7280` fallbacks in AllocationPanel + SettingsView recurring rows); Timeline income-row placeholder `w-11`→`w-10` so Edit/Delete align pixel-perfectly with expense rows; ThemeToggle icons sized by `h-4 w-4` classes instead of 16px SVG attrs; IncomeModal inputs `h-10`→`h-11` (app-wide control height); PageSkeleton blocks `rounded-lg`→`rounded-xl` (skeleton mirrors cards). `TransactionRow.test.tsx` width assertion updated; tests stay 297; tsc/lint/build green | `UI_UX_SPEC.md` |
 | 2026-08-05 | **Electron desktop app delivered:** `next.config.ts` `output: "export"` (6 static routes → `out/`, Next 16 `.txt` RSC payloads); `electron/main.cjs` — privileged `app://bundle` protocol (`standard/secure/supportFetchAPI/stream`) with extensionless-route → app-shell fallback, `__next.<route>.__PAGE__.txt` prefetch mapping, path-traversal guard; window 1280×800 min 375×600, `contextIsolation` + `sandbox` on; `--smoke` mode boots the app, clicks `/history` until the router converges, asserts title/body/no renderer errors (works from the packaged exe too); electron-builder NSIS + portable targets (`appId com.budgetplanner.desktop`) → `dist/BudgetPlanner-Setup-0.1.0.exe` + `BudgetPlanner-Portable-0.1.0.exe`; `electron@43` + `electron-builder@26` devDeps; `electron/` eslint-ignored + tracked, `out/`/`dist/` gitignored. Smoke test + packaged-exe smoke + all gates green (tsc/lint/324 tests/build). Gaps: default Electron icon, unsigned executables | `CHANGELOG.md` |
 | 2026-08-05 | **Desktop migration step 2 — dev workflow + secure shell:** `npm run dev` launches Next dev server + Electron together (`concurrently` + `wait-on`; `dev:web`/`dev:electron` parts, `ELECTRON_DEV_URL` overridable); Electron `--dev` mode loads `http://localhost:3000` with a server-retry loop and skips the `out/` check; new `electron/preload.cjs` (sandboxed, contextIsolation, no nodeIntegration, no remote module) exposes a feature-less `budgetPlannerDesktop` bridge (`platform` + `getAppInfo()` via `ipcMain.handle("desktop:app-info")`) as the future IPC seam; smoke test asserts the bridge is exposed + answers; scripts `electron`/`dev`/`build`/`dist` (`desktop:package` = build + dist); `scripts/make-icon.mjs` generates `build/icon.ico`+`icon.png` (indigo rounded square, white coin + brand ring, brand-600/700) — no more default icon; NSIS → assisted installer (`oneClick: false`: install dir choice, desktop/start-menu shortcuts, uninstall support). Gates green; dev-server smoke + packaged-exe smoke green | `CHANGELOG.md` |
-| 2026-08-05 | **Desktop migration step 3 — SQLite persistence:** browser persistence replaced inside the desktop shell via `better-sqlite3` in the Electron main process (`electron/db.cjs`: `kv` table, WAL, user_version 1, `<userData>/budget-planner.sqlite3`; productName set top-level so the app owns its profile; electron-builder rebuilds + asar-unpacks the native module). Renderer never touches SQLite — sync `desktop:storage:*` IPC channels (get/set/remove/keys/needs-migration/migrate, validated main-side) exposed through the preload bridge; `lib/desktop.ts` types it; `lib/storageAdapter.ts` is the single seam (bridge in Electron, localStorage in browser, no-op in SSR); all call sites migrated (zustand persist, `lib/storage.ts`, categorization, theme bootstrap, disclosure, icon lists; failed bridge writes throw like quota errors). First-launch migration: preload ships localStorage to main, which writes a `budget-planner:backup:migration-browser:*` backup + rows + marker in ONE transaction (atomic, idempotent; backup shows in BackupsManager). Native toolchain: Python 3.12 installed (winget) for node-gyp; `postinstall` = `electron-builder install-app-deps`; `npm run db:check` verifies the module/real-db dump. Smoke asserts SQLite roundtrip + db file under userData (dev/prod/packaged green). Tests 324→330 (6 storageAdapter cases); tsc/lint/build green | `ARCHITECTURE.md` |
+| 2026-08-05 | **Desktop migration step 3 — SQLite persistence:** browser persistence replaced inside the desktop shell via `better-sqlite3` in the Electron main process (`electron/db.cjs`: `kv` table, WAL, user_version 1, `<userData>/budget-planner.sqlite3`; productName set top-level so the app owns its profile; electron-builder rebuilds + asar-unpacks the native module). Renderer never touches SQLite — sync `desktop:storage:*` IPC channels (get/set/remove/keys/needs-migration/migrate, validated main-side) exposed through the preload bridge; `lib/desktop.ts` types it; `lib/storageAdapter.ts` is the single seam (bridge in Electron, localStorage in browser, no-op in SSR); all call sites migrated (zustand persist, `lib/storage.ts`, categorization, theme bootstrap, disclosure, icon lists; failed bridge writes throw like quota errors). First-launch migration: preload ships localStorage to main, which writes a `budget-planner:backup:migration-browser:*` backup + rows + marker in ONE transaction (atomic, idempotent; backup shows in BackupsManager); failure handling: structured error, rollback keeps browser data intact + retry next launch, native error dialog (skipped in smoke). Native toolchain: Python 3.12 installed (winget) for node-gyp; `postinstall` = `electron-builder install-app-deps`; `npm run db:check` verifies module + migration success/failure paths + real-db dump. Smoke asserts SQLite roundtrip + db file under userData (dev/prod/packaged green). Tests 324→330 (6 storageAdapter cases); tsc/lint/build green | `ARCHITECTURE.md` |
+| 2026-08-05 | **Desktop migration step 4 — native desktop features:** native application menu (`electron/menu.cjs`: File Import Ctrl+O / Export Ctrl+S / Back up now Ctrl+B / Restore latest backup Ctrl+Shift+B / Open backup folder Ctrl+Shift+O / Reveal data folder Ctrl+Shift+D / Quit Ctrl+Q; Edit clipboard roles; View reload/devtools/zoom/fullscreen; Help About) — renderer-state actions sent as `desktop:menu:action`, folder actions handled in main; native file dialogs + restricted fs IPC (absolute paths, .json-only writes, 16 MB cap) with composite `desktop:import` (open → destructive confirm → read) and `desktop:export` (save dialog → atomic write); desktop notifications (`desktop:notify`, Notification.isSupported-guarded; used for backup failure + restore results); automatic file backups (`electron/backups.cjs`: atomic temp+rename, content dedupe, prune to newest 30 in `<userData>/backups/`; boot + every 30 min + beforeunload flush via sync IPC); restore-backup workflow (file backups in Settings Data/BackupsManager + menu Restore latest; shared `{state, version}` envelope restored through validated `importState`); Open Backup Folder / Reveal Data Folder (shell IPC + Settings buttons + About/data-folder paths). Renderer wiring: `lib/desktopFeatures.ts` (bridge wrappers + `startAutoBackups`), `lib/desktopBootstrap.ts` (menu dispatcher + auto-backup, init from AppShell). Smoke asserts menu groups/accelerators, full bridge surface, backup create/list/read/delete roundtrip (dev+prod green). Tests 330→337 (+7 `electron/backups.test.ts`); tsc/lint/build green | `ARCHITECTURE.md` |

@@ -28,6 +28,43 @@ const storage = {
   },
 };
 
+// Phase 3: native desktop features. Every call crosses IPC into the main
+// process; the renderer never touches the file system or dialogs directly.
+const dialog = {
+  open: (options) => ipcRenderer.invoke("desktop:dialog:open", options),
+  save: (options) => ipcRenderer.invoke("desktop:dialog:save", options),
+};
+
+const fs = {
+  writeText: (payload) => ipcRenderer.invoke("desktop:fs:writeText", payload),
+  readText: (payload) => ipcRenderer.invoke("desktop:fs:readText", payload),
+};
+
+const shell = {
+  openPath: (target) => ipcRenderer.invoke("desktop:shell:openPath", target),
+  showItemInFolder: (target) =>
+    ipcRenderer.invoke("desktop:shell:showItemInFolder", target),
+};
+
+const backups = {
+  create: (content) => ipcRenderer.sendSync("desktop:backup:create", content),
+  list: () => ipcRenderer.invoke("desktop:backup:list"),
+  read: (payload) => ipcRenderer.invoke("desktop:backup:read", payload),
+  delete: (payload) => ipcRenderer.invoke("desktop:backup:delete", payload),
+  restoreLatest: () => ipcRenderer.invoke("desktop:backup:restoreLatest"),
+};
+
+// Menu events flow main -> renderer; the renderer registers one callback
+// (the bridge forwards the unsubscription so listeners can be cleaned up).
+const menu = {
+  on(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, action) => callback(action);
+    ipcRenderer.on("desktop:menu:action", listener);
+    return () => ipcRenderer.removeListener("desktop:menu:action", listener);
+  },
+};
+
 function migrateBrowserData() {
   try {
     const needsMigration = ipcRenderer.sendSync("desktop:storage:needs-migration");
@@ -43,6 +80,12 @@ function migrateBrowserData() {
       console.log(
         `[desktop] migrated ${Object.keys(kv).length} browser keys to SQLite (backup: ${result.backupKey})`,
       );
+    } else if (result && result.error) {
+      // The main process already notified the user; the browser data is
+      // untouched and the migration retries on the next launch.
+      console.error(
+        `[desktop] browser-data migration failed: ${result.error} — browser data is intact, will retry on next launch`,
+      );
     }
   } catch (error) {
     console.warn(`[desktop] browser-data migration skipped: ${error.message}`);
@@ -55,4 +98,11 @@ contextBridge.exposeInMainWorld("budgetPlannerDesktop", {
   platform: process.platform,
   getAppInfo: () => ipcRenderer.invoke("desktop:app-info"),
   storage,
+  dialog,
+  fs,
+  shell,
+  notify: (payload) => ipcRenderer.invoke("desktop:notify", payload),
+  paths: () => ipcRenderer.invoke("desktop:paths"),
+  backups,
+  menu,
 });
