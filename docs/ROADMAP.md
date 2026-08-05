@@ -1,7 +1,7 @@
 # Budget Planner — Delivery Roadmap
 
 Project: client-side personal budget planner.
-Stack: Next.js 16.2.12 (App Router) · React 19.2.4 · TypeScript 5 · Tailwind CSS 4 · ESLint 9.
+Stack: Next.js 16.2.12 (App Router) · React 19.2.4 · TypeScript 5 · Tailwind CSS 4 · ESLint 9 · Zustand 5 (`persist`) · Recharts 3 (route-split, `/reports` only) · Vitest 4 + Testing Library.
 Persistence: browser `localStorage` (no backend). See `ARCHITECTURE.md`.
 
 Every phase produces one Markdown document in `docs/`. Documents are written so a software
@@ -22,6 +22,149 @@ engineer can implement them without further clarification.
 2. Changes to scope after a phase is approved must be recorded in `ROADMAP.md` under
    "Change log" and the affected phase document updated.
 3. A phase is complete only when its exit criteria are met (see table above).
+
+## Current state (2026-08-05)
+
+### Status
+
+- All four phases are delivered. The app is feature-complete per `PROJECT_SPEC.md`
+  (incl. FR-18 income planning) and is in stabilization: QA passes only, no feature work.
+- Verification gates — all green at the latest commit:
+  `npx tsc --noEmit` · `npm run lint` · `npm run test` (324 tests / 34 files) ·
+  `npm run build` (all 6 routes statically prerendered).
+- State schema **version 3**: `validateAppState` (`lib/validate.ts`) accepts 1–3 and
+  migrates; `CURRENT_STORAGE_VERSION = 3` (`lib/storage.ts`).
+
+### Architecture & folder structure
+
+Client-only Next.js App Router app; all logic is `"use client"`; no backend, no API routes,
+no server state. Single zustand store (`store/useAppStore.ts`) with `persist` middleware;
+derived math lives in pure selectors (`lib/selectors.ts`, `lib/finance.ts`).
+
+```
+app/
+  layout.tsx                # fonts, <html lang="en">, <AppShell>
+  page.tsx                  # /  Planner (primary workspace)
+  todo/page.tsx             # /todo    actionable recommendations
+  history/page.tsx          # /history chronological ledger (timeline)
+  reports/page.tsx          # /reports analytical charts + CSV export
+  settings/page.tsx         # /settings categories, currency, theme, recurring rules, backups, import/export
+  upcoming/page.tsx         # /upcoming future expenses + funding urgency
+  error.tsx                 # fatal error boundary -> RecoveryPanel
+  globals.css               # Tailwind entry + @theme design tokens
+components/
+  shell/    AppShell, Sidebar, BottomNav, Header, PageHeader, nav
+  ui/       Button, Card, Input, Select, Modal, Drawer, ConfirmDialog, Disclosure,
+            EmptyState, Toast(+Host), MonthPicker, Slider, ProgressBar, SectionHeading,
+            PageSkeleton, AnimatedNumber, IconPicker, IconValue, icons
+  planner/  PlannerView, SummaryCards, MonthlyStats, Hero, OverBudgetAlert,
+            NeedsFundingSection, BudgetList, BudgetForm, BudgetRow, PriorityBadge,
+            AllocationPanel, BudgetHealthCard, QuickAddExpense, DeferredSection,
+            InsightsPanel, ExpenseBreakdown, TodayRecommendations, BudgetSuggestions, IncomeModal
+  history/  HistoryView, TransactionList
+  txn/      TransactionForm, TransactionRow, TransactionFilters, RecurrenceForm
+  upcoming/ UpcomingView, FutureExpenseForm
+  reports/  ReportsView, ChartCard, chartStyles, IncomeExpenseChart, SpendingTrendChart,
+            SavingsChart, BudgetUtilizationChart, TopCategoriesChart, ExpectedVsActualChart,
+            IncomeSourceChart, IncomeTrendChart, ReportsInsights
+  todo/     TodoView          insights/ InsightList
+  settings/ SettingsView, CategoryManager, CategoryEditModal, BackupsManager, iconLibrary
+  theme/    ThemeToggle       recovery/ RecoveryPanel
+  charts/   BarChart           # custom animated CSS chart (Planner)
+lib/                          # pure, test-covered (17 test files)
+  types.ts date.ts money.ts finance.ts selectors.ts allocation.ts
+  insights.ts todo.ts predictions.ts recommendations.ts reportTrends.ts monthStats.ts
+  budgetHealth.ts accents.ts timeline.ts upcoming.ts recurrence.ts categorize.ts
+  seed.ts validate.ts storage.ts theme.ts scrollLock.ts ids.ts
+store/
+  useAppStore.ts              # state + actions, persist middleware
+  useToastStore.ts            # transient toast queue (not persisted)
+hooks/
+  useMonth, useToast, useTheme, usePlannerStatus, useRecurring,
+  useAnimatedNumber, useChartColors, useReducedMotion
+public/                       # favicon.ico only
+tests: components/*.test.tsx · lib/__tests__/ · store/__tests__/
+```
+
+### Feature inventory
+
+| Area | Current state |
+|------|---------------|
+| Income system | Standalone month-scoped `IncomePlan` `{id, month, name, icon, expectedAmount, receivedAmount}`; `IncomeModal` edits per source with live Difference status; icons via `IconPicker` (favourites/recents + vector set); `lib/finance.ts` `monthFinance()` is the single source of truth — Received = `max(ledger income, Σ plan.received)`, Net, Remaining, Projected, savings rate. Reports income charts (sources, expected vs actual, trend) use plan data |
+| Budget planner | `/` workspace: summary cards, month stats, needs-funding (obligation-driven `fundingGaps` list with Fund button + focus/scroll), allocated budget list (priority, over-budget pills), allocation sliders (sub-unit step fix), budget health score, quick add expense, deferred expenses, insights, expense breakdown, recommendations, monthly income |
+| To-Do | `/todo` aggregates actionable items (`lib/todo.ts`, same predicates as insights), capped at 5 |
+| Timeline | `/history` chronological ledger: grouped buckets (Today/Yesterday/Last week/Earlier/Upcoming), search, type/category filters, URL-persisted sort (`&sort=`), pagination 25/page, deferred chip, move-to-next-month |
+| Upcoming & recurring | `/upcoming` groups by Overdue/Today/Tomorrow/This week/Next week/Later; recurring rules generate month instances (`useRecurring`), exceptions tracked; funding urgency (critical/soon/low); future-expense forms with category suggestions |
+| Reports | 6-month window ending at the selected month; 9 Recharts charts + insights card; exact tooltips, compact ticks, reduced-motion, empty states, responsive (`ResponsiveContainer width="100%"`); CSV export (decimal amounts + Currency column) |
+| Settings | Theme (light/dark/system, OS-scheme listener), currency (USD/NGN formatting-only), category manager (add/edit/delete with validation, emoji-only icons, delete-reason toasts), recurring rules, backups manager, JSON import/export |
+| Error handling | Fatal error boundary detects `CorruptedStateError` and renders `RecoveryPanel` (scan browser, restore from backup, import file, or start fresh); everything else gets a generic retry page |
+
+### Persistence layer
+
+- `localStorage` keys: `budget-planner:state` (main state, envelope `{state, version}`),
+  `budget-planner:categorization` (learned mapping), `budget-planner:backup:*` (snapshots),
+  `disclosure:*` / `settings:cats:*` (UI prefs), `settings:favourite-icons` / `settings:recent-icons`.
+- Writes go through the zustand `persist` middleware; `lib/storage.ts` exposes
+  `saveAppState`/`setWritesEnabled` for tests and guards every write against
+  quota/security exceptions.
+- **Migrations** (`lib/validate.ts`): v1 backfills income categories and converts tagged
+  `monthlyIncome` transactions into category-bound plans; v2 rewrites those into standalone
+  `IncomePlan` entries; legacy field normalization always runs; version > 3 rejected.
+  Legacy and corrupt payloads are auto-snapshotted (`auto-vN`, `auto-corrupt`) before any
+  parse/migration, so nothing is ever destroyed.
+- **Import/export**: JSON export (`serializeExport`/`parseExportPayload`, validated on
+  import), CSV export on `/reports`, restore from any valid state payload.
+- **Backup/restore**: manual snapshots, automatic legacy/corrupt snapshots, `BackupsManager`
+  (list/restore/delete with metadata), `scanRecoverablePayloads` for the recovery screen.
+
+### Known issues & technical debt
+
+1. `writesEnabled` is a hidden module-level flag in `lib/storage.ts` — disabled when
+   hydration fails, re-enabled only by import/restore/reset. Intended behavior, but it is
+   process-global and can surprise a second store instance in the same session.
+2. `lib/scrollLock.ts` keeps a module `lockCount` with no failsafe — if modal cleanup is
+   skipped by an error-boundary path, body scroll stays locked for the session.
+3. Toast auto-dismiss timers in `useToastStore` are untracked — dismissing a toast early
+   leaves a harmless no-op timer (the duplicate component-side timer was removed in the
+   production audit).
+4. No CI pipeline and no E2E tests — verification is local gates + 324 unit/integration tests.
+5. `vitest.config.ts` uses ESM syntax in a CJS-loaded file (Vite 7 will require `.mjs`
+   or `"type": "module"`).
+6. A few migration tests cast `as unknown as AppState` when constructing legacy payloads.
+   (Note: `docs/ARCHITECTURE.md` was refreshed on 2026-08-05 to match the current codebase —
+   the earlier stale-component/ID/signature inaccuracies are resolved.)
+
+### Production readiness
+
+Health score **92/100** (audit of 2026-08-05): all gates green, zero TODO/FIXME/debugger,
+324 tests, defensive persistence (validation + migration + auto-backups + recovery UI),
+clean memory hygiene, a11y foundations (focus traps, aria-live toasts, reduced motion,
+skip link), and consistent tokens. Ready for desktop packaging; the only decision still
+open is the packaging shape (see next section).
+
+### Planned: Electron migration (next)
+
+Not started — no packaging files exist yet. Recommended approach from the production audit:
+
+1. Add `output: "export"` to `next.config.ts` (all 6 routes already prerender as static
+   content) and ship the exported folder — or run `next start` behind the Electron window.
+2. `createId()` (`lib/ids.ts`) already provides the non-secure-context fallback, so
+   `file://`/custom-protocol shells cannot crash entity creation.
+3. `localStorage` works under Electron/WebView2; pin a stable origin (e.g. `app://` or
+   `file://`) so data and auto-backups persist under the OS user profile.
+4. Geist fonts are fetched once at build time — the build machine needs network; runtime
+   is fully offline. Set `NEXT_TELEMETRY_DISABLED=1` in packaging builds.
+5. Smoke test the packaged app (boot → create transaction/budget/income plan → reload →
+   verify persistence and migration backup) before release.
+
+### Future roadmap (candidates, not committed)
+
+- CI pipeline (lint/typecheck/test/build on push) + Playwright E2E smoke — recommended
+  before or with the Electron release.
+- Multi-device sync / backend — the largest scope change; explicitly out of the current
+  client-side design.
+- Move to IndexedDB behind the storage interface if datasets approach ~50k records
+  (current localStorage quota ≈ tens of thousands of transactions, far beyond personal use).
 
 ## Change log
 
