@@ -16,7 +16,7 @@ Baseline requirements: `PROJECT_SPEC.md` (Phase 1).
 | Framework | Next.js 16.2.12, App Router | Project default; routing + SSR-free static shell |
 | UI | React 19.2.4 with `"use client"` components | All app logic is client-side |
 | Styling | Tailwind CSS 4 (`@theme` tokens in `app/globals.css`) | Zero-config, token-based design system per `UI_UX_SPEC.md` |
-| State | Zustand (`zustand` v5, `persist` middleware) | Minimal boilerplate, `localStorage` persistence, selector-based subscriptions |
+| State | Zustand (`zustand` v5, `persist` middleware) | Minimal boilerplate; persistence seam = localStorage in the browser, SQLite in the Electron main process (via IPC) |
 | ID | `createId()` in `lib/ids.ts` — `crypto.randomUUID()` with a `Date.now()`/`Math.random()` fallback | `randomUUID` requires a secure context; the fallback keeps entity creation safe in non-secure contexts (e.g. a packaged desktop shell over `file://`/custom protocol) |
 | Charts | Recharts (`recharts` v3) for analytical charts on `/reports`; pure CSS/SVG animated components (CSS width transitions) for the Planner's `BarChart` | Recharts approved by product owner (ROADMAP change log 2026-08-01); bundle is route-split — only the Reports page loads it. Planner keeps the lightweight custom chart (FR-15) |
 | Dates | Native `Date` + fixed `"YYYY-MM"` / `"YYYY-MM-DD"` helpers in `lib/date.ts` | No dependency; all parsing/formatting centralized |
@@ -172,9 +172,27 @@ interface ToastStore {                      // store/useToastStore.ts — NOT pe
 
 - Persistence: `persist(state, { name: "budget-planner:state", version: 3 })` from
   `zustand/middleware` with a custom `storage` adapter. `getItem` runs `parseStoredState`
-  (validation + migration); `setItem`/`removeItem` route through `lib/storage.ts` (writes
-  disabled while the state is corrupt, exceptions swallowed). Writes are **synchronous**
-  after every `set` — the persist middleware serializes immediately; there is no debounce.
+  (validation + migration); `setItem`/`removeItem` route through `lib/storageAdapter.ts`
+  (writes disabled while the state is corrupt, exceptions swallowed). Writes are
+  **synchronous** after every `set` — the persist middleware serializes immediately;
+  there is no debounce.
+- **One storage seam, two backends.** `lib/storageAdapter.ts` is the only persistence
+  entry point for the whole app. In a plain browser it wraps `localStorage`. Under
+  Electron it routes through the preload bridge (`window.budgetPlannerDesktop.storage`,
+  `lib/desktop.ts`) into SQLite in the **main process** (`electron/db.cjs`): a
+  `kv(key, value)` table (WAL, `user_version = 1`) at
+  `<userData>/budget-planner.sqlite3`. The renderer never touches the database or
+  better-sqlite3; all access is synchronous IPC (`desktop:storage:*` channels,
+  `ipcRenderer.sendSync` — deliberately sync because the storage seam is
+  localStorage-shaped and the handlers are trivial prepared statements). A failure to
+  write over the bridge throws, mirroring browser quota exceptions.
+- **First-launch migration.** Before the bridge is exposed, the preload checks
+  `desktop:storage:needs-migration` (db empty). If the page origin's localStorage holds
+  browser-era data, it is sent to the main process, which writes a full backup row
+  (`budget-planner:backup:migration-browser:*`, same envelope as app backups, so it
+  appears in `BackupsManager`) **before** the migrated rows and the
+  `migration:browser:done` marker — all in one SQLite transaction. Migration is
+  idempotent (marker + non-empty-db guard).
 - On rehydrate, `onRehydrateStorage` sets `useAppStoreErrors.hydrateError` and disables
   writes (`setWritesEnabled(false)`) when the payload is corrupt, so nothing can overwrite
   the unreadable state until the user recovers. `app/error.tsx` detects the corrupt state
@@ -187,10 +205,12 @@ interface ToastStore {                      // store/useToastStore.ts — NOT pe
   rejected.
 - Before parsing, `parseStoredState` auto-snapshots legacy (`auto-v{n}`) and corrupt
   (`auto-corrupt`) payloads under `budget-planner:backup:*`, so the original bytes are
-  never destroyed and remain restorable from `RecoveryPanel`/`BackupsManager`.
-- No component writes to `localStorage` directly; production writes flow through the
-  persist middleware, and storage helpers (`saveAppState`, snapshots, backups) go through
-  `lib/storage.ts`.
+  never destroyed and remain restorable from `RecoveryPanel`/`BackupsManager`. In
+  Electron these snapshots land in SQLite through the same seam.
+- No component writes to storage directly; production writes flow through the persist
+  middleware, and storage helpers (`saveAppState`, snapshots, backups) go through
+  `lib/storage.ts`, which delegates to the seam. UI state keys (disclosure, icon
+  favourites/recents) also go through the seam.
 - The toast store is intentionally separate and transient: `push()` schedules auto-dismiss
   (3 s) and `ToastHost` renders; nothing toast-related is persisted.
 
@@ -236,7 +256,9 @@ UI event (component)
   ▼
 Zustand store  ──set()──►  new immutable AppState
   │
-  ├── persist middleware ──► localStorage "budget-planner:state" (synchronous)
+  ├── persist middleware ──► storage seam (synchronous)
+  │         ├── browser: localStorage "budget-planner:state"
+  │         └── Electron: IPC → SQLite kv (main process, <userData>/budget-planner.sqlite3)
   │
   └── notify subscribers
         │

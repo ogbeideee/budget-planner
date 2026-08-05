@@ -2,7 +2,7 @@
 
 Project: client-side personal budget planner.
 Stack: Next.js 16.2.12 (App Router) · React 19.2.4 · TypeScript 5 · Tailwind CSS 4 · ESLint 9 · Zustand 5 (`persist`) · Recharts 3 (route-split, `/reports` only) · Vitest 4 + Testing Library.
-Persistence: browser `localStorage` (no backend). See `ARCHITECTURE.md`.
+Persistence: browser `localStorage` (no backend) — or SQLite in the Electron main process when running as the desktop app (see `ARCHITECTURE.md`).
 
 Every phase produces one Markdown document in `docs/`. Documents are written so a software
 engineer can implement them without further clarification.
@@ -30,10 +30,13 @@ engineer can implement them without further clarification.
 - All four phases are delivered. The app is feature-complete per `PROJECT_SPEC.md`
   (incl. FR-18 income planning) and is in stabilization: QA passes only, no feature work.
 - Verification gates — all green at the latest commit:
-  `npx tsc --noEmit` · `npm run lint` · `npm run test` (324 tests / 34 files) ·
+  `npx tsc --noEmit` · `npm run lint` · `npm run test` (330 tests / 35 files) ·
   `npm run build` (all 6 routes statically prerendered).
 - State schema **version 3**: `validateAppState` (`lib/validate.ts`) accepts 1–3 and
   migrates; `CURRENT_STORAGE_VERSION = 3` (`lib/storage.ts`).
+- Desktop persistence: SQLite (`better-sqlite3`) in the Electron main process at
+  `<userData>/budget-planner.sqlite3`; browser-era data auto-migrates on first launch
+  with a pre-migration backup (2026-08-05).
 
 ### Architecture & folder structure
 
@@ -161,8 +164,72 @@ over a privileged `app://bundle` protocol:
    (appId `com.budgetplanner.desktop`; `dist/` is gitignored). The packaged exe passes
    the smoke test. `electron@43` + `electron-builder@26` in devDependencies; electron
    files in `electron/` (eslint-ignored, git-tracked).
-6. Known gaps: default Electron icon (no brand icon yet); executables are unsigned;
-   runtime is fully offline (Geist fonts fetched at build time).
+6. Known gaps: executables are unsigned; runtime is fully offline (Geist fonts fetched
+   at build time).
+
+### Delivered: desktop migration step 2 — dev workflow + secure shell (2026-08-05)
+
+Incremental upgrade of the desktop shell (no UI/business changes):
+
+- **Dev workflow:** `npm run dev` now launches the Next.js dev server **and** Electron
+  together (via `concurrently` + `wait-on`). Electron in `--dev` mode loads
+  `http://localhost:3000` (`ELECTRON_DEV_URL` overridable) with a retry loop until the
+  server answers (~60s cap); it skips the `out/` bundle check in dev. Dev-server smoke:
+  `electron . --dev --smoke` runs the same assertions against the dev server (verified
+  green: title/navigation/bridge).
+- **Secure preload + IPC:** new `electron/preload.cjs` runs sandboxed
+  (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, no remote
+  module). It exposes a minimal, feature-less `window.budgetPlannerDesktop` bridge
+  (`platform` + `getAppInfo()` → `ipcMain.handle("desktop:app-info")` returning
+  name/version/platform/isPackaged). No desktop features yet — the channel exists as
+  the future IPC seam. The smoke test now asserts the bridge is exposed and answers.
+- **Scripts** (`npm run electron`, `dev`, `build`, `dist`, plus `icon` and the
+  `dev:web`/`dev:electron` parts): `npm run build` → `out/` static export;
+  `npm run dist` → electron-builder Windows installer + portable
+  (`desktop:package` = build + dist). `concurrently` + `wait-on` added to
+  devDependencies.
+- **Icon:** `scripts/make-icon.mjs` (pure Node PNG/ICO encoder) generates
+  `build/icon.ico` + `build/icon.png` — indigo rounded square with a white coin and
+  brand ring (brand-600/700). `npm run icon` regenerates; swap the drawing whenever
+  real artwork exists. NSIS switched to the assisted installer (`oneClick: false`):
+  install dir choice, desktop + start-menu shortcuts, and standard uninstall support
+  (Add/Remove Programs entry) out of the box.
+- All gates green (tsc, lint, 324 tests, build); `dist/` installer + portable built and
+  the packaged exe passes the smoke test with the bridge active.
+
+### Delivered: desktop migration step 3 — SQLite persistence (2026-08-05)
+
+Browser persistence replaced inside the desktop shell (web app behaviour fully
+preserved; browser mode untouched):
+
+- **SQLite in the main process:** `electron/db.cjs` — `better-sqlite3` is the only
+  SQLite access; the renderer never touches the database. One `kv(key, value)` table
+  (WAL, `synchronous=NORMAL`, `user_version=1` for future schema phases) at
+  `<userData>/budget-planner.sqlite3` (productName "Budget Planner" set top-level so the
+  app owns its profile). `better-sqlite3@13` is a runtime dependency; electron-builder
+  rebuilds it for the Electron ABI at package time and unpacks it from the asar.
+- **IPC storage seam:** preload exposes a synchronous `storage` bridge
+  (`desktop:storage:get/set/remove/keys/needs-migration/migrate`, `sendSync` —
+  deliberate: the app's storage seam is localStorage-shaped and handlers are trivial
+  prepared statements; inputs validated main-side). `lib/desktop.ts` types the bridge;
+  `lib/storageAdapter.ts` is the single persistence seam — bridge in Electron,
+  `localStorage` in a browser (and no-op in SSR). All call sites migrated: zustand
+  persist, `lib/storage.ts` (state, backups, snapshots, export/scan), categorization,
+  theme bootstrap (bridge first, localStorage fallback), disclosure state, icon
+  favourites/recents. A failed bridge write throws, mirroring quota errors.
+- **First-launch migration with backup:** preload ships the page origin's localStorage
+  to the main process when the db is empty; main writes a full backup row
+  (`budget-planner:backup:migration-browser:*`, appears in BackupsManager) then the rows
+  and the `migration:browser:done` marker in ONE transaction (atomic, idempotent —
+  verified: 10 rows incl. backup on first launch, unchanged on relaunch).
+- **Native toolchain:** machine needed Python (installed 3.12 via winget) + VS 2022 C++
+  for node-gyp; `postinstall` = `electron-builder install-app-deps` keeps the local
+  module matched to Electron; `npm run db:check` verifies the native module + optional
+  read-only dump of a real db (`electron/scripts/dbcheck.cjs`). No temp-file scripts.
+- **Verification:** smoke now asserts a full SQLite roundtrip through the bridge and the
+  db file's existence under userData (dev + prod + packaged exe all green); tests
+  324→330 (6 storageAdapter cases); tsc/lint/build green. Profile note: the desktop app
+  now uses `Roaming\Budget Planner` (was `Roaming\budget-planner` pre-productName).
 
 ### Future roadmap (candidates, not committed)
 
@@ -205,3 +272,5 @@ over a privileged `app://bundle` protocol:
 | 2026-08-05 | **Planner QA pass (bugfix):** allocation sliders were stuck at 0 when the remaining balance was below one whole unit — the range input used `step={100}` while `max` was smaller, so no value above 0 existed. `AllocationPanel` now adapts the step to the balance (`min(100, remaining)`): a $0.50 balance is allocatable in 50¢ increments, normal balances keep the $1 step. 6 new `AllocationPanel.test.tsx` cases (no budgets → panel hidden, zero-balance message, sub-unit step, whole-unit step, apply raises the budget limit, combined allocations clamp to the balance). Tests 297→303; tsc/lint/build green | `PROJECT_SPEC.md` |
 | 2026-08-05 | **Final UI consistency polish (visual only, no redesign):** single surface radius — `Card`/`Disclosure` quiet+brand `rounded-2xl`→`rounded-xl`; single caption scale — all `text-[11px]`→`text-xs` (SummaryCards hint + Edit pill, MonthlyStats labels, AllocationPanel % pill, BackupsManager badge, BottomNav labels, ReportsView snapshot + prediction captions); single motion timing — Disclosure chevron/height `duration-[220ms]`→`duration-200`; Income trend chart empty state upgraded from a plain `<p>` to the shared `EmptyState` (all 6 report charts consistent); missing category colors now resolve via shared `categoryColor()` (replaces raw `#6b7280` fallbacks in AllocationPanel + SettingsView recurring rows); Timeline income-row placeholder `w-11`→`w-10` so Edit/Delete align pixel-perfectly with expense rows; ThemeToggle icons sized by `h-4 w-4` classes instead of 16px SVG attrs; IncomeModal inputs `h-10`→`h-11` (app-wide control height); PageSkeleton blocks `rounded-lg`→`rounded-xl` (skeleton mirrors cards). `TransactionRow.test.tsx` width assertion updated; tests stay 297; tsc/lint/build green | `UI_UX_SPEC.md` |
 | 2026-08-05 | **Electron desktop app delivered:** `next.config.ts` `output: "export"` (6 static routes → `out/`, Next 16 `.txt` RSC payloads); `electron/main.cjs` — privileged `app://bundle` protocol (`standard/secure/supportFetchAPI/stream`) with extensionless-route → app-shell fallback, `__next.<route>.__PAGE__.txt` prefetch mapping, path-traversal guard; window 1280×800 min 375×600, `contextIsolation` + `sandbox` on; `--smoke` mode boots the app, clicks `/history` until the router converges, asserts title/body/no renderer errors (works from the packaged exe too); electron-builder NSIS + portable targets (`appId com.budgetplanner.desktop`) → `dist/BudgetPlanner-Setup-0.1.0.exe` + `BudgetPlanner-Portable-0.1.0.exe`; `electron@43` + `electron-builder@26` devDeps; `electron/` eslint-ignored + tracked, `out/`/`dist/` gitignored. Smoke test + packaged-exe smoke + all gates green (tsc/lint/324 tests/build). Gaps: default Electron icon, unsigned executables | `CHANGELOG.md` |
+| 2026-08-05 | **Desktop migration step 2 — dev workflow + secure shell:** `npm run dev` launches Next dev server + Electron together (`concurrently` + `wait-on`; `dev:web`/`dev:electron` parts, `ELECTRON_DEV_URL` overridable); Electron `--dev` mode loads `http://localhost:3000` with a server-retry loop and skips the `out/` check; new `electron/preload.cjs` (sandboxed, contextIsolation, no nodeIntegration, no remote module) exposes a feature-less `budgetPlannerDesktop` bridge (`platform` + `getAppInfo()` via `ipcMain.handle("desktop:app-info")`) as the future IPC seam; smoke test asserts the bridge is exposed + answers; scripts `electron`/`dev`/`build`/`dist` (`desktop:package` = build + dist); `scripts/make-icon.mjs` generates `build/icon.ico`+`icon.png` (indigo rounded square, white coin + brand ring, brand-600/700) — no more default icon; NSIS → assisted installer (`oneClick: false`: install dir choice, desktop/start-menu shortcuts, uninstall support). Gates green; dev-server smoke + packaged-exe smoke green | `CHANGELOG.md` |
+| 2026-08-05 | **Desktop migration step 3 — SQLite persistence:** browser persistence replaced inside the desktop shell via `better-sqlite3` in the Electron main process (`electron/db.cjs`: `kv` table, WAL, user_version 1, `<userData>/budget-planner.sqlite3`; productName set top-level so the app owns its profile; electron-builder rebuilds + asar-unpacks the native module). Renderer never touches SQLite — sync `desktop:storage:*` IPC channels (get/set/remove/keys/needs-migration/migrate, validated main-side) exposed through the preload bridge; `lib/desktop.ts` types it; `lib/storageAdapter.ts` is the single seam (bridge in Electron, localStorage in browser, no-op in SSR); all call sites migrated (zustand persist, `lib/storage.ts`, categorization, theme bootstrap, disclosure, icon lists; failed bridge writes throw like quota errors). First-launch migration: preload ships localStorage to main, which writes a `budget-planner:backup:migration-browser:*` backup + rows + marker in ONE transaction (atomic, idempotent; backup shows in BackupsManager). Native toolchain: Python 3.12 installed (winget) for node-gyp; `postinstall` = `electron-builder install-app-deps`; `npm run db:check` verifies the module/real-db dump. Smoke asserts SQLite roundtrip + db file under userData (dev/prod/packaged green). Tests 324→330 (6 storageAdapter cases); tsc/lint/build green | `ARCHITECTURE.md` |

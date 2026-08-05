@@ -1,4 +1,5 @@
 import { validateAppState } from "./validate";
+import { getStorageBackend } from "./storageAdapter";
 import type { AppState } from "./types";
 
 export const STORAGE_KEY = "budget-planner:state";
@@ -89,7 +90,7 @@ export function saveAppState(state: AppState): void {
   if (typeof window === "undefined") return;
   if (!writesEnabled) return;
   try {
-    window.localStorage.setItem(
+    getStorageBackend().setItem(
       STORAGE_KEY,
       JSON.stringify({ state, version: CURRENT_STORAGE_VERSION }),
     );
@@ -137,7 +138,7 @@ function backupPayload(
 export function uniqueBackupKey(kind: string): string {
   let key = `${BACKUP_PREFIX}${kind}:${timestampToken()}`;
   let suffix = 1;
-  while (typeof window !== "undefined" && window.localStorage.getItem(key) !== null) {
+  while (getStorageBackend().getItem(key) !== null) {
     key = `${BACKUP_PREFIX}${kind}:${timestampToken()}-${suffix}`;
     suffix += 1;
   }
@@ -148,7 +149,7 @@ export function writeBackup(kind: string, raw: string): string | null {
   if (typeof window === "undefined") return null;
   const key = uniqueBackupKey(kind);
   try {
-    window.localStorage.setItem(
+    getStorageBackend().setItem(
       key,
       backupPayload(kind, "unknown", raw),
     );
@@ -162,7 +163,7 @@ function snapshotLegacyPayload(raw: string, version: number): void {
   if (typeof window === "undefined") return;
   const key = uniqueBackupKey(`auto-v${version}`);
   try {
-    window.localStorage.setItem(
+    getStorageBackend().setItem(
       key,
       backupPayload(`auto-v${version}`, version, raw),
     );
@@ -175,7 +176,7 @@ function snapshotCorruptPayload(raw: string): void {
   if (typeof window === "undefined") return;
   const key = uniqueBackupKey("auto-corrupt");
   try {
-    window.localStorage.setItem(
+    getStorageBackend().setItem(
       key,
       backupPayload("auto-corrupt", "corrupt", raw),
     );
@@ -186,11 +187,11 @@ function snapshotCorruptPayload(raw: string): void {
 
 export function snapshotCurrentState(): string | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const raw = getStorageBackend().getItem(STORAGE_KEY);
   if (raw === null) return null;
   const key = uniqueBackupKey("manual");
   try {
-    window.localStorage.setItem(key, backupPayload("manual", "current", raw));
+    getStorageBackend().setItem(key, backupPayload("manual", "current", raw));
   } catch {
     return null;
   }
@@ -203,7 +204,7 @@ export interface BackupSnapshot extends BackupMetadata {
 
 export function loadBackupSnapshot(key: string): BackupSnapshot | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(key);
+  const raw = getStorageBackend().getItem(key);
   if (raw === null) return null;
   let innerRaw = raw;
   try {
@@ -220,7 +221,7 @@ export function loadBackupSnapshot(key: string): BackupSnapshot | null {
 
 export function deleteBackupSnapshot(key: string): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(key);
+  getStorageBackend().removeItem(key);
 }
 
 function inspectBackupPayload(key: string, raw: string): BackupMetadata {
@@ -318,10 +319,9 @@ function inspectBackupPayload(key: string, raw: string): BackupMetadata {
 export function listBackupSnapshots(): BackupMetadata[] {
   if (typeof window === "undefined") return [];
   const results: BackupMetadata[] = [];
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (key === null || !key.startsWith(BACKUP_PREFIX)) continue;
-    const raw = window.localStorage.getItem(key);
+  for (const key of getStorageBackend().keys()) {
+    if (!key.startsWith(BACKUP_PREFIX)) continue;
+    const raw = getStorageBackend().getItem(key);
     if (raw === null) continue;
     results.push(inspectBackupPayload(key, raw));
   }
@@ -452,9 +452,7 @@ function parseStateCounts(
 export function scanRecoverablePayloads(): RecoverablePayload[] {
   if (typeof window === "undefined") return [];
   const keys = new Set<string>();
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (key === null) continue;
+  for (const key of getStorageBackend().keys()) {
     if (
       key.startsWith("budget-planner:") ||
       key.startsWith("disclosure:") ||
@@ -465,7 +463,7 @@ export function scanRecoverablePayloads(): RecoverablePayload[] {
   }
   const results: RecoverablePayload[] = [];
   for (const key of keys) {
-    const raw = window.localStorage.getItem(key);
+    const raw = getStorageBackend().getItem(key);
     if (raw === null) continue;
     results.push(classifyPayload(key, raw));
   }

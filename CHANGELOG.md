@@ -2,6 +2,90 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — Desktop migration: SQLite persistence
+
+### Changed
+
+- **Browser persistence replaced inside the desktop shell.** `better-sqlite3` now owns
+  the data in the Electron app; the browser mode keeps `localStorage` and every existing
+  behaviour is preserved.
+  - `electron/db.cjs`: the only SQLite access, in the **main process** — the renderer
+    never touches the database. A `kv(key, value)` table (WAL,
+    `synchronous=NORMAL`, `user_version = 1`) at
+    `<userData>/budget-planner.sqlite3`. `better-sqlite3@13` is a runtime dependency;
+    electron-builder rebuilds it for the Electron ABI and unpacks it from the asar.
+  - **IPC storage seam.** The preload exposes a synchronous `storage` bridge
+    (`desktop:storage:get/set/remove/keys/needs-migration/migrate` via
+    `ipcRenderer.sendSync`; inputs validated main-side). `lib/desktop.ts` types the
+    bridge; `lib/storageAdapter.ts` is the single persistence seam for the whole app —
+    bridge in Electron, `localStorage` in a browser, no-op outside the browser. All
+    call sites migrated: zustand persist, `lib/storage.ts` (state, backups, snapshots,
+    export/scan), categorization mappings, the theme bootstrap (bridge first,
+    localStorage fallback), disclosure state, and icon favourites/recents. A failed
+    bridge write throws, mirroring browser quota exceptions.
+  - **First-launch migration.** When the database is empty, the preload ships the page
+    origin's localStorage to the main process, which writes a full backup row
+    (`budget-planner:backup:migration-browser:*` — same envelope as app backups, so it
+    is restorable from `BackupsManager`) **before** the migrated rows and the
+    `migration:browser:done` marker, all in one transaction. Idempotent (marker +
+    non-empty-db guard).
+  - Top-level `productName: "Budget Planner"` so the desktop app owns its userData
+    profile (now `Roaming\Budget Planner`).
+- **Toolchain.** `better-sqlite3` needs a native rebuild for Electron; `postinstall` is
+  `electron-builder install-app-deps` (keeps the module matched to Electron after any
+  `npm install`). New `npm run db:check` (`electron/scripts/dbcheck.cjs`, project-local)
+  verifies the native module loads and can dump a real database read-only.
+  `npm run electron:rebuild` re-runs the rebuild manually.
+
+### Verification
+
+- Smoke test now asserts a full SQLite roundtrip through the bridge (`set`/`get`/
+  `remove`) and that the database file exists under `userData` — green in dev mode,
+  prod mode, and the packaged exe.
+- Migration verified on a real profile: 10 browser keys migrated with the backup row and
+  marker; second launch unchanged (no double migration).
+- Gates: `npx tsc --noEmit`, `npm run lint`, `npm run test` (330/330, +6
+  `storageAdapter` cases), `npm run build`. `npm run dist` produces
+  `BudgetPlanner-Setup-0.1.0.exe` + `BudgetPlanner-Portable-0.1.0.exe`.
+
+## [Unreleased] — Desktop migration: dev workflow + secure shell
+
+### Added
+
+- **Dev workflow.** `npm run dev` now launches the Next.js dev server **and** Electron
+  together (`concurrently` + `wait-on`; parts `dev:web` / `dev:electron`). Electron
+  `--dev` mode loads the dev server (`ELECTRON_DEV_URL`, default
+  `http://localhost:3000`) with a retry loop until it answers (60s cap), and skips the
+  `out/` bundle check that only applies to production. `--dev --smoke` runs the full
+  smoke suite against the dev server.
+- **Secure preload + IPC seam.** New `electron/preload.cjs`, run sandboxed
+  (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, no remote
+  module). It exposes a feature-less `window.budgetPlannerDesktop` bridge
+  (`platform` + `getAppInfo()`) backed by `ipcMain.handle("desktop:app-info")`
+  (name/version/platform/isPackaged). No desktop features yet — this is the future IPC
+  seam, and the smoke test now asserts the bridge is exposed and answers.
+- **Scripts.** `npm run electron` (launch packaged/source prod build),
+  `npm run dev`, `npm run build` (static export), `npm run dist` (electron-builder
+  Windows installer + portable), `npm run icon` (regenerate the app icon);
+  `desktop:package` is now `build` + `dist`.
+- **Application icon.** `scripts/make-icon.mjs` is a dependency-free PNG/ICO encoder
+  (Node zlib + manual chunk framing) that draws the placeholder brand mark — indigo
+  rounded square with a white coin and brand ring (brand-600/700) — into
+  `build/icon.ico` (256px PNG-compressed entry) and `build/icon.png`. Replaces the
+  default Electron icon in the executable and installer; regenerate with `npm run icon`
+  or swap `draw()` for real artwork.
+- **Assisted installer.** NSIS `oneClick: false`: install-directory choice, desktop +
+  start-menu shortcuts, and standard uninstall support (Add/Remove Programs entry).
+
+### Verification
+
+- Gates green: `npx tsc --noEmit`, `npm run lint`, `npm run test` (324/324), `npm run build`.
+- Smoke green in both modes: `electron . --dev --smoke` (loads `http://localhost:3000`,
+  navigates, bridge answered) and the packaged `Budget Planner.exe --smoke`
+  (`app://bundle`).
+- `npm run dist` → `dist/BudgetPlanner-Setup-0.1.0.exe` + `BudgetPlanner-Portable-0.1.0.exe`
+  with the icon applied.
+
 ## [Unreleased] — Electron desktop app
 
 ### Added

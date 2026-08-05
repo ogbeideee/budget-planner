@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## Verification gates (must all pass before finishing a task)
 - Typecheck: `npx tsc --noEmit`
 - Lint: `npm run lint`
-- Tests: `npm run test` (vitest; currently 218 tests across 20 files)
+- Tests: `npm run test` (vitest; currently 330 tests across 35 files)
 - Build: `npm run build`
 
 On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside commands.
@@ -20,6 +20,16 @@ On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside
   categories and converts tagged `monthlyIncome` transactions into category-bound plans;
   v2 rewrites those into standalone `IncomePlan` entries; legacy field normalization always
   runs. If you change the schema, bump the version everywhere and add a migration.
+- **Persistence goes through ONE seam: `lib/storageAdapter.ts`.** Never call
+  `window.localStorage` from app code (except the intentional fallbacks in
+  `lib/theme.ts` bootstrap and the adapter's browser backend). In Electron the seam
+  routes through the preload bridge (`window.budgetPlannerDesktop.storage`,
+  `lib/desktop.ts`) into SQLite in the main process (`electron/db.cjs`, kv table at
+  `<userData>/budget-planner.sqlite3`); the renderer must never access SQLite directly.
+  First-launch migration from localStorage runs in the preload (backup row
+  `budget-planner:backup:migration-browser:*` + rows + marker in one transaction).
+  `better-sqlite3` is Electron-ABI only — never import it in code loaded by vitest.
+  `npm run db:check` verifies the native module.
 - `IncomePlan` is a **standalone** source: `{ id, month, name, icon, expectedAmount, receivedAmount }`.
   It is NOT tied to income categories. `setIncomePlan(month, id | null, patch)` in
   store/useAppStore.ts upserts ONE source (merge by id; `null` creates). Never rewrite the

@@ -9,13 +9,14 @@ import {
 } from "react";
 import type { ReactNode, Ref } from "react";
 import { ChevronDownIcon } from "@/components/ui/icons";
+import { getStorageBackend } from "@/lib/storageAdapter";
 
 const KEY_PREFIX = "disclosure:";
 
 function readStored(id: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = window.localStorage.getItem(KEY_PREFIX + id);
+    const raw = getStorageBackend().getItem(KEY_PREFIX + id);
     return raw === null ? fallback : raw === "1";
   } catch {
     return fallback;
@@ -24,7 +25,7 @@ function readStored(id: string, fallback: boolean): boolean {
 
 function writeStored(id: string, open: boolean): void {
   try {
-    window.localStorage.setItem(KEY_PREFIX + id, open ? "1" : "0");
+    getStorageBackend().setItem(KEY_PREFIX + id, open ? "1" : "0");
   } catch {
     // storage unavailable — treat as ephemeral
   }

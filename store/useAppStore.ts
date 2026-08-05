@@ -12,6 +12,7 @@ import {
   setWritesEnabled,
   STORAGE_KEY,
 } from "@/lib/storage";
+import { getStorageBackend } from "@/lib/storageAdapter";
 import {
   isHexColor,
   MAX_CATEGORY_NAME,
@@ -701,7 +702,7 @@ export function createAppStore() {
         storage: {
           getItem: (name) => {
             if (typeof window === "undefined") return null;
-            const raw = window.localStorage.getItem(name);
+            const raw = getStorageBackend().getItem(name);
             if (raw === null) return null;
             return {
               state: parseStoredState(raw),
@@ -712,14 +713,14 @@ export function createAppStore() {
             if (typeof window === "undefined") return;
             if (!isWritesEnabled()) return;
             try {
-              window.localStorage.setItem(name, JSON.stringify(value));
+              getStorageBackend().setItem(name, JSON.stringify(value));
             } catch {
               // storage unavailable (quota/security); writes resume when it clears
             }
           },
           removeItem: (name) => {
             if (typeof window !== "undefined") {
-              window.localStorage.removeItem(name);
+              getStorageBackend().removeItem(name);
             }
           },
         },

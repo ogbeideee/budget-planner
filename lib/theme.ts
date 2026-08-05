@@ -17,7 +17,9 @@ export const THEME_BOOTSTRAP_SCRIPT = `(function () {
   var defaultTheme = "light";
   function readTheme() {
     try {
-      var raw = window.localStorage.getItem(key);
+      var bridge = window.budgetPlannerDesktop;
+      var raw = bridge && bridge.storage ? bridge.storage.getItem(key) : null;
+      if (!raw) raw = window.localStorage.getItem(key);
       if (!raw) return defaultTheme;
       var data = JSON.parse(raw);
       var theme = data && data.state && data.state.settings && data.state.settings.theme;

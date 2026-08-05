@@ -1,4 +1,5 @@
 import { CATEGORIZATION_KEY } from "./storage";
+import { getStorageBackend } from "./storageAdapter";
 import type { Category, ID } from "./types";
 
 const MAX_LEARNED_ENTRIES = 100;
@@ -62,7 +63,7 @@ function resolveCategoryName(names: readonly string[], categories: readonly Cate
 export function loadLearnedMappings(): Record<string, ID> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(CATEGORIZATION_KEY);
+    const raw = getStorageBackend().getItem(CATEGORIZATION_KEY);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -82,7 +83,7 @@ export function loadLearnedMappings(): Record<string, ID> {
 
 export function saveLearnedMappings(mappings: Record<string, ID>): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(CATEGORIZATION_KEY, JSON.stringify(mappings));
+  getStorageBackend().setItem(CATEGORIZATION_KEY, JSON.stringify(mappings));
 }
 
 export function rememberMapping(title: string, categoryId: ID): void {

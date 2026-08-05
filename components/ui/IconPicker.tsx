@@ -12,6 +12,7 @@ import {
   matchIcon,
 } from "@/components/settings/iconLibrary";
 import type { IconOption } from "@/components/settings/iconLibrary";
+import { getStorageBackend } from "@/lib/storageAdapter";
 
 const RECENT_KEY = "settings:recent-icons";
 const FAVOURITE_KEY = "settings:favourite-icons";
@@ -22,7 +23,7 @@ const COLUMNS = 6;
 function readList(key: string, max: number): string[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+    const raw = JSON.parse(getStorageBackend().getItem(key) ?? "[]");
     if (!Array.isArray(raw)) return [];
     const seen = new Set<string>();
     const result: string[] = [];
@@ -40,7 +41,7 @@ function readList(key: string, max: number): string[] {
 
 function writeList(key: string, icons: string[]): void {
   try {
-    window.localStorage.setItem(key, JSON.stringify(icons));
+    getStorageBackend().setItem(key, JSON.stringify(icons));
   } catch {
     // storage unavailable — lists are ephemeral
   }

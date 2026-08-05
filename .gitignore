@@ -21,7 +21,10 @@
 /dist/
 
 # production
-/build
+/build/*
+# electron-builder resources live in build/ — the app icon is source, not output
+!/build/icon.ico
+!/build/icon.png
 
 # misc
 .DS_Store
