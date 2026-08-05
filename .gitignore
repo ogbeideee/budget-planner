@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# electron packaging
+/dist/
+
 # production
 /build
 

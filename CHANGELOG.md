@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — Electron desktop app
+
+### Added
+
+- **Desktop packaging (Electron).** The app now ships as a Windows desktop app with
+  zero app-code changes: `next.config.ts` sets `output: "export"` (all 6 routes
+  prerender to `out/`), and `electron/main.cjs` serves the static export over a
+  privileged `app://bundle` protocol (registered `standard/secure/supportFetchAPI/
+  stream`, so localStorage, client-side routing, and `createId()` work unchanged).
+  The protocol handler falls back to the app shell (`index.html`) for extensionless
+  client routes, maps Next 16's `__next.<route>.__PAGE__.txt` prefetch requests onto
+  the exported RSC payload files (otherwise the router 404s on hover prefetches),
+  and guards path traversal via `path.resolve` + prefix check. Window: 1280×800
+  (min 375×600), `contextIsolation` + `sandbox` on, popups denied, macOS `activate`
+  handled, missing-bundle dialog.
+- **Smoke test.** `--smoke` mode (also `npm run desktop:smoke`) boots the app, clicks
+  the `/history` nav link (retrying until hydration/routing converges — pre-hydration
+  clicks fall back to a full page load), and asserts the Timeline title, body content,
+  and zero renderer console errors. Passes from the source tree and from the packaged
+  exe. The `console-message` listener uses Electron 43's event-object API.
+- **Packaging scripts + electron-builder config.** `start: electron .`,
+  `desktop:package` (`next build` then `electron-builder --win`) → NSIS installer
+  `dist/BudgetPlanner-Setup-0.1.0.exe` + portable `dist/BudgetPlanner-Portable-0.1.0.exe`
+  (appId `com.budgetplanner.desktop`, productName "Budget Planner"). `electron@43.3.0`
+  and `electron-builder@26.15.3` added to devDependencies; `electron/` is
+  eslint-ignored and git-tracked; `out/` and `dist/` are gitignored.
+- Known gaps: default Electron icon (no brand icon yet); executables are unsigned.
+
+### Verification
+
+- `npx tsc --noEmit`, `npm run lint`, `npm run test` (324/324), `npm run build`, smoke
+  test from source, and smoke test of the packaged exe all pass.
+
 ## [Unreleased] — Production readiness audit
 
 ### Refactors (behavior-preserving)

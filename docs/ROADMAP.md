@@ -139,23 +139,30 @@ tests: components/*.test.tsx · lib/__tests__/ · store/__tests__/
 Health score **92/100** (audit of 2026-08-05): all gates green, zero TODO/FIXME/debugger,
 324 tests, defensive persistence (validation + migration + auto-backups + recovery UI),
 clean memory hygiene, a11y foundations (focus traps, aria-live toasts, reduced motion,
-skip link), and consistent tokens. Ready for desktop packaging; the only decision still
-open is the packaging shape (see next section).
+skip link), and consistent tokens. Desktop packaging is delivered (see next section).
 
-### Planned: Electron migration (next)
+### Delivered: Electron desktop app (2026-08-05)
 
-Not started — no packaging files exist yet. Recommended approach from the production audit:
+Shipped as a Windows desktop app. Zero app-code changes — the static export is served
+over a privileged `app://bundle` protocol:
 
-1. Add `output: "export"` to `next.config.ts` (all 6 routes already prerender as static
-   content) and ship the exported folder — or run `next start` behind the Electron window.
-2. `createId()` (`lib/ids.ts`) already provides the non-secure-context fallback, so
-   `file://`/custom-protocol shells cannot crash entity creation.
-3. `localStorage` works under Electron/WebView2; pin a stable origin (e.g. `app://` or
-   `file://`) so data and auto-backups persist under the OS user profile.
-4. Geist fonts are fetched once at build time — the build machine needs network; runtime
-   is fully offline. Set `NEXT_TELEMETRY_DISABLED=1` in packaging builds.
-5. Smoke test the packaged app (boot → create transaction/budget/income plan → reload →
-   verify persistence and migration backup) before release.
+1. `next.config.ts` sets `output: "export"`; all 6 routes prerender to `out/`
+   (per-route `.html` + Next 16 `.txt` RSC payloads).
+2. `electron/main.cjs` registers `app://` as `standard/secure/supportFetchAPI/stream`
+   so localStorage, client-side routing, and `createId()` all work unchanged. The
+   protocol handler serves extensionless paths as the app shell (`index.html`, i.e.
+   client routes) and maps Next 16's `__next.<route>.__PAGE__.txt` prefetch requests
+   to the exported payload files; path-traversal is guarded via `path.resolve`.
+3. Window: 1280×800 (min 375×600), `contextIsolation` on, `sandbox` on, popups denied.
+4. `--smoke` mode (also `npm run desktop:smoke`) boots the app, clicks the /history
+   nav link until the router converges, and asserts title/body/no renderer errors.
+5. Packaging: `npm run desktop:package` → electron-builder NSIS installer
+   `dist/BudgetPlanner-Setup-0.1.0.exe` + portable `BudgetPlanner-Portable-0.1.0.exe`
+   (appId `com.budgetplanner.desktop`; `dist/` is gitignored). The packaged exe passes
+   the smoke test. `electron@43` + `electron-builder@26` in devDependencies; electron
+   files in `electron/` (eslint-ignored, git-tracked).
+6. Known gaps: default Electron icon (no brand icon yet); executables are unsigned;
+   runtime is fully offline (Geist fonts fetched at build time).
 
 ### Future roadmap (candidates, not committed)
 
@@ -197,3 +204,4 @@ Not started — no packaging files exist yet. Recommended approach from the prod
 | 2026-08-05 | **Reports QA pass (5 calculation/display fixes):** (1) Income trend "Received" was plans-only (`incomeTrendSeries` summed `plan.receivedAmount`), so ledger-funded months plotted $0 while every other income number used `receivedForMonth` — the series now takes transactions and uses the shared `max(ledger, plans)` source. (2) Budget utilization >100% overflowed the `[0,100]` Y axis; bar geometry clamps at 100% (`barPct`) while tooltip/aria keep the true %; the pct calculation moved into `budgetUtilizationSeries` (centralized). (3) ReportsView "Expenses vs last month" caption used the net delta (`monthStats.vsLastMonth.delta` = net − lastNet), misattributing income swings to expenses — now the true expense delta via `totals`. (4) CSV export wrote raw minor-unit integers; Amount now exports currency decimals with a new Currency column. (5) Expected vs actual / Income sources empty states promised "record income" would populate them (sources come from income plans) — copy fixed. 7 new tests (incomeTrendSeries ×3, utilization over-100%, chart aria/empty-state ×2). Tests 303→308; tsc/lint/build green | `PROJECT_SPEC.md`, `UI_UX_SPEC.md` |
 | 2026-08-05 | **Planner QA pass (bugfix):** allocation sliders were stuck at 0 when the remaining balance was below one whole unit — the range input used `step={100}` while `max` was smaller, so no value above 0 existed. `AllocationPanel` now adapts the step to the balance (`min(100, remaining)`): a $0.50 balance is allocatable in 50¢ increments, normal balances keep the $1 step. 6 new `AllocationPanel.test.tsx` cases (no budgets → panel hidden, zero-balance message, sub-unit step, whole-unit step, apply raises the budget limit, combined allocations clamp to the balance). Tests 297→303; tsc/lint/build green | `PROJECT_SPEC.md` |
 | 2026-08-05 | **Final UI consistency polish (visual only, no redesign):** single surface radius — `Card`/`Disclosure` quiet+brand `rounded-2xl`→`rounded-xl`; single caption scale — all `text-[11px]`→`text-xs` (SummaryCards hint + Edit pill, MonthlyStats labels, AllocationPanel % pill, BackupsManager badge, BottomNav labels, ReportsView snapshot + prediction captions); single motion timing — Disclosure chevron/height `duration-[220ms]`→`duration-200`; Income trend chart empty state upgraded from a plain `<p>` to the shared `EmptyState` (all 6 report charts consistent); missing category colors now resolve via shared `categoryColor()` (replaces raw `#6b7280` fallbacks in AllocationPanel + SettingsView recurring rows); Timeline income-row placeholder `w-11`→`w-10` so Edit/Delete align pixel-perfectly with expense rows; ThemeToggle icons sized by `h-4 w-4` classes instead of 16px SVG attrs; IncomeModal inputs `h-10`→`h-11` (app-wide control height); PageSkeleton blocks `rounded-lg`→`rounded-xl` (skeleton mirrors cards). `TransactionRow.test.tsx` width assertion updated; tests stay 297; tsc/lint/build green | `UI_UX_SPEC.md` |
+| 2026-08-05 | **Electron desktop app delivered:** `next.config.ts` `output: "export"` (6 static routes → `out/`, Next 16 `.txt` RSC payloads); `electron/main.cjs` — privileged `app://bundle` protocol (`standard/secure/supportFetchAPI/stream`) with extensionless-route → app-shell fallback, `__next.<route>.__PAGE__.txt` prefetch mapping, path-traversal guard; window 1280×800 min 375×600, `contextIsolation` + `sandbox` on; `--smoke` mode boots the app, clicks `/history` until the router converges, asserts title/body/no renderer errors (works from the packaged exe too); electron-builder NSIS + portable targets (`appId com.budgetplanner.desktop`) → `dist/BudgetPlanner-Setup-0.1.0.exe` + `BudgetPlanner-Portable-0.1.0.exe`; `electron@43` + `electron-builder@26` devDeps; `electron/` eslint-ignored + tracked, `out/`/`dist/` gitignored. Smoke test + packaged-exe smoke + all gates green (tsc/lint/324 tests/build). Gaps: default Electron icon, unsigned executables | `CHANGELOG.md` |

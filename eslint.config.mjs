@@ -20,6 +20,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Electron packaging glue (plain Node CJS, not app code):
+    "electron/**",
   ]),
 ]);
 

@@ -2,13 +2,19 @@
   "name": "budget-planner",
   "version": "0.1.0",
   "private": true,
+  "description": "Offline personal budget planner (Planner, To-Do, Upcoming, Timeline, Reports, Settings).",
+  "author": "Budget Planner",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "electron .",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "desktop": "npm run build && electron .",
+    "desktop:smoke": "npm run build && electron . --smoke",
+    "desktop:package": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "next": "16.2.12",
@@ -25,11 +31,38 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"
+  },
+  "build": {
+    "appId": "com.budgetplanner.desktop",
+    "productName": "Budget Planner",
+    "files": [
+      "out/**",
+      "electron/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "BudgetPlanner-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "BudgetPlanner-Portable-${version}.exe"
+    }
   }
 }
