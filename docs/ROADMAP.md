@@ -40,6 +40,10 @@ engineer can implement them without further clarification.
 - Desktop features: native menu + shortcuts, native file dialogs (import/export),
   desktop notifications, automatic file backups (`<userData>/backups/`, newest 30),
   restore-backup workflow, open backup / reveal data folder (2026-08-05).
+- Startup & identity: splash screen, root loading screen, proper brand icon (designed
+  mark in `scripts/make-icon.mjs`, multi-size ICO), real version info (About card +
+  native dialog), auto-update scaffold (`electron/updater.cjs`, feed-configurable,
+  inert by default), NSIS installer branding (2026-08-05).
 
 ### Architecture & folder structure
 
@@ -273,6 +277,38 @@ Web behaviour preserved; every feature is additive and desktop-only:
   surface, and a create/list/read/delete backup roundtrip (dev + prod green);
   tests 330→337 (+7 `electron/backups.test.ts`); tsc/lint/build green.
 
+### Delivered: desktop migration step 5 — startup, identity & updates (2026-08-05)
+
+No business-logic changes; additive and desktop-only:
+
+- **Splash screen** (`electron/splash.cjs`): frameless, skip-taskbar, `data:`-URL
+  window (inline SVG icon replica, app name, `v<version>`, animated bar; no
+  preload → cannot touch app state) shown while the main window boots; closed
+  and replaced by the main window on `ready-to-show`; destroyed on quit;
+  skipped in `--smoke` mode.
+- **Loading screen** (`app/loading.tsx`): root route renders the existing
+  `PageSkeleton` while the client bundle loads and on route transitions.
+- **Proper application icon** (`scripts/make-icon.mjs` rewritten): designed
+  mark — indigo rounded square, diagonal brand gradient (brand-500→600→800),
+  white coin with brand-700 edge shade + drop shadow, three ascending bars;
+  512 px master with 4×4 supersampled AA (SDF geometry, zero dependencies);
+  box-downsampled to seven ICO entries (16–256 px) + 512 px PNG. Drives the
+  exe/installer/window/splash icons (`npm run icon` regenerates).
+- **Version information**: `lib/version.ts` (`APP_NAME`/`APP_VERSION` from
+  package.json) replaces the hard-coded "1.0" in Settings → About, which now
+  also shows the desktop shell versions (Electron/Chromium) from the extended
+  `getAppInfo()` payload (`versions`). Native About dialog (Help) lists app
+  version, Electron/Chromium/Node, platform, update-feed state, folder paths.
+- **Auto-update scaffold** (`electron/updater.cjs` + `electron-updater`):
+  generic feed from `AUTO_UPDATE_URL` env or `<userData>/update-feed.txt`
+  (env wins); packaged-only, inert without a feed; background check at startup
+  + Help → Check for updates…; auto-download, install-on-quit, notifications.
+- **Installer branding**: NSIS installer/uninstaller/header icons all use
+  `build/icon.ico`; `copyright` metadata set.
+- **Verification:** smoke green in prod + dev (splash/updater no-op under
+  `--smoke`); packaged-exe smoke green after `npm run dist`; tests stay 337;
+  tsc/lint/build green.
+
 ### Future roadmap (candidates, not committed)
 
 - CI pipeline (lint/typecheck/test/build on push) + Playwright E2E smoke — recommended
@@ -317,3 +353,4 @@ Web behaviour preserved; every feature is additive and desktop-only:
 | 2026-08-05 | **Desktop migration step 2 — dev workflow + secure shell:** `npm run dev` launches Next dev server + Electron together (`concurrently` + `wait-on`; `dev:web`/`dev:electron` parts, `ELECTRON_DEV_URL` overridable); Electron `--dev` mode loads `http://localhost:3000` with a server-retry loop and skips the `out/` check; new `electron/preload.cjs` (sandboxed, contextIsolation, no nodeIntegration, no remote module) exposes a feature-less `budgetPlannerDesktop` bridge (`platform` + `getAppInfo()` via `ipcMain.handle("desktop:app-info")`) as the future IPC seam; smoke test asserts the bridge is exposed + answers; scripts `electron`/`dev`/`build`/`dist` (`desktop:package` = build + dist); `scripts/make-icon.mjs` generates `build/icon.ico`+`icon.png` (indigo rounded square, white coin + brand ring, brand-600/700) — no more default icon; NSIS → assisted installer (`oneClick: false`: install dir choice, desktop/start-menu shortcuts, uninstall support). Gates green; dev-server smoke + packaged-exe smoke green | `CHANGELOG.md` |
 | 2026-08-05 | **Desktop migration step 3 — SQLite persistence:** browser persistence replaced inside the desktop shell via `better-sqlite3` in the Electron main process (`electron/db.cjs`: `kv` table, WAL, user_version 1, `<userData>/budget-planner.sqlite3`; productName set top-level so the app owns its profile; electron-builder rebuilds + asar-unpacks the native module). Renderer never touches SQLite — sync `desktop:storage:*` IPC channels (get/set/remove/keys/needs-migration/migrate, validated main-side) exposed through the preload bridge; `lib/desktop.ts` types it; `lib/storageAdapter.ts` is the single seam (bridge in Electron, localStorage in browser, no-op in SSR); all call sites migrated (zustand persist, `lib/storage.ts`, categorization, theme bootstrap, disclosure, icon lists; failed bridge writes throw like quota errors). First-launch migration: preload ships localStorage to main, which writes a `budget-planner:backup:migration-browser:*` backup + rows + marker in ONE transaction (atomic, idempotent; backup shows in BackupsManager); failure handling: structured error, rollback keeps browser data intact + retry next launch, native error dialog (skipped in smoke). Native toolchain: Python 3.12 installed (winget) for node-gyp; `postinstall` = `electron-builder install-app-deps`; `npm run db:check` verifies module + migration success/failure paths + real-db dump. Smoke asserts SQLite roundtrip + db file under userData (dev/prod/packaged green). Tests 324→330 (6 storageAdapter cases); tsc/lint/build green | `ARCHITECTURE.md` |
 | 2026-08-05 | **Desktop migration step 4 — native desktop features:** native application menu (`electron/menu.cjs`: File Import Ctrl+O / Export Ctrl+S / Back up now Ctrl+B / Restore latest backup Ctrl+Shift+B / Open backup folder Ctrl+Shift+O / Reveal data folder Ctrl+Shift+D / Quit Ctrl+Q; Edit clipboard roles; View reload/devtools/zoom/fullscreen; Help About) — renderer-state actions sent as `desktop:menu:action`, folder actions handled in main; native file dialogs + restricted fs IPC (absolute paths, .json-only writes, 16 MB cap) with composite `desktop:import` (open → destructive confirm → read) and `desktop:export` (save dialog → atomic write); desktop notifications (`desktop:notify`, Notification.isSupported-guarded; used for backup failure + restore results); automatic file backups (`electron/backups.cjs`: atomic temp+rename, content dedupe, prune to newest 30 in `<userData>/backups/`; boot + every 30 min + beforeunload flush via sync IPC); restore-backup workflow (file backups in Settings Data/BackupsManager + menu Restore latest; shared `{state, version}` envelope restored through validated `importState`); Open Backup Folder / Reveal Data Folder (shell IPC + Settings buttons + About/data-folder paths). Renderer wiring: `lib/desktopFeatures.ts` (bridge wrappers + `startAutoBackups`), `lib/desktopBootstrap.ts` (menu dispatcher + auto-backup, init from AppShell). Smoke asserts menu groups/accelerators, full bridge surface, backup create/list/read/delete roundtrip (dev+prod green). Tests 330→337 (+7 `electron/backups.test.ts`); tsc/lint/build green | `ARCHITECTURE.md` |
+| 2026-08-05 | **Desktop migration step 5 — startup, identity & updates:** splash screen (`electron/splash.cjs`, frameless `data:`-URL window with inline SVG icon + name + version + animated bar; no preload; closed on main-window `ready-to-show`; skipped in `--smoke`); root loading screen (`app/loading.tsx` → shared `PageSkeleton`); proper app icon — `scripts/make-icon.mjs` rewritten to draw the designed mark (indigo gradient square, white coin + edge shade + drop shadow, three ascending bars) with 4×4 supersampled AA at 512 px, box-downsampled into 7 ICO entries + 512 PNG (fixed ICO layout bug: directory before image data); version info — `lib/version.ts` (from package.json), Settings About card shows `v0.1.0` + Electron/Chromium, native About dialog richer (versions/platform/update feed/folders), `getAppInfo()` now returns `versions`; auto-update scaffold — `electron/updater.cjs` on `electron-updater` (generic feed via `AUTO_UPDATE_URL` env or `<userData>/update-feed.txt`, packaged-only, inert without feed, startup + manual checks, auto-download + install-on-quit + notifications, Help → Check for updates…); installer branding — NSIS installer/uninstaller/header icons + `copyright`. Smoke green dev+prod (splash/updater no-op in smoke); packaged-exe smoke green after dist rebuild; tests stay 337; tsc/lint/build green | `CHANGELOG.md` |

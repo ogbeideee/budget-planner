@@ -23,6 +23,11 @@ function installBridge(
       version: "0.1.0",
       platform: "win32",
       isPackaged: true,
+      versions: {
+        electron: "43.3.0",
+        chrome: "142",
+        node: "24",
+      },
     }),
     storage: {
       getItem: (key) => overrides.getItem?.(key) ?? null,

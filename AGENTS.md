@@ -42,6 +42,18 @@ On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside
   (`electron/backups.cjs`: atomic writes, content dedupe, prune to newest 30). The
   native menu is `electron/menu.cjs`; menu items that need app state send
   `desktop:menu:action` to the renderer.
+- **Startup/identity (Phase 4):** `electron/splash.cjs` shows a frameless splash
+  (data: URL, no preload) before the main window; `main.cjs` closes it on
+  `ready-to-show` and skips it under `--smoke`. `app/loading.tsx` renders the
+  shared `PageSkeleton` during hydration. Renderer version strings come from
+  `lib/version.ts` (`APP_NAME`/`APP_VERSION` imported from package.json) — never
+  hard-code "1.0"-style labels; the desktop runtimes come from `getAppInfo().versions`.
+  `electron/updater.cjs` is an auto-update scaffold on `electron-updater`: generic
+  feed via `AUTO_UPDATE_URL` env or `<userData>/update-feed.txt` (env wins),
+  packaged-only and inert without a feed — never call the network from it when a
+  feed is absent. The app icon is drawn by `scripts/make-icon.mjs` (SDF +
+  supersampling, pure Node; `npm run icon` regenerates `build/icon.ico|png`);
+  keep the splash SVG in `electron/splash.cjs` visually in sync with the icon.
 - `IncomePlan` is a **standalone** source: `{ id, month, name, icon, expectedAmount, receivedAmount }`.
   It is NOT tied to income categories. `setIncomePlan(month, id | null, patch)` in
   store/useAppStore.ts upserts ONE source (merge by id; `null` creates). Never rewrite the

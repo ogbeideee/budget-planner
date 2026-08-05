@@ -55,6 +55,15 @@ npm run electron:rebuild  # rebuild native deps for Electron (auto-run on npm in
   Restore from the Settings list, or `Ctrl+Shift+B` for the latest.
 - **Folders:** "Open backup folder" / "Reveal data folder" in Settings and the
   File menu; the About card shows the real paths.
+- **Splash & loading:** a branded splash window covers startup, replaced by the
+  app on first paint; the page shows a skeleton while the bundle hydrates.
+- **Version info:** Settings → About shows `v0.1.0` and the Electron/Chromium
+  versions; Help → About Budget Planner shows the full native dialog.
+- **Auto-update scaffold:** optional. Set the `AUTO_UPDATE_URL` environment
+  variable (or add a plain-text `update-feed.txt` in the data folder, env
+  wins) to point at a directory of update artifacts. Checks at startup and via
+  Help → Check for updates…; downloads automatically and installs on quit.
+  Without a feed the scaffold is inert.
 
 All desktop features cross IPC into the main process (`electron/main.cjs`,
 `electron/preload.cjs`); the renderer never touches the file system directly.

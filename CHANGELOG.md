@@ -2,6 +2,59 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — Desktop migration: startup, identity & updates
+
+### Added
+
+- **Splash screen.** New `electron/splash.cjs`: a frameless, skip-taskbar splash
+  window (dark, inline SVG replica of the app icon, app name, `v<version>`,
+  animated progress bar — a `data:` URL with no preload, so it can never touch
+  app state) shown while the main window boots. It appears after the first
+  paint of the main window (`ready-to-show`) closes the splash and shows the
+  app; the splash is destroyed on quit. Skipped entirely in smoke mode so the
+  smoke run stays deterministic.
+- **Loading screen.** New `app/loading.tsx` — the root route renders the
+  existing `PageSkeleton` while the Next.js client bundle loads and on route
+  transitions, so the static export shows a branded skeleton instead of a
+  blank window during first paint.
+- **Proper application icon.** `scripts/make-icon.mjs` rewritten: the icon is
+  now a designed mark — indigo rounded square with a diagonal brand gradient
+  (brand-500 → brand-600 → brand-800), a white coin with a soft brand-700 edge
+  shade and a subtle drop shadow, and three ascending bars (growth motif). The
+  master is drawn at 512 px with 4×4 supersampled anti-aliasing (SDF-based
+  geometry, still pure Node with zero dependencies) and box-downsampled into
+  seven PNG-compressed ICO entries (16/24/32/48/64/128/256) plus the 512 px
+  PNG. Used by the exe, installer, window icon, and splash.
+- **Version information.** New `lib/version.ts` (`APP_NAME`/`APP_VERSION`
+  straight from `package.json`) replaces the hard-coded "1.0" in the Settings
+  About card, which now shows `Budget Planner v0.1.0` plus the desktop shell
+  versions (Electron / Chromium) from `getAppInfo()`. The native About dialog
+  (Help menu) now lists app version, Electron/Chromium/Node versions, platform,
+  update-feed state, and the data/backup folder paths.
+- **Auto-update scaffold.** New `electron/updater.cjs` built on
+  `electron-updater`: a generic provider feed configured via the
+  `AUTO_UPDATE_URL` environment variable or a plain-text `update-feed.txt` in
+  the data folder (env wins). Without a feed it is a no-op — never fires in
+  development or in builds without a feed. When configured (packaged app only):
+  background check at startup, `Help → Check for updates…` on demand, automatic
+  download, install-on-quit, and system notifications for available/ready
+  updates and failures.
+- **Installer branding.** NSIS now uses `build/icon.ico` for the installer
+  and uninstaller icons plus the header icon; `copyright` metadata is set.
+
+### Changed
+
+- `electron/main.cjs` shows the splash before creating the main window (and
+  only outside smoke mode), reports the updater state at startup, and the
+  `desktop:app-info` payload now includes `versions` (electron/chrome/node).
+
+### Verification
+
+- Gates: `npx tsc --noEmit`, `npm run lint`, `npm run test` (337/337),
+  `npm run build`, `npm run db:check` (success + forced-failure paths).
+- Smoke green in prod and dev modes (splash/updater both no-ops under
+  `--smoke`); packaged-exe smoke green after a full `npm run dist` rebuild.
+
 ## [Unreleased] — Desktop migration: native desktop features
 
 ### Added

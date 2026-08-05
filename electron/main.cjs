@@ -17,6 +17,8 @@ const { pathToFileURL } = require("url");
 const pkg = require("../package.json");
 const { openDatabase } = require("./db.cjs");
 const backupStore = require("./backups.cjs");
+const { createSplashScreen } = require("./splash.cjs");
+const { initAutoUpdates } = require("./updater.cjs");
 const { MENU_ACTIONS, buildApplicationMenu } = require("./menu.cjs");
 
 const APP_SCHEME = "app";
@@ -27,6 +29,25 @@ const MAX_TEXT_BYTES = 16 * 1024 * 1024; // 16 MB cap for fs reads/writes
 
 let db = null;
 let mainWindow = null;
+let splashWindow = null;
+
+function showSplash() {
+  if (isSmokeMode()) return; // keep the smoke run deterministic (no windows)
+  splashWindow = createSplashScreen({
+    appName: pkg.productName || pkg.name,
+    version: pkg.version,
+  });
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
+}
+
+function dismissSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.destroy();
+  }
+  splashWindow = null;
+}
 
 function storageChannel(key) {
   return `desktop:storage:${key}`;
@@ -434,6 +455,7 @@ function handleProtocol(request) {
 }
 
 function createWindow() {
+  const windowIcon = path.join(__dirname, "..", "build", "icon.png");
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -442,6 +464,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: false,
     backgroundColor: "#0d0f14",
+    icon: fs.existsSync(windowIcon) ? windowIcon : undefined,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -458,7 +481,10 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 
   if (!isSmokeMode()) {
-    win.once("ready-to-show", () => win.show());
+    win.once("ready-to-show", () => {
+      dismissSplash();
+      win.show();
+    });
   }
 
   if (isDevMode()) {
@@ -707,6 +733,11 @@ app.whenReady().then(() => {
     version: pkg.version,
     platform: process.platform,
     isPackaged: app.isPackaged,
+    versions: {
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+    },
   }));
   registerStorageHandlers();
   registerDesktopHandlers();
@@ -716,6 +747,11 @@ app.whenReady().then(() => {
     getBackupsDir: () => dataPaths().backupsDir,
     getDataDir: () => dataPaths().userData,
   });
+
+  const updateStatus = initAutoUpdates();
+  console.log(
+    `[updater] ${updateStatus.supported ? `watching feed ${updateStatus.feed}` : `scaffold inactive (${updateStatus.reason})`}`,
+  );
 
   if (!isDevMode() && !fs.existsSync(path.join(OUT_DIR, "index.html"))) {
     const message =
@@ -732,10 +768,15 @@ app.whenReady().then(() => {
 
   protocol.handle(APP_SCHEME, handleProtocol);
 
+  showSplash();
   const win = createWindow();
   if (isSmokeMode()) {
     runSmokeTest(win);
   }
+});
+
+app.on("before-quit", () => {
+  dismissSplash();
 });
 
 app.on("will-quit", () => {

@@ -232,6 +232,33 @@ interface ToastStore {                      // store/useToastStore.ts — NOT pe
     once from `AppShell`). Automatic backups run at boot (after hydration), every
     30 minutes, and on `beforeunload`; failures surface as a toast + desktop
     notification. Browser mode is untouched — every feature degrades to a no-op.
+- **Startup, identity & updates** (Phase 4, desktop only):
+  - **Splash** (`electron/splash.cjs`): a frameless, skip-taskbar window loading a
+    `data:` URL (inline SVG icon replica, app name, `v<version>`, animated bar) with
+    **no preload** — it can never touch app state. `main.cjs` shows it before
+    `createWindow()` and destroys it on the main window's `ready-to-show` (and on
+    `before-quit`). Skipped in `--smoke` mode. The renderer additionally shows the
+    shared `PageSkeleton` while the client bundle hydrates via `app/loading.tsx`.
+  - **App icon** (`scripts/make-icon.mjs`): pure-Node PNG/ICO encoder drawing the
+    brand mark (indigo gradient square, white coin with brand edge shade + drop
+    shadow, three ascending bars) — 512 px master with 4×4 supersampled AA (SDF
+    geometry), box-downsampled into seven PNG-compressed ICO entries (16–256 px)
+    plus the 512 px PNG (`npm run icon`). The ICO directory precedes the image
+    data. Consumed by the exe, NSIS installer/uninstaller/header icons, the window
+    and the splash.
+  - **Version information**: `lib/version.ts` (`APP_NAME`/`APP_VERSION` read from
+    `package.json`, bundled at build time) is the renderer's single version source;
+    the Settings About card shows `v<version>` + the desktop shell's
+    Electron/Chromium from `getAppInfo()` (`desktop:app-info` now returns
+    `versions`). The native About dialog (Help) lists app version, runtimes,
+    platform, update-feed state and folder paths — all main-process data, no IPC
+    to the renderer.
+  - **Auto-update scaffold** (`electron/updater.cjs`, `electron-updater`): generic
+    feed from `AUTO_UPDATE_URL` env or `<userData>/update-feed.txt` (env wins).
+    Packaged-only and inert without a feed — development and feed-less builds
+    never touch the network. When enabled: background check at startup,
+    `Help → Check for updates…` on demand, auto-download, install-on-quit, and
+    system notifications. Menu wiring lives in `electron/menu.cjs`.
 - On rehydrate, `onRehydrateStorage` sets `useAppStoreErrors.hydrateError` and disables
   writes (`setWritesEnabled(false)`) when the payload is corrupt, so nothing can overwrite
   the unreadable state until the user recovers. `app/error.tsx` detects the corrupt state

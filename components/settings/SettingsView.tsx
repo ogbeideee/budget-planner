@@ -20,13 +20,14 @@ import { categoryColor } from "@/lib/accents";
 import type { RecurrenceRule } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/hooks/useToast";
-import { isDesktop } from "@/lib/desktop";
-import type { DesktopPaths } from "@/lib/desktop";
+import { getDesktopBridge, isDesktop } from "@/lib/desktop";
+import type { AppInfo, DesktopPaths } from "@/lib/desktop";
 import {
   desktopExportToFile,
   desktopImportFromFile,
   getDesktopPaths,
 } from "@/lib/desktopFeatures";
+import { APP_NAME, APP_VERSION } from "@/lib/version";
 import { RecurrenceForm } from "../txn/RecurrenceForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { CategoryManager } from "./CategoryManager";
@@ -101,11 +102,19 @@ export function SettingsView() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetText, setResetText] = useState("");
   const [desktopPaths, setDesktopPaths] = useState<DesktopPaths | null>(null);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
   useEffect(() => {
     void getDesktopPaths().then((next) => {
       if (next) setDesktopPaths(next);
     });
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop()) return;
+    void getDesktopBridge()
+      ?.getAppInfo()
+      .then((info) => setAppInfo(info));
   }, []);
 
   const categoryOf = (id: string) =>
@@ -443,12 +452,19 @@ export function SettingsView() {
             </span>
             <div className="min-w-0 leading-relaxed">
               <p className="text-sm font-bold tracking-tight text-ink">
-                Budget Planner <span className="font-semibold text-muted">1.0</span>
+                {APP_NAME}{" "}
+                <span className="font-semibold text-muted">v{APP_VERSION}</span>
               </p>
               <p className="mt-1 text-sm text-muted">
                 Every byte stays in this browser — your data never leaves the
                 device.
               </p>
+              {appInfo?.versions && (
+                <p className="mt-2 text-xs text-muted">
+                  Desktop shell · Electron {appInfo.versions.electron} ·
+                  Chromium {appInfo.versions.chrome}
+                </p>
+              )}
               {desktopPaths && (
                 <p className="mt-2 flex flex-wrap items-center gap-1 text-xs text-muted">
                   <FolderIcon className="h-3.5 w-3.5" />

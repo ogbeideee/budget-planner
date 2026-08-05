@@ -5,6 +5,7 @@
   "private": true,
   "description": "Offline personal budget planner (Planner, To-Do, Upcoming, Timeline, Reports, Settings).",
   "author": "Budget Planner",
+  "copyright": "Copyright © 2026 Budget Planner",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k -n react,electron \"npm:dev:web\" \"npm:dev:electron\"",
@@ -27,6 +28,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "electron-updater": "^6.8.9",
     "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -80,6 +82,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Budget Planner",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "artifactName": "BudgetPlanner-Setup-${version}.exe"
     },
     "portable": {

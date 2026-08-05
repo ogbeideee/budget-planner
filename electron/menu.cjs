@@ -11,6 +11,7 @@
 "use strict";
 
 const { app, dialog, Menu, shell } = require("electron");
+const { checkForUpdatesNow, feedDescription } = require("./updater.cjs");
 
 const MENU_ACTIONS = {
   export: "export",
@@ -107,6 +108,11 @@ function buildApplicationMenu({ getFocusedWindow, getBackupsDir, getDataDir }) {
       label: "Help",
       submenu: [
         {
+          label: "Check for updates…",
+          click: () => checkForUpdatesNow(),
+        },
+        { type: "separator" },
+        {
           label: "About Budget Planner",
           click: () => {
             dialog.showMessageBox({
@@ -114,6 +120,9 @@ function buildApplicationMenu({ getFocusedWindow, getBackupsDir, getDataDir }) {
               title: "About Budget Planner",
               message: `Budget Planner ${app.getVersion()}`,
               detail: [
+                `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
+                `Platform: ${process.platform}`,
+                `Update feed: ${feedDescription()}`,
                 `Data folder: ${getDataDir()}`,
                 `Backups folder: ${getBackupsDir()}`,
               ].join("\n"),

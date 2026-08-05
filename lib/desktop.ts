@@ -7,11 +7,18 @@ export interface DesktopStorageBridge {
   keys(prefix?: string): string[];
 }
 
+export interface DesktopRuntimeVersions {
+  electron: string;
+  chrome: string;
+  node: string;
+}
+
 export interface AppInfo {
   name: string;
   version: string;
   platform: string;
   isPackaged: boolean;
+  versions: DesktopRuntimeVersions;
 }
 
 export interface DesktopPaths {
