@@ -54,7 +54,7 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
       <ChartCard title="Top categories" subtitle="Last 6 months">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
           title="No spending in this window"
           description="Add expenses and your biggest categories will surface here."
         />
@@ -94,7 +94,7 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
             <YAxis
               type="category"
               dataKey="label"
-              tick={{ fill: colors.ink, fontSize: 12.5 }}
+              tick={{ fill: colors.ink, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
               width={130}
@@ -109,7 +109,7 @@ export function TopCategoriesChart({ months }: { months: Month[] }) {
             <Bar
               dataKey="amount"
               name="Spent"
-              radius={[0, 6, 6, 0]}
+              radius={[0, 4, 4, 0]}
               isAnimationActive={!reduced}
             >
               {data.map((entry) => (

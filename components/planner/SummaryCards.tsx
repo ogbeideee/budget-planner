@@ -1,125 +1,60 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
-import { AnimatedMoney } from "@/components/ui/AnimatedNumber";
+import {
+  AnimatedMoney,
+  AnimatedNumber,
+} from "@/components/ui/AnimatedNumber";
+import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
-import { ProgressBar } from "@/components/ui/ProgressBar";
+import { MetricCard } from "@/components/ui/MetricCard";
 import {
   ArrowDownLeftIcon,
   ArrowUpRightIcon,
-  ChevronRightIcon,
   PencilIcon,
   TargetIcon,
   TrendingUpIcon,
+  WalletIcon,
 } from "@/components/ui/icons";
 import { formatMonthLabel } from "@/lib/date";
 import { monthFinance } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
-import type { Currency, Month } from "@/lib/types";
+import { monthStats } from "@/lib/monthStats";
+import type { Month } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { AllocationPanel } from "./AllocationPanel";
-import { Drawer } from "@/components/ui/Drawer";
-import { ExpenseBreakdown } from "./ExpenseBreakdown";
 import { IncomeModal } from "./IncomeModal";
-
-interface SummaryCardProps {
-  ariaLabel: string;
-  label: string;
-  value: number;
-  hint: string;
-  icon: ReactNode;
-  iconClass: string;
-  valueClass?: string;
-  accent: string;
-  borderHoverClass: string;
-  editAffordance?: boolean;
-  currency: Currency;
-  className?: string;
-  onClick: () => void;
-}
-
-function SummaryCard({
-  ariaLabel,
-  label,
-  value,
-  hint,
-  icon,
-  iconClass,
-  valueClass,
-  accent,
-  borderHoverClass,
-  editAffordance = false,
-  currency,
-  className = "",
-  onClick,
-}: SummaryCardProps) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={`group relative flex flex-col gap-2.5 overflow-hidden rounded-xl border border-border/50 bg-surface p-5 text-left shadow-card transition-all duration-200 ease-premium hover:-translate-y-1 hover:shadow-card-hover focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus:outline-none motion-reduce:transform-none ${borderHoverClass} ${className}`}
-    >
-      <span
-        aria-hidden="true"
-        className={`absolute inset-x-0 top-0 h-[3px] ${accent}`}
-      />
-      <span className="flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-2.5">
-          <span
-            aria-hidden="true"
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform duration-200 ease-premium group-hover:scale-105 ${iconClass}`}
-          >
-            {icon}
-          </span>
-          <span className="min-w-0 text-sm font-semibold leading-snug text-muted group-hover:text-ink">
-            {label}
-          </span>
-        </span>
-        {editAffordance ? (
-          <span className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-border bg-canvas px-2 text-xs font-semibold text-muted transition-colors duration-200 ease-premium group-hover:border-brand-500/40 group-hover:bg-brand-50 group-hover:text-brand-600 dark:group-hover:bg-brand-950 dark:group-hover:text-brand-300">
-            <PencilIcon className="h-3 w-3" />
-            Edit
-          </span>
-        ) : (
-          <ChevronRightIcon className="hidden h-4 w-4 shrink-0 -translate-x-1 text-muted opacity-0 transition-all duration-200 ease-premium group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 sm:block motion-reduce:transition-none" />
-        )}
-      </span>
-      <AnimatedMoney
-        value={value}
-        currency={currency}
-        className={`text-[1.75rem] font-bold leading-9 tracking-tight tabular-nums ${valueClass ?? ""}`}
-      />
-      <span className="text-xs font-medium leading-tight text-muted/80">
-        {hint}
-      </span>
-    </button>
-  );
-}
 
 export function SummaryCards({ month }: { month: Month }) {
   const transactions = useAppStore((s) => s.state.transactions);
   const budgets = useAppStore((s) => s.state.budgets);
+  const categories = useAppStore((s) => s.state.categories);
+  const futureExpenses = useAppStore((s) => s.state.futureExpenses);
   const incomePlans = useAppStore((s) => s.state.incomePlans);
   const currency = useAppStore((s) => s.state.settings.currency);
 
   const [incomeModalOpen, setIncomeModalOpen] = useState(false);
-  const [expensesModalOpen, setExpensesModalOpen] = useState(false);
   const [netModalOpen, setNetModalOpen] = useState(false);
   const [remainingModalOpen, setRemainingModalOpen] = useState(false);
 
-  const {
-    received,
-    expected,
-    expenses,
-    net,
-    remaining,
-  } = useMemo(
+  const { received, expected, expenses, net, remaining } = useMemo(
     () => monthFinance(transactions, incomePlans, month),
     [transactions, incomePlans, month],
   );
   const difference = expected - received;
+  const savingsRate = useMemo(
+    () =>
+      monthStats({
+        month,
+        transactions,
+        budgets,
+        categories,
+        futureExpenses,
+        incomePlans,
+      }).savingsRate,
+    [month, transactions, budgets, categories, futureExpenses, incomePlans],
+  );
+
   const monthBudgets = useMemo(
     () => budgets.filter((budget) => budget.month === month),
     [budgets, month],
@@ -129,127 +64,131 @@ export function SummaryCards({ month }: { month: Month }) {
     () => monthBudgets.reduce((sum, budget) => sum + budget.limit, 0),
     [monthBudgets],
   );
-  const allocatable = remaining;
-  const fundedPct =
-    allocatable > 0 ? committed / allocatable : committed > 0 ? 1 : 0;
-  const overCommitted = allocatable > 0 && committed > allocatable;
+  const fundedPct = received > 0 ? committed / received : 0;
+  const overCommitted = committed > received;
 
   const fmt = (value: number) => formatMoney(value, currency);
+
+  const reviewBudgets = () => {
+    document
+      .getElementById("budget-allocation")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <>
       <div
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
         aria-live="polite"
       >
-        <button
-          type="button"
-          aria-label="Remaining allocation"
-          onClick={() => setRemainingModalOpen(true)}
-          className={`group relative flex flex-col justify-between gap-6 overflow-hidden rounded-2xl border border-brand-500/25 bg-gradient-to-br from-brand-500/[0.08] via-surface to-surface p-6 text-left shadow-card transition-all duration-200 ease-premium hover:-translate-y-1 hover:border-brand-500/40 hover:shadow-card-hover focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus:outline-none motion-reduce:transform-none sm:col-span-2 lg:col-span-2 lg:row-span-2`}
-        >
-          <span
-            aria-hidden="true"
-            className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-600/80 to-brand-400/60"
-          />
-          <span className="flex items-center justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <span
-                aria-hidden="true"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/15 text-brand-600 shadow-sm transition-transform duration-200 ease-premium group-hover:scale-105 dark:text-brand-400"
-              >
-                <TargetIcon className="h-5 w-5" />
-              </span>
-              <span className="shrink-0 text-sm font-semibold leading-snug text-muted group-hover:text-ink">
-                Remaining
-              </span>
-            </span>
-            <ChevronRightIcon className="hidden h-4 w-4 shrink-0 -translate-x-1 text-muted opacity-0 transition-all duration-200 ease-premium group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 sm:block motion-reduce:transition-none" />
-          </span>
-          <AnimatedMoney
-            value={remaining}
-            currency={currency}
-            className={`text-4xl font-bold leading-none tracking-tight tabular-nums ${
-              net < 0 ? "text-warn" : "text-ink"
-            }`}
-          />
-          {hasBudgets ? (
-            <span className="flex flex-col gap-1.5">
-              <span className="flex items-baseline justify-between gap-3">
-                <span className="text-xs font-medium text-muted">
-                  {fmt(committed)} committed of {fmt(allocatable)} allocatable
-                </span>
-                <span
-                  className={`text-xs font-semibold tabular-nums ${
-                    overCommitted ? "text-warn" : "text-muted"
-                  }`}
-                >
-                  {Math.round(Math.min(1, fundedPct) * 100)}%
-                </span>
-              </span>
-              <ProgressBar
-                value={Math.min(1, fundedPct)}
-                tone={overCommitted ? "warn" : "brand"}
-              />
-            </span>
-          ) : (
-            <span className="text-xs font-medium leading-tight text-muted/80">
-              What&apos;s left to allocate · set a budget to see how it divides
-            </span>
-          )}
-        </button>
-
-        <SummaryCard
-          ariaLabel={
-            expected > 0 ? "Expected income" : "Set expected income"
+        <MetricCard
+          ariaLabel={expected > 0 ? "Expected income" : "Set expected income"}
+          label="Expected Income"
+          value={
+            <AnimatedMoney
+              value={expected}
+              currency={currency}
+              className={expected > 0 ? "text-income" : "text-muted"}
+            />
           }
-          label={expected > 0 ? "Expected income" : "Set expected income"}
-          value={expected}
-          hint={
+          support={
             expected > 0
-              ? `Received ${fmt(received)} · ${difference >= 0 ? "+" : "−"}${fmt(Math.abs(difference))} ${difference >= 0 ? "to collect" : "over received"}`
+              ? received >= expected
+                ? "All expected received"
+                : `${Math.round((received / expected) * 100)}% received`
               : received > 0
-                ? `Received ${fmt(received)} — plan what you expect`
+                ? `Received ${fmt(received)} this month`
                 : "Set what you expect to earn this month"
           }
-          icon={<ArrowDownLeftIcon className="h-5 w-5" />}
-          iconClass="bg-income/10 text-income"
-          valueClass={expected > 0 ? "text-income" : "text-muted"}
-          accent="bg-income/70"
-          borderHoverClass="hover:border-income/40"
-          editAffordance
-          currency={currency}
+          icon={<ArrowDownLeftIcon className="h-[18px] w-[18px]" />}
+          iconClass="bg-success-surface text-income"
+          chip={
+            expected > 0 ? (
+              <span className="flex items-center gap-1 text-caption font-semibold text-muted transition-colors duration-default ease-premium group-hover:text-brand-600">
+                <PencilIcon className="h-3 w-3" />
+                Edit
+              </span>
+            ) : undefined
+          }
           onClick={() => setIncomeModalOpen(true)}
         />
-        <SummaryCard
-          ariaLabel="Expense breakdown"
-          label="Expenses"
-          value={expenses}
-          hint="See the full breakdown"
-          icon={<ArrowUpRightIcon className="h-5 w-5" />}
-          iconClass="bg-expense/10 text-expense"
-          valueClass="text-expense"
-          accent="bg-expense/70"
-          borderHoverClass="hover:border-expense/40"
-          currency={currency}
-          onClick={() => setExpensesModalOpen(true)}
+
+        <MetricCard
+          ariaLabel="Remaining allocation"
+          label="Remaining"
+          value={
+            <AnimatedMoney
+              value={remaining}
+              currency={currency}
+              className={net < 0 ? "text-warn" : "text-ink"}
+            />
+          }
+          support={
+            hasBudgets
+              ? received > 0
+                ? `${fmt(committed)} committed · ${Math.round(fundedPct * 100)}% of allocatable`
+                : `${fmt(committed)} committed · no income yet`
+              : "Set a budget to see what's left"
+          }
+          progress={
+            hasBudgets
+              ? {
+                  value: Math.min(1, fundedPct),
+                  tone: overCommitted ? "warn" : "brand",
+                }
+              : undefined
+          }
+          icon={<TargetIcon className="h-[18px] w-[18px]" />}
+          iconClass="bg-health-surface text-health-text"
+          onClick={() => setRemainingModalOpen(true)}
         />
-        <SummaryCard
-          ariaLabel="Net summary"
-          label="Net"
-          value={net}
-          hint="Income minus expenses"
-          icon={<TrendingUpIcon className="h-5 w-5" />}
-          iconClass={
-            net >= 0 ? "bg-income/10 text-income" : "bg-expense/10 text-expense"
+
+        <MetricCard
+          ariaLabel="Budgeted"
+          label="Budgeted"
+          value={
+            <AnimatedMoney
+              value={committed}
+              currency={currency}
+              className={committed > 0 ? "text-ink" : "text-muted"}
+            />
           }
-          valueClass={net >= 0 ? "text-income" : "text-expense"}
-          accent={net >= 0 ? "bg-income/70" : "bg-expense/70"}
-          borderHoverClass={
-            net >= 0 ? "hover:border-income/40" : "hover:border-expense/40"
+          support={
+            hasBudgets
+              ? received > 0
+                ? `${monthBudgets.length} ${monthBudgets.length === 1 ? "budget" : "budgets"} · ${Math.round(fundedPct * 100)}% of allocatable`
+                : `${monthBudgets.length} ${monthBudgets.length === 1 ? "budget" : "budgets"} · no income yet`
+              : "Nothing committed yet"
           }
-          currency={currency}
-          className="sm:col-span-2 lg:col-span-2"
+          icon={<WalletIcon className="h-[18px] w-[18px]" />}
+          iconClass="bg-savings-surface text-savings-text"
+          onClick={reviewBudgets}
+        />
+
+        <MetricCard
+          ariaLabel="Savings rate"
+          label="Savings Rate"
+          value={
+            savingsRate === null ? (
+              <span className="text-muted">—</span>
+            ) : (
+              <AnimatedNumber
+                value={savingsRate}
+                className={
+                  savingsRate >= 0 ? "text-income" : "text-expense"
+                }
+              />
+            )
+          }
+          support={
+            savingsRate === null
+              ? "Add income to see your savings rate"
+              : net >= 0
+                ? `You keep ${fmt(net)} after expenses`
+                : `Overspend of ${fmt(Math.abs(net))} this month`
+          }
+          icon={<TrendingUpIcon className="h-[18px] w-[18px]" />}
+          iconClass="bg-remaining-surface text-remaining-text"
           onClick={() => setNetModalOpen(true)}
         />
       </div>
@@ -260,14 +199,6 @@ export function SummaryCards({ month }: { month: Month }) {
         open={incomeModalOpen}
         onClose={() => setIncomeModalOpen(false)}
       />
-
-      <Modal
-        open={expensesModalOpen}
-        onClose={() => setExpensesModalOpen(false)}
-        title="Where your money went"
-      >
-        <ExpenseBreakdown month={month} bare />
-      </Modal>
 
       <Modal
         open={netModalOpen}

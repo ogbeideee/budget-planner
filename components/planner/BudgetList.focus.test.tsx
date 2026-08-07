@@ -75,7 +75,42 @@ describe("BudgetList focus-budget flow", () => {
       );
     });
 
-    expect(screen.queryByText("Allocated · August 2026")).toBeInTheDocument();
+    expect(screen.queryByText("Budget Allocation")).toBeInTheDocument();
     expect(document.getElementById("budget-row-budget-rent")).toBeNull();
+  });
+
+  it("handles a focus event dispatched synchronously right after the budget is added", async () => {
+    seedMonthWithBudget();
+    render(<BudgetList month="2026-08" />);
+
+    const utilitiesId = useAppStore
+      .getState()
+      .state.categories.find((c) => c.name === "Utilities")!.id;
+    useAppStore.getState().addBudget({
+      categoryId: utilitiesId,
+      month: "2026-08",
+      limit: 30000,
+      priority: "medium",
+    });
+    const budgetId = useAppStore
+      .getState()
+      .state.budgets.find(
+        (b) => b.month === "2026-08" && b.categoryId === utilitiesId,
+      )!.id;
+
+    window.dispatchEvent(
+      new CustomEvent("planner:focus-budget", {
+        detail: { budgetId },
+      }),
+    );
+
+    await act(async () => {});
+
+    expect(
+      screen.getByRole("button", { name: /Budget Allocation/ }),
+    ).toHaveAttribute("aria-expanded", "true");
+    const row = document.getElementById(`budget-row-${budgetId}`);
+    expect(row).toBeTruthy();
+    expect(row).toHaveClass("ring-2");
   });
 });

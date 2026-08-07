@@ -70,63 +70,57 @@ function seedTwoGroups() {
   });
 }
 
-async function expandTimeline() {
-  const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: /Timeline/ }));
-}
-
 describe("TransactionList timeline polish", () => {
-  it("highlights the Today group with a subtle brand accent and a prominent total", async () => {
+  it("highlights the Today group with a subtle brand accent and a prominent total", () => {
     seedTwoGroups();
-    const { container } = render(<TransactionList />);
-    await expandTimeline();
+    render(<TransactionList />);
 
-    const todayHeader = screen.getByText("Today").closest("th")!;
-    expect(todayHeader.className).toContain("bg-brand-500/10");
+    const todayHeader = screen.getByText("Today").closest("h2")!;
+    expect(todayHeader.className).toContain("sticky top-16");
+    expect(todayHeader.className).toContain("lg:top-0");
     expect(todayHeader.className).toContain("text-brand-600");
     expect(
       todayHeader.querySelector('span[aria-hidden="true"]'),
     ).not.toBeNull();
 
-    const todayTotal = within(todayHeader).getByText("$50.00");
+    const todayTotal = within(todayHeader).getByText("$50.00 spent");
     expect(todayTotal.className).toContain("font-bold");
     expect(todayTotal.className).toContain("text-brand-600");
 
     const otherTotal = within(
-      screen.getByText("$30.00").closest("th")!,
-    ).getByText("$30.00");
+      screen.getByText("$30.00 spent").closest("h2")!,
+    ).getByText("$30.00 spent");
     expect(otherTotal.className).toContain("font-bold");
     expect(otherTotal.className).toContain("text-ink");
-
-    expect(container.querySelectorAll('tr[aria-hidden="true"]').length).toBe(1);
   });
 
-  it("increases hover feedback on transaction rows", async () => {
+  it("renders transactions as activity cards that lift on hover", () => {
     seedTwoGroups();
     render(<TransactionList />);
-    await expandTimeline();
 
-    const row = screen.getByText("Rent today").closest("tr")!;
-    expect(row.className).toContain("hover:bg-canvas");
+    const cards = screen.getAllByRole("listitem");
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      expect(card.className).toContain("rounded-lg");
+      expect(card.className).toContain("shadow-card");
+      expect(card.className).toContain("hover:shadow-card-hover");
+      expect(card.className).toContain("hover:-translate-y-0.5");
+    }
   });
 
-  it("keeps the filter bar in flow and pins table headers below the app header", async () => {
+  it("keeps the filter bar in flow and pins group headings below the app header", () => {
     seedTwoGroups();
-    const { container } = render(<TransactionList />);
-    await expandTimeline();
+    render(<TransactionList />);
 
     const bar = screen.getByRole("button", { name: "New record" }).closest("div")!;
     expect(bar.className).not.toContain("sticky");
 
-    const headerCells = container.querySelectorAll('th[scope="col"]');
-    expect(headerCells.length).toBe(5);
-    headerCells.forEach((cell) => {
-      expect(cell.className).toContain("sticky top-16");
-      expect(cell.className).toContain("lg:top-0");
-    });
+    const heading = screen.getByText("Today").closest("h2")!;
+    expect(heading.className).toContain("sticky top-16");
+    expect(heading.className).toContain("lg:top-0");
   });
 
-  it("wraps long unbroken notes instead of widening the table", async () => {
+  it("wraps long unbroken notes instead of widening the feed", () => {
     const state = useAppStore.getState().state;
     const note = "x".repeat(200);
     useAppStore.setState({
@@ -147,9 +141,41 @@ describe("TransactionList timeline polish", () => {
       },
     });
     render(<TransactionList />);
-    await expandTimeline();
 
-    const cell = screen.getByText(note);
-    expect(cell.className).toContain("break-words");
+    const noteElements = screen.getAllByText(note);
+    expect(noteElements.some((el) => el.className.includes("break-words"))).toBe(
+      true,
+    );
+    expect(
+      noteElements.some((el) => el.className.includes("line-clamp-1")),
+    ).toBe(true);
+  });
+
+  it("expands a transaction into a details panel with labeled actions", async () => {
+    seedTwoGroups();
+    const user = userEvent.setup();
+    render(<TransactionList />);
+
+    await user.click(
+      screen.getAllByRole("button", {
+        name: "Expand transaction details",
+      })[0],
+    );
+
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Move to next month" }),
+    ).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getAllByText("Rent today").length).toBeGreaterThan(0);
+  });
+
+  it("shows an encouraging empty state with a primary CTA", () => {
+    render(<TransactionList />);
+
+    expect(screen.getByText("No transactions yet")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Add your first transaction" }),
+    ).toBeInTheDocument();
   });
 });

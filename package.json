@@ -1,6 +1,6 @@
 {
   "name": "budget-planner",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "productName": "Budget Planner",
   "private": true,
   "description": "Offline personal budget planner (Planner, To-Do, Upcoming, Timeline, Reports, Settings).",

@@ -3,8 +3,9 @@
 import { useMemo } from "react";
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -39,7 +40,7 @@ export function IncomeExpenseChart({ months }: { months: Month[] }) {
       <ChartCard title="Income vs expenses" subtitle="Last 6 months">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
           title="Nothing to compare yet"
           description="Add income or expenses and this chart will compare them by month."
         />
@@ -60,7 +61,7 @@ export function IncomeExpenseChart({ months }: { months: Month[] }) {
         <span className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="h-2 w-2 rounded-full"
+            className="h-1.5 w-1.5 rounded-full"
             style={{ backgroundColor: colors.income }}
           />
           Income
@@ -68,18 +69,27 @@ export function IncomeExpenseChart({ months }: { months: Month[] }) {
         <span className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="h-2 w-2 rounded-full"
+            className="h-1.5 w-1.5 rounded-full"
             style={{ backgroundColor: colors.expense }}
           />
           Expenses
         </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: colors.brand }}
+          />
+          Net
+        </span>
       </div>
       <div role="img" aria-label={ariaLabel}>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart
+        <ResponsiveContainer width="100%" height={320}>
+          <ComposedChart
             data={data}
             margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-            barGap={2}
+            barGap={3}
+            barCategoryGap="22%"
           >
             <CartesianGrid
               strokeDasharray="3 3"
@@ -99,6 +109,7 @@ export function IncomeExpenseChart({ months }: { months: Month[] }) {
               axisLine={false}
               tickLine={false}
               width={60}
+              domain={["auto", "auto"]}
             />
             <Tooltip
               formatter={(value, name) => [
@@ -122,7 +133,18 @@ export function IncomeExpenseChart({ months }: { months: Month[] }) {
               radius={[6, 6, 0, 0]}
               isAnimationActive={!reduced}
             />
-          </BarChart>
+            <Line
+              type="monotone"
+              dataKey="net"
+              name="Net"
+              stroke={colors.brand}
+              strokeWidth={2.25}
+              strokeLinecap="round"
+              dot={{ r: 3, fill: colors.brand, strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
+              isAnimationActive={!reduced}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </ChartCard>

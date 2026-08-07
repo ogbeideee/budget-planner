@@ -5,7 +5,6 @@ import {
   useEffect,
   useImperativeHandle,
   useSyncExternalStore,
-  useState,
 } from "react";
 import type { ReactNode, Ref } from "react";
 import { ChevronDownIcon } from "@/components/ui/icons";
@@ -76,10 +75,10 @@ export interface DisclosureProps {
 }
 
 const CHROME: Record<"panel" | "section" | "quiet" | "brand", string> = {
-  panel: "rounded-xl bg-surface shadow-card",
+  panel: "rounded-xl border border-border/70 bg-surface shadow-card",
   section: "",
-  quiet: "rounded-xl border border-border/60 bg-canvas/40 shadow-none",
-  brand: "rounded-xl border border-brand-500/20 shadow-card",
+  quiet: "rounded-xl border border-border/50 bg-canvas/40",
+  brand: "rounded-xl border border-brand-500/20 bg-surface shadow-card",
 };
 
 export function Disclosure({
@@ -95,8 +94,6 @@ export function Disclosure({
   ref,
 }: DisclosureProps) {
   const store = storeFor(id, defaultOpen);
-  const [height, setHeight] = useState<number | "auto">("auto");
-  const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
 
   const serverSnapshot = useCallback(() => defaultOpen, [defaultOpen]);
   const open = useSyncExternalStore(
@@ -110,19 +107,7 @@ export function Disclosure({
   }, [id, open]);
 
   const toggle = () => {
-    const el = bodyEl;
-    if (!el) {
-      store.set(!open);
-      return;
-    }
-    const current = el.getBoundingClientRect().height;
-    setHeight(current);
     store.set(!open);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (el) setHeight(el.scrollHeight);
-      });
-    });
   };
 
   useImperativeHandle(ref, () => ({
@@ -130,8 +115,6 @@ export function Disclosure({
       if (!open) toggle();
     },
   }));
-
-  const settle = () => setHeight("auto");
 
   const isPanel = variant === "panel" || variant === "quiet" || variant === "brand";
   const content = open ? children : preview?.(toggle);
@@ -144,15 +127,15 @@ export function Disclosure({
           aria-expanded={open}
           aria-controls={`${id}-panel`}
           onClick={toggle}
-          className={`flex min-w-0 flex-1 items-center gap-2.5 text-left focus:outline-none ${
+          className={`group flex min-w-0 flex-1 items-center gap-2.5 text-left focus:outline-none ${
             isPanel
-              ? "rounded-xl px-5 py-4 transition-colors duration-200 ease-premium hover:bg-canvas/60 focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-inset"
+              ? "rounded-xl px-6 py-4 transition-colors duration-150 ease-premium hover:bg-sidebar-hover focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-inset"
               : "rounded-md px-2 py-2 focus-visible:ring-2 focus-visible:ring-brand-500/60"
           }`}
         >
           <ChevronDownIcon
             aria-hidden="true"
-            className={`h-4 w-4 shrink-0 text-muted transition-transform duration-200 ease-premium motion-reduce:transition-none ${
+            className={`h-4 w-4 shrink-0 text-muted transition-transform duration-default ease-premium group-hover:text-ink motion-reduce:transition-none ${
               open ? "rotate-180" : ""
             }`}
           />
@@ -162,7 +145,7 @@ export function Disclosure({
           {badge}
         </button>
         {action && (
-          <div className="flex shrink-0 items-center gap-2 pr-5">
+          <div className="flex shrink-0 items-center gap-2 pr-7">
             {action(toggle)}
           </div>
         )}
@@ -171,22 +154,20 @@ export function Disclosure({
         id={`${id}-panel`}
         role="region"
         aria-label={title}
-        ref={setBodyEl}
-        style={{ height }}
-        onTransitionEnd={settle}
-        className={`transition-[height] duration-200 ease-premium motion-reduce:transition-none ${
-          height === "auto" ? "overflow-visible" : "overflow-hidden"
-        }`}
+        style={{ gridTemplateRows: content != null ? "1fr" : "0fr" }}
+        className="grid transition-[grid-template-rows] duration-default ease-premium motion-reduce:transition-none"
       >
-        {content != null && (
-          <div
-            className={`animate-[list-in_200ms_var(--ease-premium)] ${
-              isPanel ? "px-5 pb-5" : "px-2 pb-2"
-            }`}
-          >
-            {content}
-          </div>
-        )}
+        <div className="min-h-0 overflow-y-clip">
+          {content != null && (
+            <div
+              className={`animate-[list-in_200ms_var(--ease-premium)] ${
+                isPanel ? "px-6 pb-6 pt-1" : "px-2 pb-2"
+              }`}
+            >
+              {content}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

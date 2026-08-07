@@ -4,9 +4,10 @@ import { useMemo } from "react";
 import { useAnimatedNumber } from "@/hooks/useAnimatedNumber";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { Card } from "@/components/ui/Card";
+import { CircularProgress } from "@/components/ui/CircularProgress";
 import { CheckIcon, XIcon } from "@/components/ui/icons";
-import { ProgressBar } from "@/components/ui/ProgressBar";
-import { budgetHealth, fundingGaps, healthTier, overBudgetCategories } from "@/lib/selectors";
+import { budgetHealth, healthTier, overBudgetCategories } from "@/lib/selectors";
+import { fundingNeeds } from "@/lib/funding";
 import { monthFinance } from "@/lib/finance";
 import type { HealthTier } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -31,15 +32,9 @@ const TIER_DESCRIPTION: Record<HealthTier, string> = {
 };
 
 const TIER_BADGE: Record<HealthTier, string> = {
-  healthy: "bg-income/10 text-income",
-  watch: "bg-warn/10 text-warn",
-  risk: "bg-danger/10 text-danger",
-};
-
-const TIER_DOT: Record<HealthTier, string> = {
-  healthy: "bg-income",
-  watch: "bg-warn",
-  risk: "bg-danger",
+  healthy: "bg-success-surface text-success-text",
+  watch: "bg-upcoming-surface text-warn-text",
+  risk: "bg-expense-surface text-danger-text",
 };
 
 export function BudgetHealthCard({ month }: { month: Month }) {
@@ -58,7 +53,7 @@ export function BudgetHealthCard({ month }: { month: Month }) {
     [budgets, transactions, month],
   );
   const unfundedCount = useMemo(
-    () => fundingGaps(budgets, categories, futureExpenses, month).length,
+    () => fundingNeeds(budgets, categories, futureExpenses, month).length,
     [budgets, categories, futureExpenses, month],
   );
   const net = useMemo(
@@ -68,7 +63,7 @@ export function BudgetHealthCard({ month }: { month: Month }) {
   const tier = healthTier(health);
   const animatedHealth = useAnimatedNumber(health);
 
-  const checklist = [
+  const insights = [
     {
       label: "Budgets within limits",
       ok: overCount === 0,
@@ -88,57 +83,69 @@ export function BudgetHealthCard({ month }: { month: Month }) {
   ];
 
   return (
-    <Card title="Budget health">
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="flex items-baseline gap-1.5">
-            <AnimatedNumber
-              value={health}
-              className="text-5xl font-bold tracking-tight tabular-nums text-ink"
-            />
-            <span className="text-base font-semibold text-muted">/100</span>
-          </p>
+    <Card
+      title="Budget Health"
+      subtitle={TIER_DESCRIPTION[tier]}
+      action={
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-caption font-semibold ${TIER_BADGE[tier]}`}
+        >
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${TIER_BADGE[tier]}`}
-          >
-            <span
-              aria-hidden="true"
-              className={`h-1.5 w-1.5 rounded-full ${TIER_DOT[tier]}`}
-            />
-            {TIER_LABEL[tier]}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <ProgressBar
+            aria-hidden="true"
+            className={`h-1.5 w-1.5 rounded-full ${
+              tier === "healthy"
+                ? "bg-income"
+                : tier === "watch"
+                  ? "bg-warn"
+                  : "bg-danger"
+            }`}
+          />
+          {TIER_LABEL[tier]}
+        </span>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex items-center justify-center py-2">
+          <CircularProgress
             value={animatedHealth / 100}
             tone={TIER_TONE[tier]}
-            className="h-1"
-          />
-          <p className="text-xs text-muted">{TIER_DESCRIPTION[tier]}</p>
+            size={148}
+            strokeWidth={12}
+          >
+            <AnimatedNumber
+              value={animatedHealth}
+              className="text-kpi-micro font-bold leading-none tracking-[-0.02em] tabular-nums text-ink"
+            />
+            <span className="mt-1 text-caption font-medium text-muted">
+              out of 100
+            </span>
+          </CircularProgress>
         </div>
-        <ul className="flex flex-col gap-0.5 border-t border-border/50 pt-2">
-          {checklist.map((item) => (
+        <ul className="flex flex-col">
+          {insights.map((item) => (
             <li
               key={item.label}
-              className="flex items-center justify-between gap-3 rounded-md px-1.5 py-1.5"
+              className="flex items-center justify-between gap-3 rounded-lg px-3 py-3 transition-colors duration-150 ease-premium hover:bg-sidebar-hover"
             >
-              <span className="flex items-center gap-2 text-sm text-ink">
+              <span className="flex items-center gap-3 text-sm font-medium text-ink">
                 <span
                   aria-hidden="true"
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                    item.ok ? "bg-income/10 text-income" : "bg-danger/10 text-danger"
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                    item.ok
+                      ? "bg-success-surface text-income"
+                      : "bg-expense-surface text-danger"
                   }`}
                 >
                   {item.ok ? (
-                    <CheckIcon className="h-3 w-3" />
+                    <CheckIcon className="h-4 w-4" />
                   ) : (
-                    <XIcon className="h-3 w-3" />
+                    <XIcon className="h-4 w-4" />
                   )}
                 </span>
                 {item.label}
               </span>
               <span
-                className={`text-xs font-medium ${
+                className={`text-caption font-semibold ${
                   item.ok ? "text-muted" : "text-danger"
                 }`}
               >

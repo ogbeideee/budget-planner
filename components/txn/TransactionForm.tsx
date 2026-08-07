@@ -16,19 +16,21 @@ export interface TransactionFormProps {
   open: boolean;
   onClose: () => void;
   transaction?: Transaction | null;
+  initialType?: CategoryKind;
 }
 
 export function TransactionForm({
   open,
   onClose,
   transaction,
+  initialType = "expense",
 }: TransactionFormProps) {
   const categories = useAppStore((s) => s.state.categories);
   const addTransaction = useAppStore((s) => s.addTransaction);
   const updateTransaction = useAppStore((s) => s.updateTransaction);
   const currency = useAppStore((s) => s.state.settings.currency);
 
-  const [type, setType] = useState<CategoryKind>(transaction?.type ?? "expense");
+  const [type, setType] = useState<CategoryKind>(transaction?.type ?? initialType);
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? "");
   const [amountInput, setAmountInput] = useState(
     transaction ? minorToInput(transaction.amount) : "",

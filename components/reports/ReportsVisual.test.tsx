@@ -60,22 +60,22 @@ beforeEach(() => {
 });
 
 describe("Reports chrome", () => {
-  it("renders chart cards with the calm quiet treatment", () => {
+  it("renders chart cards as white containers with a soft shadow", () => {
     render(
       <ChartCard title="Income vs expenses" subtitle="Last 6 months">
         body
       </ChartCard>,
     );
     const card = document.querySelector("section")!;
-    expect(card.className).toContain("bg-canvas/40");
-    expect(card.className).toContain("shadow-none");
+    expect(card.className).toContain("bg-surface");
+    expect(card.className).toContain("shadow-card");
     expect(screen.getByText("Last 6 months")).toBeInTheDocument();
   });
 
-  it("renders section titles at the larger size", () => {
+  it("renders section titles in the bold section style", () => {
     render(<SectionHeading>Financial snapshot</SectionHeading>);
     expect(screen.getByText("Financial snapshot").className).toContain(
-      "text-sm",
+      "text-section-title",
     );
   });
 });

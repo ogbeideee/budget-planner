@@ -26,17 +26,17 @@ const TONES: Record<
   danger: {
     icon: AlertTriangleIcon,
     iconClass: "text-danger",
-    rowClass: "bg-danger/[0.06]",
+    rowClass: "bg-danger/[0.05]",
   },
   warn: {
     icon: AlertTriangleIcon,
     iconClass: "text-warn",
-    rowClass: "bg-warn/[0.05]",
+    rowClass: "bg-warn/[0.04]",
   },
   success: {
     icon: CheckIcon,
     iconClass: "text-income",
-    rowClass: "bg-income/[0.05]",
+    rowClass: "bg-income/[0.04]",
   },
   neutral: {
     icon: DotIcon,
@@ -49,6 +49,7 @@ export interface InsightListProps {
   month: Month;
   actionsOnly?: boolean;
   limit?: number;
+  skip?: number;
   input?: InsightsInput;
 }
 
@@ -56,6 +57,7 @@ export function InsightList({
   month,
   actionsOnly = false,
   limit,
+  skip = 0,
   input,
 }: InsightListProps) {
   const budgets = useAppStore((s) => s.state.budgets);
@@ -78,7 +80,8 @@ export function InsightList({
       },
     );
     const filtered = actionsOnly ? all.filter((insight) => insight.action) : all;
-    return limit === undefined ? filtered : filtered.slice(0, limit);
+    const afterSkip = skip === 0 ? filtered : filtered.slice(skip);
+    return limit === undefined ? afterSkip : afterSkip.slice(0, limit);
   }, [
     budgets,
     transactions,
@@ -89,6 +92,7 @@ export function InsightList({
     currency,
     actionsOnly,
     limit,
+    skip,
     input,
   ]);
 

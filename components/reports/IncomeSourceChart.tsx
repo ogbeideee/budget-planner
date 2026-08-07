@@ -49,7 +49,7 @@ export function IncomeSourceChart({ month }: { month: Month }) {
       <ChartCard title="Income sources" subtitle="This month">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-income/10 text-income"
+          illustrationClass="bg-income/[0.08] text-income"
           title="No income received yet"
           description="Plan your income sources on the planner and they'll be ranked here by amount received."
         />
@@ -86,7 +86,7 @@ export function IncomeSourceChart({ month }: { month: Month }) {
             <YAxis
               type="category"
               dataKey="label"
-              tick={{ fill: colors.ink, fontSize: 12.5 }}
+              tick={{ fill: colors.ink, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
               width={130}
@@ -101,7 +101,7 @@ export function IncomeSourceChart({ month }: { month: Month }) {
             <Bar
               dataKey="amount"
               name="Received"
-              radius={[0, 6, 6, 0]}
+              radius={[0, 4, 4, 0]}
               fill={colors.income}
               isAnimationActive={!reduced}
             >
@@ -109,7 +109,7 @@ export function IncomeSourceChart({ month }: { month: Month }) {
                 <Cell
                   key={entry.key}
                   fill={colors.income}
-                  fillOpacity={1 - 0.45 * (index / Math.max(1, data.length - 1))}
+                  fillOpacity={1 - 0.4 * (index / Math.max(1, data.length - 1))}
                 />
               ))}
             </Bar>

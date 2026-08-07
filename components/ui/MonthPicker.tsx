@@ -12,12 +12,12 @@ export interface MonthPickerProps {
 export function MonthPicker({ value, onChange }: MonthPickerProps) {
   const isCurrent = value === currentMonthKey();
   return (
-    <div className="flex items-center rounded-lg border border-border bg-surface shadow-card">
+    <div className="flex items-center rounded-lg border border-border/70 bg-surface">
       <button
         type="button"
         onClick={() => onChange(monthOffset(value, -1))}
         aria-label="Previous month"
-        className="flex h-11 w-11 items-center justify-center rounded-l-lg text-muted transition-colors duration-200 ease-premium hover:bg-canvas hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset focus:outline-none"
+        className="flex h-10 w-10 items-center justify-center rounded-l-lg text-muted transition-colors duration-150 ease-premium hover:bg-canvas/70 hover:text-ink active:scale-95 focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-inset focus:outline-none"
       >
         <ChevronLeftIcon className="h-4 w-4" />
       </button>
@@ -31,7 +31,7 @@ export function MonthPicker({ value, onChange }: MonthPickerProps) {
         type="button"
         onClick={() => onChange(monthOffset(value, 1))}
         aria-label="Next month"
-        className="flex h-11 w-11 items-center justify-center rounded-r-lg text-muted transition-colors duration-200 ease-premium hover:bg-canvas hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset focus:outline-none"
+        className="flex h-10 w-10 items-center justify-center rounded-r-lg text-muted transition-colors duration-150 ease-premium hover:bg-canvas/70 hover:text-ink active:scale-95 focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-inset focus:outline-none"
       >
         <ChevronRightIcon className="h-4 w-4" />
       </button>
@@ -39,7 +39,7 @@ export function MonthPicker({ value, onChange }: MonthPickerProps) {
         <button
           type="button"
           onClick={() => onChange(currentMonthKey())}
-          className="mr-1 hidden h-11 items-center rounded-md px-2.5 text-xs font-semibold text-brand-600 transition-colors duration-200 ease-premium hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset dark:text-brand-400 dark:hover:bg-brand-950 sm:flex"
+          className="mr-1 hidden h-10 items-center rounded-md px-2.5 text-xs font-semibold text-brand-600 transition-colors duration-150 ease-premium hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-inset dark:text-brand-400 dark:hover:bg-brand-950 sm:flex"
         >
           This month
         </button>

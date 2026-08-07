@@ -9,6 +9,7 @@ export function useToast() {
     () => ({
       success: (message: string) => push(message, "success"),
       error: (message: string) => push(message, "error"),
+      info: (message: string) => push(message, "info"),
     }),
     [push],
   );

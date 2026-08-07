@@ -42,7 +42,7 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
       <ChartCard title="Budget utilization" subtitle="Last 6 months">
         <EmptyState
           illustration="target"
-          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
           title="No budgets in this window"
           description="Set budgets on the Planner and you'll see how each one holds up."
         />
@@ -97,7 +97,7 @@ export function BudgetUtilizationChart({ months }: { months: Month[] }) {
               dataKey="barPct"
               name="Utilization"
               fill={colors.brand}
-              radius={[6, 6, 0, 0]}
+              radius={[4, 4, 0, 0]}
               isAnimationActive={!reduced}
             />
           </BarChart>

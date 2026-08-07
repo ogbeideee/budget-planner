@@ -113,7 +113,7 @@ export function RecoveryPanel() {
   return (
     <Card className="w-full max-w-xl">
       <div className="flex items-start gap-3.5">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-warn/15 text-warn">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-warn/[0.12] text-warn">
           <AlertTriangleIcon className="h-5 w-5" />
         </span>
         <div className="min-w-0 leading-relaxed">
@@ -161,7 +161,7 @@ export function RecoveryPanel() {
                     key={payload.key}
                     className="flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-surface px-3 py-2.5"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/[0.08] text-brand-600 dark:text-brand-400">
                       <FileTextIcon className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1 leading-tight">
@@ -246,7 +246,7 @@ export function RecoveryPanel() {
           className={`mt-4 rounded-lg px-3 py-2 text-sm ${
             fatal
               ? "bg-danger/10 text-expense"
-              : "bg-brand-500/10 text-brand-700 dark:text-brand-300"
+              : "bg-brand-500/[0.08] text-brand-700 dark:text-brand-300"
           }`}
         >
           {message}

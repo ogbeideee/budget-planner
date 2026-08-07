@@ -426,9 +426,9 @@ function handleProtocol(request) {
   let pathname = decodeURIComponent(url.pathname);
 
   // Next.js 16 prefetches RSC payloads as "__next.<route>.__PAGE__.txt" but the
-  // static export emits them as "__next.<route>.txt" — resolve the marker. The
-  // root payload is literally "__next.__PAGE__.txt" and must stay untouched.
-  pathname = pathname.replace(/\/(__next\.[^/]+)\.__PAGE__\.txt$/g, "/$1.txt");
+  // static export emits them as nested directories: "__next.<route>/__PAGE__.txt".
+  // The root payload is literally "__next.__PAGE__.txt" and must stay untouched.
+  pathname = pathname.replace(/\/(__next\.[^/]+)\.__PAGE__\.txt$/g, "/$1/__PAGE__.txt");
 
   if (pathname === "/") pathname = "/index.html";
 

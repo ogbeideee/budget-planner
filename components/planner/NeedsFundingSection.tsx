@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { CheckIcon, ChevronDownIcon, PlusIcon } from "@/components/ui/icons";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { fundingGaps } from "@/lib/selectors";
-import type { FundingGap } from "@/lib/selectors";
+import { fundingNeeds } from "@/lib/funding";
+import type { FundingNeed } from "@/lib/funding";
 import { fundingUrgency } from "@/lib/upcoming";
 import { formatMoney } from "@/lib/money";
 import type { Category, Month } from "@/lib/types";
@@ -42,22 +42,22 @@ export function NeedsFundingSection({
   const currency = useAppStore((s) => s.state.settings.currency);
   const [fundingCategory, setFundingCategory] = useState<Category | null>(null);
 
-  const gaps = useMemo(
-    () => fundingGaps(budgets, categories, futureExpenses, month),
+  const needs = useMemo(
+    () => fundingNeeds(budgets, categories, futureExpenses, month),
     [budgets, categories, futureExpenses, month],
   );
 
-  const visible = attentionOnly ? gaps.slice(0, 3) : gaps;
-  const hidden = gaps.length - visible.length;
+  const visible = attentionOnly ? needs.slice(0, 3) : needs;
+  const hidden = needs.length - visible.length;
 
   if (attentionOnly && visible.length === 0) return null;
 
   const fmt = (value: number) => formatMoney(value, currency);
 
-  const fund = (gap: FundingGap) => {
+  const fund = (need: FundingNeed) => {
     const existing = budgets.find(
       (budget) =>
-        budget.month === month && budget.categoryId === gap.category.id,
+        budget.month === month && budget.categoryId === need.category.id,
     );
     if (existing) {
       window.dispatchEvent(
@@ -67,7 +67,7 @@ export function NeedsFundingSection({
       );
       return;
     }
-    setFundingCategory(gap.category);
+    setFundingCategory(need.category);
   };
 
   const handleFormClose = () => {
@@ -91,11 +91,11 @@ export function NeedsFundingSection({
   return (
     <>
       <section className="flex flex-col gap-3">
-        {gaps.length === 0 ? (
+        {needs.length === 0 ? (
           <div className="flex animate-[list-in_200ms_var(--ease-premium)] flex-col items-center justify-center gap-3 px-4 py-10 text-center">
             <span
               aria-hidden="true"
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-income/10 text-income"
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-income/[0.08] text-income"
             >
               <CheckIcon className="h-5 w-5" />
             </span>
@@ -104,99 +104,97 @@ export function NeedsFundingSection({
                 Everything is funded
               </p>
               <p className="mx-auto max-w-md text-sm leading-relaxed text-muted">
-                Your budget already covers every upcoming expense this month.
+                Every expense category has a budget this month.
               </p>
             </div>
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-end">
-              <span className="rounded-full bg-warn/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-warn">
-                {gaps.length}{" "}
-                {gaps.length === 1 ? "category" : "categories"} needing funding
-              </span>
-            </div>
-            <ul className="flex flex-col gap-1 rounded-xl bg-canvas px-2 py-1.5">
-              {visible.map((gap) => {
-                const urgency = fundingUrgency(
-                  futureExpenses,
-                  gap.category.id,
-                );
-                const badge = URGENCY_BADGE[urgency];
-                const ratio =
-                  gap.target > 0 ? gap.allocated / gap.target : 0;
-                return (
-                  <li
-                    key={gap.category.id}
-                    className="rounded-md px-2 py-2 transition-colors hover:bg-surface"
+          <div className="flex items-center justify-end">
+            <span className="rounded-full border border-warn/25 bg-warn/[0.07] px-2.5 py-0.5 text-xs font-semibold tabular-nums text-warn">
+              {needs.length}{" "}
+              {needs.length === 1 ? "category" : "categories"} needing funding
+            </span>
+          </div>
+          <ul className="flex flex-col gap-3">
+            {visible.map((need) => {
+              const urgency = fundingUrgency(
+                futureExpenses,
+                need.category.id,
+              );
+              const badge = URGENCY_BADGE[urgency];
+              const ratio =
+                need.target > 0 ? need.allocated / need.target : 0;
+              return (
+                <li
+                  key={need.category.id}
+                  className="group flex h-16 items-center gap-4 rounded-lg transition-colors duration-150 ease-premium hover:bg-sidebar-hover"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-base transition-transform duration-150 ease-premium group-hover:scale-[1.04]"
+                    style={{
+                      backgroundColor: `${need.category.color}1f`,
+                    }}
                   >
-                    <div className="flex items-center gap-3">
-                      <span
-                        aria-hidden="true"
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
-                        style={{
-                          backgroundColor: `${gap.category.color}1f`,
-                        }}
-                      >
-                        {gap.category.icon}
+                    {need.category.icon}
+                  </span>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="flex items-baseline gap-2">
+                      <p className="truncate text-base font-semibold text-ink">
+                        {need.category.name}
+                      </p>
+                      <span className={`shrink-0 text-caption font-medium ${badge.className}`}>
+                        {badge.label}
                       </span>
-                      <div className="min-w-0 flex-1 leading-tight">
-                        <p className="truncate text-sm font-medium text-ink">
-                          {gap.category.name}
-                        </p>
-                        <p
-                          className={`text-xs font-medium ${badge.className}`}
-                        >
-                          {badge.label}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={<PlusIcon className="h-4 w-4" />}
-                        onClick={() => fund(gap)}
-                      >
-                        Fund
-                      </Button>
                     </div>
-                    <div className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-3 sm:gap-2">
-                      <div className="flex items-baseline justify-between gap-1">
-                        <span className="text-muted">Allocated</span>
-                        <span className="font-semibold tabular-nums text-ink">
-                          {fmt(gap.allocated)}
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between gap-1">
-                        <span className="text-muted">Needed</span>
-                        <span className="font-semibold tabular-nums text-ink">
-                          {fmt(gap.target)}
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between gap-1">
-                        <span className="text-muted">Missing</span>
-                        <span
-                          className={`font-semibold tabular-nums ${
-                            gap.missing > 0 ? "text-danger" : "text-muted"
-                          }`}
-                        >
-                          {fmt(gap.missing)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-2">
+                    <div className="mt-2 flex items-center gap-2">
                       <ProgressBar
                         value={ratio}
                         tone={progressTone(ratio)}
-                        className="h-1.5"
                       />
-                      <span className="w-9 shrink-0 text-right text-xs font-semibold tabular-nums text-muted">
+                      <span className="w-9 shrink-0 text-right text-caption font-semibold tabular-nums text-muted">
                         {Math.round(ratio * 100)}%
                       </span>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
+                  </div>
+                  <div className="hidden shrink-0 flex-col items-end gap-0.5 text-caption leading-tight xl:flex">
+                    <span className="font-medium text-muted">
+                      Allocated{" "}
+                      <span className="font-semibold tabular-nums text-ink">
+                        {fmt(need.allocated)}
+                      </span>
+                    </span>
+                    <span className="font-medium text-muted">
+                      Needed{" "}
+                      <span className="font-semibold tabular-nums text-ink">
+                        {fmt(need.target)}
+                      </span>
+                    </span>
+                    <span className="font-medium text-muted">
+                      Missing{" "}
+                      <span
+                        className={`font-semibold tabular-nums ${
+                          need.missing > 0 ? "text-danger" : "text-muted"
+                        }`}
+                      >
+                        {fmt(need.missing)}
+                      </span>
+                    </span>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="shrink-0 px-5"
+                    icon={<PlusIcon className="h-4 w-4" />}
+                    onClick={() => fund(need)}
+                  >
+                    Fund
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
             {hidden > 0 && (
               <Button
                 variant="ghost"
@@ -205,7 +203,7 @@ export function NeedsFundingSection({
                 onClick={onExpand}
                 className="self-start"
               >
-                View all {gaps.length} categories
+                View all {needs.length} categories
               </Button>
             )}
           </>
@@ -220,8 +218,8 @@ export function NeedsFundingSection({
         presetCategoryId={fundingCategory?.id}
         presetLimit={
           fundingCategory
-            ? gaps.find((gap) => gap.category.id === fundingCategory.id)
-                ?.missing
+            ? needs.find((need) => need.category.id === fundingCategory.id)
+                ?.missing || undefined
             : undefined
         }
       />

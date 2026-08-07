@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.1] — 2026-08-07 Production release
+
+First production release of the **Budget Planner** Windows desktop app
+(installer + portable). Includes every section below: the full Electron
+desktop migration (dev workflow + secure shell, SQLite persistence, native
+desktop features, splash/startup identity/auto-update scaffold), all UI/UX
+polish passes, and the release-hardening work:
+
+- **Regression verification** — full pass documented in
+  `docs/REGRESSION_REPORT.md` (8 workflows, PASS).
+- **UX review** — 2 High / 10 Medium / 10 Low findings documented in
+  `docs/UX_REVIEW.md` (High items tracked for the next release).
+- **Financial summary consistency audit** — every widget with an X-of-Y,
+  percentage, progress bar, or remaining figure verified against one business
+  rule; 9 inconsistencies fixed in one pass (unclamped budget-row %, true
+  cash-flow expense totals, canonical `received`/`savingsRate` in
+  Recommendations, aggregate overage coverage, allocatable-based "Unallocated
+  funds", "% of allocatable" labels, top-categories caption, projected
+  remaining copy). Budget-allocation funding bar uses `allocatable = received`
+  with a never-faked percentage (`BudgetList.funding.test.tsx`).
+- **Suite:** 363 tests across 40 files, green with tsc/lint/build.
+
 ## [Unreleased] — Desktop migration: startup, identity & updates
 
 ### Added

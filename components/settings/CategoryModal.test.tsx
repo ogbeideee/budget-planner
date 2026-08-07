@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { createInitialState } from "@/lib/seed";
 import { useAppStore } from "@/store/useAppStore";
 import { useToastStore } from "@/store/useToastStore";
-import { CategoryEditModal } from "./CategoryEditModal";
+import { CategoryModal } from "./CategoryModal";
 import type { Category } from "@/lib/types";
 
 function makeCategory(overrides: Partial<Category> = {}): Category {
@@ -35,12 +35,10 @@ beforeEach(() => {
   seedStore();
 });
 
-describe("CategoryEditModal", () => {
+describe("CategoryModal (edit)", () => {
   it("seeds the draft from the category exactly once on open", () => {
     const onClose = vi.fn();
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={onClose} />);
 
     expect(screen.getByLabelText("Name")).toHaveValue("Groceries");
     expect(screen.getByRole("dialog")).toBeTruthy();
@@ -49,7 +47,7 @@ describe("CategoryEditModal", () => {
   it("keeps the name input DOM node while typing", async () => {
     const user = userEvent.setup();
     const { container } = render(
-      <CategoryEditModal category={makeCategory()} onClose={vi.fn()} />,
+      <CategoryModal category={makeCategory()} onClose={vi.fn()} />,
     );
 
     const nameInput = screen.getByLabelText("Name");
@@ -61,9 +59,7 @@ describe("CategoryEditModal", () => {
   it("does not write to the global store while typing or picking", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={onClose} />);
 
     await user.type(screen.getByLabelText("Name"), " and more");
     await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
@@ -82,7 +78,7 @@ describe("CategoryEditModal", () => {
   it("keeps the icon picker search input and grid container while typing in search", async () => {
     const user = userEvent.setup();
     const { container } = render(
-      <CategoryEditModal category={makeCategory()} onClose={vi.fn()} />,
+      <CategoryModal category={makeCategory()} onClose={vi.fn()} />,
     );
 
     await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
@@ -111,9 +107,7 @@ describe("CategoryEditModal", () => {
       warnings.push(args.map(String).join(" "));
     });
 
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={vi.fn()} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={vi.fn()} />);
     await user.type(screen.getByLabelText("Name"), "x");
     await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
     const picker = screen.getAllByRole("dialog")[1];
@@ -129,9 +123,7 @@ describe("CategoryEditModal", () => {
     const onClose = vi.fn();
     const updateSpy = vi.spyOn(useAppStore.getState(), "updateCategory");
 
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={onClose} />);
 
     const nameInput = screen.getByLabelText("Name");
     await user.clear(nameInput);
@@ -139,7 +131,7 @@ describe("CategoryEditModal", () => {
     await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
     const picker = screen.getAllByRole("dialog")[1];
     await user.click(within(picker).getByRole("option", { name: "Apple" }));
-    await user.selectOptions(screen.getByLabelText("Color"), "#ef4444");
+    await user.click(screen.getByRole("radio", { name: "Red" }));
     await user.click(screen.getByRole("button", { name: /Save changes/ }));
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
@@ -156,9 +148,7 @@ describe("CategoryEditModal", () => {
   it("cancel does not touch the store", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={onClose} />);
 
     await user.type(screen.getByLabelText("Name"), "changed");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -172,9 +162,7 @@ describe("CategoryEditModal", () => {
   it("rejects an empty name without updating the store", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={onClose} />);
 
     await user.clear(screen.getByLabelText("Name"));
     await user.click(screen.getByRole("button", { name: /Save changes/ }));
@@ -189,9 +177,7 @@ describe("CategoryEditModal", () => {
   it("rejects a cleared icon without updating the store", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={onClose} />);
 
     await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
     const picker = screen.getAllByRole("dialog")[1];
@@ -221,9 +207,7 @@ describe("CategoryEditModal", () => {
         ],
       },
     });
-    render(
-      <CategoryEditModal category={makeCategory()} onClose={onClose} />,
-    );
+    render(<CategoryModal category={makeCategory()} onClose={onClose} />);
 
     const nameInput = screen.getByLabelText("Name");
     await user.clear(nameInput);
@@ -239,5 +223,62 @@ describe("CategoryEditModal", () => {
           (t) => t.tone === "error" && t.message.includes("already exists"),
         ),
     ).toBe(true);
+  });
+
+  it("requests deletion through onRequestDelete without touching the store", async () => {
+    const user = userEvent.setup();
+    const onRequestDelete = vi.fn();
+    const category = makeCategory();
+    render(
+      <CategoryModal
+        category={category}
+        onClose={vi.fn()}
+        onRequestDelete={onRequestDelete}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(onRequestDelete).toHaveBeenCalledTimes(1);
+    expect(onRequestDelete).toHaveBeenCalledWith(category);
+    expect(useAppStore.getState().state.categories).toHaveLength(1);
+  });
+});
+
+describe("CategoryModal (create)", () => {
+  it("creates an expense category by default and closes", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const addSpy = vi.spyOn(useAppStore.getState(), "addCategory");
+    const count = useAppStore.getState().state.categories.length;
+
+    render(<CategoryModal onClose={onClose} />);
+
+    await user.type(screen.getByLabelText("Name"), "Snacks");
+    await user.click(screen.getByRole("button", { name: /Add category/ }));
+
+    expect(addSpy).toHaveBeenCalledTimes(1);
+    expect(addSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Snacks", kind: "expense" }),
+    );
+    expect(useAppStore.getState().state.categories).toHaveLength(count + 1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    addSpy.mockRestore();
+  });
+
+  it("switches type to income before creating", async () => {
+    const user = userEvent.setup();
+    const addSpy = vi.spyOn(useAppStore.getState(), "addCategory");
+
+    render(<CategoryModal onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "income" }));
+    await user.type(screen.getByLabelText("Name"), "Side hustle");
+    await user.click(screen.getByRole("button", { name: /Add category/ }));
+
+    expect(addSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Side hustle", kind: "income" }),
+    );
+    addSpy.mockRestore();
   });
 });

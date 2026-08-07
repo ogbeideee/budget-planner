@@ -1,18 +1,22 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Disclosure } from "@/components/ui/Disclosure";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { MonthPicker } from "@/components/ui/MonthPicker";
+import { PlusIcon } from "@/components/ui/icons";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { TransactionForm } from "@/components/txn/TransactionForm";
 import { useMonth } from "@/hooks/useMonth";
+import type { CategoryKind } from "@/lib/types";
 import { BudgetHealthCard } from "./BudgetHealthCard";
 import { BudgetList } from "./BudgetList";
-import { DeferredSection } from "./DeferredSection";
 import { ExpenseBreakdown } from "./ExpenseBreakdown";
 import { Hero } from "./Hero";
 import { MonthlyStats } from "./MonthlyStats";
 import { NeedsFundingSection } from "./NeedsFundingSection";
-import { OverBudgetAlert } from "./OverBudgetAlert";
-import { QuickAddExpense } from "./QuickAddExpense";
+import { RecentActivity } from "./RecentActivity";
 import { SummaryCards } from "./SummaryCards";
 import { TodayRecommendations } from "./TodayRecommendations";
 
@@ -20,67 +24,57 @@ export function PlannerView() {
   const { month, setMonth } = useMonth();
   const searchParams = useSearchParams();
   const focusOver = searchParams.get("focus") === "over";
+  const [txnType, setTxnType] = useState<CategoryKind | null>(null);
+
   return (
-    <div className="flex flex-col gap-7">
-      <Hero month={month} onMonthChange={setMonth} />
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Planner"
+        description="Everything you need to stay on top of your finances this month."
+        action={
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              icon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => setTxnType("expense")}
+            >
+              Add Expense
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => setTxnType("income")}
+            >
+              Add Income
+            </Button>
+            <MonthPicker value={month} onChange={setMonth} />
+          </div>
+        }
+      />
+      <Hero month={month} />
       <TodayRecommendations month={month} />
-      <div className="flex flex-col gap-4">
-        <SummaryCards month={month} />
-        <OverBudgetAlert month={month} />
-      </div>
-      <Disclosure
-        id={`month-at-a-glance:${month}`}
-        title="Month at a glance"
-        preview={() => <MonthlyStats month={month} bare preview />}
-      >
-        <MonthlyStats month={month} bare />
-      </Disclosure>
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+      <SummaryCards month={month} />
+      <MonthlyStats month={month} />
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
+        <Card
+          className="lg:col-span-3"
+          title="Needs Funding"
+          subtitle="Categories requiring attention."
+        >
+          <NeedsFundingSection month={month} />
+        </Card>
         <div className="lg:col-span-2">
-          <Disclosure
-            id={`needs-funding:${month}`}
-            title="Needs funding"
-            preview={(toggle) => (
-              <NeedsFundingSection month={month} attentionOnly onExpand={toggle} />
-            )}
-          >
-            <NeedsFundingSection month={month} />
-          </Disclosure>
+          <BudgetHealthCard month={month} />
         </div>
-        <BudgetHealthCard month={month} />
       </div>
       <BudgetList month={month} focusOver={focusOver} />
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-        <Disclosure id={`quick-add:${month}`} title="Quick add expense">
-          <QuickAddExpense month={month} />
-        </Disclosure>
-        <div className="lg:col-span-2">
-          <Disclosure
-            id={`deferred:${month}`}
-            title="Deferred expenses"
-            action={() => (
-              <Link
-                href={`/history?month=${month}`}
-                className="rounded-sm text-sm font-semibold text-brand-600 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400"
-              >
-                View in Timeline
-              </Link>
-            )}
-          >
-            <DeferredSection month={month} />
-          </Disclosure>
-        </div>
-      </div>
-      <Disclosure
-        id={`expense-breakdown:${month}`}
-        title="Expense breakdown"
-        variant="quiet"
-        preview={(toggle) => (
-          <ExpenseBreakdown month={month} bare limit={5} onExpand={toggle} />
-        )}
-      >
-        <ExpenseBreakdown month={month} bare />
-      </Disclosure>
+      <ExpenseBreakdown month={month} />
+      <RecentActivity month={month} />
+      <TransactionForm
+        key={txnType ?? "closed"}
+        open={txnType !== null}
+        initialType={txnType ?? "expense"}
+        onClose={() => setTxnType(null)}
+      />
     </div>
   );
 }

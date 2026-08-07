@@ -51,7 +51,7 @@ export function ExpectedVsActualChart({ month }: { month: Month }) {
       >
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-income/10 text-income"
+          illustrationClass="bg-income/[0.08] text-income"
           title="No income planned or received"
           description="Plan your income sources on the planner to compare expected vs received here."
         />
@@ -75,14 +75,14 @@ export function ExpectedVsActualChart({ month }: { month: Month }) {
         <span className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-border"
+            className="h-1.5 w-1.5 rounded-full bg-border"
           />
           Expected
         </span>
         <span className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="h-2 w-2 rounded-full"
+            className="h-1.5 w-1.5 rounded-full"
             style={{ backgroundColor: colors.income }}
           />
           Received
@@ -125,14 +125,14 @@ export function ExpectedVsActualChart({ month }: { month: Month }) {
               dataKey="expected"
               name="Expected"
               fill={colors.grid}
-              radius={[6, 6, 0, 0]}
+              radius={[4, 4, 0, 0]}
               isAnimationActive={!reduced}
             />
             <Bar
               dataKey="received"
               name="Received"
               fill={colors.income}
-              radius={[6, 6, 0, 0]}
+              radius={[4, 4, 0, 0]}
               isAnimationActive={!reduced}
             />
           </BarChart>

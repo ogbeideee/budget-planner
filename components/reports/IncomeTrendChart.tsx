@@ -39,7 +39,7 @@ export function IncomeTrendChart({ months }: { months: Month[] }) {
       <ChartCard title="Income trend" subtitle="Last 6 months">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
           title="No income to chart yet"
           description="Add expected income or record income and your six-month trend will take shape here."
         />
@@ -60,14 +60,14 @@ export function IncomeTrendChart({ months }: { months: Month[] }) {
         <span className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-border"
+            className="h-1.5 w-1.5 rounded-full bg-border"
           />
           Expected
         </span>
         <span className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="h-2 w-2 rounded-full"
+            className="h-1.5 w-1.5 rounded-full"
             style={{ backgroundColor: colors.income }}
           />
           Received
@@ -111,8 +111,8 @@ export function IncomeTrendChart({ months }: { months: Month[] }) {
               dataKey="expected"
               name="Expected"
               stroke={colors.grid}
-              strokeWidth={2}
-              strokeDasharray="6 4"
+              strokeWidth={1.75}
+              strokeDasharray="5 4"
               dot={false}
               isAnimationActive={!reduced}
             />
@@ -121,8 +121,8 @@ export function IncomeTrendChart({ months }: { months: Month[] }) {
               dataKey="received"
               name="Received"
               stroke={colors.income}
-              strokeWidth={2}
-              dot={{ r: 3, fill: colors.income }}
+              strokeWidth={1.75}
+              dot={{ r: 2.5, fill: colors.income, strokeWidth: 0 }}
               isAnimationActive={!reduced}
             />
           </LineChart>

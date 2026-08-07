@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatedMoney } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Disclosure } from "@/components/ui/Disclosure";
 import type { DisclosureHandle } from "@/components/ui/Disclosure";
+import { DonutChart } from "@/components/charts/DonutChart";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { categoryColor } from "@/lib/accents";
 import { formatMonthLabel } from "@/lib/date";
 import { monthFinance } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -41,6 +44,7 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
   const [pendingDelete, setPendingDelete] = useState<Budget | null>(null);
   const [reviewActive, setReviewActive] = useState(false);
   const [focusedBudgetId, setFocusedBudgetId] = useState<string | null>(null);
+  const [activeSegment, setActiveSegment] = useState<string | null>(null);
 
   const sectionRef = useRef<HTMLDivElement>(null);
   const disclosureRef = useRef<DisclosureHandle>(null);
@@ -101,7 +105,17 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
     const onFocusBudget = (event: Event) => {
       const budgetId = (event as CustomEvent<{ budgetId?: string }>).detail
         ?.budgetId;
-      if (!budgetId || !monthBudgets.some((budget) => budget.id === budgetId)) {
+      if (!budgetId) return;
+      // Read the freshest budgets at event time: the event is dispatched
+      // synchronously after a store write (e.g. NeedsFundingSection saving a
+      // budget), before this effect has re-run — a closure over `monthBudgets`
+      // would still be missing the just-created budget and swallow the event.
+      const budgetsNow = useAppStore.getState().state.budgets;
+      if (
+        !budgetsNow.some(
+          (budget) => budget.month === month && budget.id === budgetId,
+        )
+      ) {
         return;
       }
       disclosureRef.current?.expand();
@@ -123,23 +137,21 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
     window.addEventListener("planner:focus-budget", onFocusBudget);
     return () =>
       window.removeEventListener("planner:focus-budget", onFocusBudget);
-  }, [monthBudgets]);
+  }, [month]);
 
   const allocatable = useMemo(
-    () => monthFinance(transactions, incomePlans, month).remaining,
+    () => monthFinance(transactions, incomePlans, month).received,
     [transactions, incomePlans, month],
   );
   const committed = useMemo(
     () => monthBudgets.reduce((sum, budget) => sum + budget.limit, 0),
     [monthBudgets],
   );
-  const fundedPct =
-    allocatable > 0
-      ? committed / allocatable
-      : committed > 0
-        ? 1
-        : 0;
-  const overCommitted = allocatable > 0 && committed > allocatable;
+  const remainingToAllocate = allocatable - committed;
+  const fundedPct = allocatable > 0 ? committed / allocatable : 0;
+  const overCommitted = committed > allocatable;
+  const fundedPctText =
+    allocatable > 0 ? `${Math.round(fundedPct * 100)}%` : null;
   const fmt = (value: number) => formatMoney(value, currency);
   const showFundingBar = committed > 0 || allocatable > 0;
 
@@ -153,91 +165,65 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
     setPendingDelete(null);
   };
 
-  const renderTable = (rows: Budget[]) => (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead>
-          <tr className="text-xs uppercase tracking-wide text-muted">
-            <th
-              scope="col"
-              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
-            >
-              Category
-            </th>
-            <th
-              scope="col"
-              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 font-semibold lg:top-0"
-            >
-              Priority
-            </th>
-            <th
-              scope="col"
-              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
-            >
-              Limit
-            </th>
-            <th
-              scope="col"
-              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
-            >
-              Spent
-            </th>
-            <th
-              scope="col"
-              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
-            >
-              Remaining
-            </th>
-            <th
-              scope="col"
-              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
-            >
-              Progress
-            </th>
-            <th
-              scope="col"
-              className="sticky top-16 z-10 border-b border-border bg-surface px-3 py-2 text-right font-semibold lg:top-0"
-            >
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((budget) => {
-            const progress = progressById.get(budget.id);
-            if (!progress) return null;
-            return (
-              <BudgetRow
-                key={budget.id}
-                budget={budget}
-                category={categoryOf(budget)}
-                progress={progress}
-                currency={currency}
-                highlighted={
-                  (reviewActive && progress.over) ||
-                  focusedBudgetId === budget.id
-                }
-                rowId={`budget-row-${budget.id}`}
-                onEdit={() => {
-                  setEditing(budget);
-                  setFormSession((session) => session + 1);
-                  setFormOpen(true);
-                }}
-                onDelete={() => setPendingDelete(budget)}
-              />
-            );
-          })}
-        </tbody>
-      </table>
+  const renderRows = (rows: Budget[]) => (
+    <div className="flex flex-col gap-1">
+      {rows.map((budget) => {
+        const progress = progressById.get(budget.id);
+        if (!progress) return null;
+        return (
+          <div
+            key={budget.id}
+            onMouseEnter={() => setActiveSegment(budget.id)}
+            onMouseLeave={() => setActiveSegment(null)}
+          >
+            <BudgetRow
+              budget={budget}
+              category={categoryOf(budget)}
+              progress={progress}
+              currency={currency}
+              highlighted={
+                (reviewActive && progress.over) ||
+                focusedBudgetId === budget.id
+              }
+              rowId={`budget-row-${budget.id}`}
+              onEdit={() => {
+                setEditing(budget);
+                setFormSession((session) => session + 1);
+                setFormOpen(true);
+              }}
+              onDelete={() => setPendingDelete(budget)}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 
+  const donutSegments = monthBudgets.map((budget) => ({
+    id: budget.id,
+    label: categoryOf(budget)?.name ?? "Category",
+    value: budget.limit,
+    color: categoryColor(categoryOf(budget)),
+  }));
+
   return (
-    <div ref={sectionRef} className="flex scroll-mt-24 flex-col gap-5">
+    <div
+      ref={sectionRef}
+      id="budget-allocation"
+      className="flex scroll-mt-24 flex-col gap-5"
+    >
       <Disclosure
         ref={disclosureRef}
         id={`budgets:${month}`}
-        title={`Allocated · ${formatMonthLabel(month)}`}
+        title="Budget Allocation"
+        badge={
+          monthBudgets.length > 0 ? (
+            <span className="rounded-full bg-sidebar-hover px-2.5 py-0.5 text-caption font-medium text-muted">
+              {monthBudgets.length}{" "}
+              {monthBudgets.length === 1 ? "budget" : "budgets"}
+            </span>
+          ) : undefined
+        }
         variant="brand"
         action={() => (
           <Button
@@ -261,43 +247,10 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
               setFormOpen(true);
             }}
           />
-          {showFundingBar && (
-            <div className="flex flex-col gap-1.5 border-b border-border pb-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-muted">
-                  Committed{" "}
-                  <span className="font-semibold tabular-nums text-ink">
-                    {fmt(committed)}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-semibold tabular-nums text-ink">
-                    {fmt(allocatable)}
-                  </span>{" "}
-                  allocatable
-                </p>
-                <span
-                  className={`text-sm font-semibold tabular-nums ${
-                    overCommitted ? "text-warn" : "text-muted"
-                  }`}
-                >
-                  {Math.round(Math.min(1, fundedPct) * 100)}%
-                </span>
-              </div>
-              <ProgressBar
-                value={Math.min(1, fundedPct)}
-                tone={overCommitted ? "warn" : "brand"}
-              />
-              {overCommitted && (
-                <p className="text-xs text-warn">
-                  Limits exceed the allocatable balance — reduce a limit or add income.
-                </p>
-              )}
-            </div>
-          )}
           {monthBudgets.length === 0 ? (
             <EmptyState
               illustration="target"
-              illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+              illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
               title="Nothing planned yet"
               description="Create your first budget to begin — it's the first step to feeling in control."
               action={
@@ -313,14 +266,74 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
               }
             />
           ) : (
-            renderTable(monthBudgets)
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+              <div className="flex flex-col items-center gap-5 lg:col-span-2">
+                <DonutChart
+                  segments={donutSegments}
+                  centerValue={
+                    <AnimatedMoney
+                      value={committed}
+                      currency={currency}
+                      className="text-kpi-tertiary font-bold tracking-[-0.02em] text-ink"
+                    />
+                  }
+                  centerLabel="committed"
+                  activeId={activeSegment}
+                  onSegmentHover={setActiveSegment}
+                />
+                {showFundingBar && (
+                  <div className="flex w-full max-w-xs flex-col gap-1.5">
+                    {overCommitted ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-caption font-semibold text-warn">
+                          Over allocated
+                        </p>
+                        {fundedPctText && (
+                          <span className="text-caption font-semibold tabular-nums text-warn">
+                            {fundedPctText}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-caption font-medium text-muted">
+                            Allocated {fmt(committed)} of {fmt(allocatable)}{" "}
+                            allocatable
+                          </p>
+                          {fundedPctText && (
+                            <span className="text-caption font-semibold tabular-nums text-muted">
+                              {fundedPctText}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-caption font-medium text-muted">
+                          Remaining to allocate {fmt(remainingToAllocate)}
+                        </p>
+                      </>
+                    )}
+                    <ProgressBar
+                      value={Math.min(1, fundedPct)}
+                      tone={overCommitted ? "warn" : "brand"}
+                    />
+                    {overCommitted && (
+                      <p className="mt-1 text-xs text-warn">
+                        Limits exceed the allocatable income — reduce a limit
+                        or add income.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="lg:col-span-3">{renderRows(monthBudgets)}</div>
+            </div>
           )}
         </div>
       </Disclosure>
 
       {pastMonths.length > 0 && (
-        <div className="flex flex-col gap-4 rounded-xl bg-surface p-5 shadow-card">
-          <h2 className="text-base font-semibold tracking-tight">Past months</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-border/70 bg-surface p-5">
+          <h2 className="text-base font-semibold tracking-tight text-ink">Past months</h2>
           <div className="flex flex-col gap-4">
             {pastMonths.map((pastMonth) => (
               <Disclosure
@@ -329,7 +342,7 @@ export function BudgetList({ month, focusOver = false }: BudgetListProps) {
                 title={formatMonthLabel(pastMonth)}
                 variant="section"
               >
-                {renderTable(
+                {renderRows(
                   pastBudgets.filter((budget) => budget.month === pastMonth),
                 )}
               </Disclosure>

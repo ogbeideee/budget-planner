@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "agentrouter-gpt": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "AgentRouter GPT",
+      "options": {
+        "baseURL": "https://agentrouter.org/v1"
+      },
+      "models": {
+        "gpt-5.5": {
+          "name": "gpt-5.5"
+        }
+      }
+    },
+    "agentrouter-claude": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "AgentRouter Claude",
+      "options": {
+        "baseURL": "https://agentrouter.org"
+      },
+      "models": {
+        "claude-opus-4-6": {
+          "name": "claude-opus-4-6"
+        }
+      }
+    }
+  },
+  "model": "agentrouter-gpt/gpt-5.5"
+}

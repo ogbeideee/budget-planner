@@ -39,7 +39,7 @@ export function SpendingTrendChart({ months }: { months: Month[] }) {
       <ChartCard title="Monthly spending trend" subtitle="Last 6 months">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
           title="No spending to chart yet"
           description="Add expenses to see your monthly spending take shape."
         />
@@ -60,14 +60,14 @@ export function SpendingTrendChart({ months }: { months: Month[] }) {
       subtitle="Expenses by month"
     >
       <div role="img" aria-label={ariaLabel}>
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={380}>
           <AreaChart
             data={data}
-            margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+            margin={{ top: 12, right: 8, left: 0, bottom: 0 }}
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={colors.brand} stopOpacity={0.22} />
+                <stop offset="0%" stopColor={colors.brand} stopOpacity={0.15} />
                 <stop offset="100%" stopColor={colors.brand} stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -103,7 +103,11 @@ export function SpendingTrendChart({ months }: { months: Month[] }) {
               dataKey="expenses"
               name="Expenses"
               stroke={colors.brand}
-              strokeWidth={2}
+              strokeWidth={4}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              dot={false}
+              activeDot={{ r: 6, strokeWidth: 3, stroke: colors.surface }}
               fill={`url(#${gradientId})`}
               isAnimationActive={!reduced}
             />

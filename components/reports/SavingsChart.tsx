@@ -40,7 +40,7 @@ export function SavingsChart({ months }: { months: Month[] }) {
       <ChartCard title="Savings over time" subtitle="Last 6 months">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-income/10 text-income"
+          illustrationClass="bg-income/[0.08] text-income"
           title="No savings to track yet"
           description="Add income or expenses to start tracking your savings trend."
         />
@@ -94,14 +94,15 @@ export function SavingsChart({ months }: { months: Month[] }) {
               y={0}
               stroke={colors.grid}
               strokeDasharray="3 3"
+              strokeWidth={1}
             />
             <Line
               type="monotone"
               dataKey="net"
               name="Net savings"
               stroke={colors.brand}
-              strokeWidth={2}
-              dot={{ r: 3, fill: colors.brand }}
+              strokeWidth={1.75}
+              dot={{ r: 2.5, fill: colors.brand, strokeWidth: 0 }}
               isAnimationActive={!reduced}
             />
           </LineChart>

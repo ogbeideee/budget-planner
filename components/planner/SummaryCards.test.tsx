@@ -67,7 +67,7 @@ describe("SummaryCards expected income", () => {
       expect(within(incomeButton).getByText("$2,500.00")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Net summary" }));
+    await user.click(screen.getByRole("button", { name: "Savings rate" }));
     const netDialog = screen.getByRole("dialog");
     expect(within(netDialog).getByText("Expected income")).toBeInTheDocument();
     expect(within(netDialog).getByText("$2,500.00")).toBeInTheDocument();
@@ -138,8 +138,8 @@ describe("SummaryCards expected income", () => {
     });
     expect(within(remaining).getByText("$750.00")).toBeInTheDocument();
 
-    const net = screen.getByRole("button", { name: "Net summary" });
-    expect(within(net).getByText("$750.00")).toBeInTheDocument();
+    const net = screen.getByRole("button", { name: "Savings rate" });
+    expect(within(net).getByText(/You keep \$750\.00 after expenses/)).toBeInTheDocument();
 
     await userEvent.setup().click(net);
     const dialog = screen.getByRole("dialog");

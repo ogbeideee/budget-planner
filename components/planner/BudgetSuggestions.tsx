@@ -27,6 +27,9 @@ export function BudgetSuggestions({ month, onAdjust }: BudgetSuggestionsProps) {
   if (suggestions.length === 0) return null;
 
   const fmt = (value: number) => formatMoney(value, currency);
+  const remainingIncome = suggestions[0]?.remainingIncome ?? 0;
+  const totalOverage = suggestions.reduce((sum, s) => sum + s.overspent, 0);
+  const allCovered = totalOverage <= remainingIncome;
   const coveredCount = suggestions.filter((s) => s.coveredByRemaining).length;
 
   return (
@@ -71,7 +74,7 @@ export function BudgetSuggestions({ month, onAdjust }: BudgetSuggestionsProps) {
         ))}
       </ul>
       <p className="mt-2 text-xs text-muted">
-        {coveredCount === suggestions.length
+        {allCovered
           ? "Your remaining income covers these overages."
           : coveredCount === 0
             ? "Your remaining income won't cover these overages yet."

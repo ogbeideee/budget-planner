@@ -169,6 +169,9 @@ function drawMaster() {
 }
 
 // Box-filter downsample of the RGBA master to `size` (edge pixels keep AA).
+// RGB is accumulated premultiplied by alpha, then divided by the normalized
+// weight sum (w = a/255, so wa = a/255). Dividing by the raw alpha sum
+// (0-255 scale) instead would shrink every channel ~255x to black.
 function downsample(master, size) {
   const out = new Uint8Array(size * size * 4);
   const scale = MASTER / size;
@@ -182,6 +185,7 @@ function downsample(master, size) {
       let g = 0;
       let b = 0;
       let a = 0;
+      let weight = 0;
       let count = 0;
       for (let py = y0; py < y1; py += 1) {
         for (let px = x0; px < x1; px += 1) {
@@ -191,14 +195,15 @@ function downsample(master, size) {
           g += master[i + 1] * w;
           b += master[i + 2] * w;
           a += master[i + 3];
+          weight += w;
           count += 1;
         }
       }
       const i = (y * size + x) * 4;
-      if (count === 0 || a === 0) continue;
-      out[i] = Math.round(r / a);
-      out[i + 1] = Math.round(g / a);
-      out[i + 2] = Math.round(b / a);
+      if (count === 0 || weight === 0) continue;
+      out[i] = Math.round(r / weight);
+      out[i + 1] = Math.round(g / weight);
+      out[i + 2] = Math.round(b / weight);
       out[i + 3] = Math.round(a / count);
     }
   }

@@ -1,5 +1,7 @@
 "use client";
 
+import { Badge } from "@/components/ui/Badge";
+import type { BadgeVariant } from "@/components/ui/Badge";
 import type { Priority } from "@/lib/types";
 
 const LABELS: Record<Priority, string> = {
@@ -8,19 +10,16 @@ const LABELS: Record<Priority, string> = {
   low: "Low",
 };
 
-const CLASSES: Record<Priority, string> = {
-  high: "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300",
-  medium: "bg-canvas text-muted",
-  low: "text-muted border border-border",
+const VARIANTS: Record<Priority, BadgeVariant> = {
+  high: "warning",
+  medium: "neutral",
+  low: "neutral",
 };
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
   return (
-    <span
-      title={`Priority: ${LABELS[priority]}`}
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${CLASSES[priority]}`}
-    >
+    <Badge variant={VARIANTS[priority]} title={`Priority: ${LABELS[priority]}`}>
       {LABELS[priority]}
-    </span>
+    </Badge>
   );
 }

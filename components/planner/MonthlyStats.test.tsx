@@ -65,32 +65,55 @@ function seedStats() {
   });
 }
 
-function cell(label: string): HTMLElement {
+function column(label: string): HTMLElement {
   return screen.getByText(label).closest("div")!;
 }
 
-describe("MonthlyStats metric presentation", () => {
-  it("shows the largest expense with a category badge", () => {
+describe("MonthlyStats month at a glance", () => {
+  it("shows the card title and subtitle", () => {
     seedStats();
     render(<MonthlyStats month="2026-08" />);
 
-    const largest = cell("Largest expense");
-    expect(within(largest).getByText("$500.00")).toBeInTheDocument();
-    expect(within(largest).getByText("August rent")).toBeInTheDocument();
-    expect(largest.querySelector("svg")).toBeNull();
-    expect(largest.querySelector("span[aria-hidden='true']")).toBeTruthy();
+    expect(screen.getByText("Month at a glance")).toBeInTheDocument();
+    expect(
+      screen.getByText("Income, expenses and what's left this month."),
+    ).toBeInTheDocument();
   });
 
-  it("shows a green up arrow for a positive savings rate", () => {
+  it("shows income received with the expected caption", () => {
     seedStats();
     render(<MonthlyStats month="2026-08" />);
 
-    const savings = cell("Savings rate");
-    expect(within(savings).getByText("30%")).toBeInTheDocument();
-    expect(savings.querySelector("svg")).toHaveClass("text-income");
+    const income = column("Income");
+    expect(within(income).getByText("$1,000.00")).toBeInTheDocument();
+    expect(
+      within(income).getByText("received of $1,000.00 expected"),
+    ).toBeInTheDocument();
   });
 
-  it("shows a red down arrow for a negative savings rate", () => {
+  it("shows expenses with the transaction count", () => {
+    seedStats();
+    render(<MonthlyStats month="2026-08" />);
+
+    const expenses = column("Expenses");
+    expect(within(expenses).getByText("$700.00")).toBeInTheDocument();
+    expect(
+      within(expenses).getByText("2 transactions this month"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows remaining as income left after expenses", () => {
+    seedStats();
+    render(<MonthlyStats month="2026-08" />);
+
+    const remaining = column("Remaining");
+    expect(within(remaining).getByText("$300.00")).toBeInTheDocument();
+    expect(
+      within(remaining).getByText("income left after expenses"),
+    ).toBeInTheDocument();
+  });
+
+  it("warns when expenses exceed income", () => {
     seedStats();
     const state = useAppStore.getState().state;
     useAppStore.setState({
@@ -103,16 +126,11 @@ describe("MonthlyStats metric presentation", () => {
     });
     render(<MonthlyStats month="2026-08" />);
 
-    const savings = cell("Savings rate");
-    expect(savings.querySelector("svg")).toHaveClass("text-expense");
-  });
-
-  it("shows a wallet icon for projected remaining", () => {
-    seedStats();
-    render(<MonthlyStats month="2026-08" />);
-
-    const projected = cell("Projected remaining");
-    expect(within(projected).getByText("$300.00")).toBeInTheDocument();
-    expect(projected.querySelector("svg")).toHaveClass("text-muted");
+    const remaining = column("Remaining");
+    expect(within(remaining).getByText("$0.00")).toBeInTheDocument();
+    expect(
+      within(remaining).getByText("over income by $400.00"),
+    ).toBeInTheDocument();
+    expect(remaining.querySelector(".text-warn")).toBeTruthy();
   });
 });

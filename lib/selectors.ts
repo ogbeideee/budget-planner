@@ -1,8 +1,6 @@
 import { monthKeyFromIso, monthOffset } from "./date";
 import type {
   Budget,
-  Category,
-  FutureExpense,
   ID,
   IncomePlan,
   Month,
@@ -202,63 +200,6 @@ export function deferredExpenses(
   return transactionsForMonth(transactions, month).filter(
     (transaction) =>
       transaction.type === "expense" && transaction.deferred === true,
-  );
-}
-
-export function needsFunding(
-  budgets: Budget[],
-  categories: Category[],
-  month: Month,
-): Category[] {
-  const budgeted = new Set(
-    budgets
-      .filter((budget) => budget.month === month && budget.limit > 0)
-      .map((budget) => budget.categoryId),
-  );
-  return categories
-    .filter(
-      (category) => category.kind === "expense" && !budgeted.has(category.id),
-    )
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-}
-
-export interface FundingGap {
-  category: Category;
-  target: number;
-  allocated: number;
-  missing: number;
-}
-
-export function fundingGaps(
-  budgets: Budget[],
-  categories: Category[],
-  futureExpenses: FutureExpense[],
-  month: Month,
-): FundingGap[] {
-  const gaps: FundingGap[] = [];
-  for (const category of categories) {
-    if (category.kind !== "expense") continue;
-    const target = futureExpenses
-      .filter(
-        (expense) =>
-          expense.status === "upcoming" &&
-          expense.categoryId === category.id &&
-          expense.dueDate.startsWith(month),
-      )
-      .reduce((sum, expense) => sum + expense.amount, 0);
-    if (target <= 0) continue;
-    const allocated =
-      budgets.find(
-        (budget) => budget.month === month && budget.categoryId === category.id,
-      )?.limit ?? 0;
-    const missing = Math.max(target - allocated, 0);
-    if (missing <= 0) continue;
-    gaps.push({ category, target, allocated, missing });
-  }
-  return gaps.sort(
-    (a, b) =>
-      b.missing - a.missing ||
-      a.category.name.localeCompare(b.category.name),
   );
 }
 

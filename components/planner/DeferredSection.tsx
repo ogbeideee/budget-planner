@@ -71,7 +71,7 @@ export function DeferredSection({ month }: { month: Month }) {
           );
         })}
       </ul>
-      <p className="mt-2 border-t border-border pt-3 text-sm font-semibold tabular-nums text-ink">
+      <p className="mt-2 border-t border-border/60 pt-3 text-sm font-semibold tabular-nums text-ink">
         Moved into this month: {formatMoney(total, currency)}
       </p>
     </>

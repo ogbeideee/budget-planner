@@ -67,8 +67,9 @@ describe("CategoryManager", () => {
 
     render(<CategoryManager />);
 
-    await user.type(screen.getByPlaceholderText("e.g., Groceries"), existing.name);
-    await user.click(screen.getAllByRole("button", { name: "Add" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "New" })[0]);
+    await user.type(screen.getByLabelText("Name"), existing.name);
+    await user.click(screen.getByRole("button", { name: "Add category" }));
 
     expect(
       errorToasts().some((message) => message.includes("already exists")),
@@ -82,16 +83,14 @@ describe("CategoryManager", () => {
 
     render(<CategoryManager />);
 
-    await user.type(screen.getByPlaceholderText("e.g., Groceries"), "Snacks");
-    const pickerButtons = screen.getAllByRole("button", {
-      name: /Open the icon picker/,
-    });
-    await user.click(pickerButtons[0]);
+    await user.click(screen.getAllByRole("button", { name: "New" })[0]);
+    await user.type(screen.getByLabelText("Name"), "Snacks");
+    await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
     const picker = screen.getAllByRole("dialog").at(-1)!;
     await user.click(within(picker).getByRole("button", { name: "Clear" }));
-    await user.click(screen.getAllByRole("button", { name: "Add" })[0]);
+    await user.click(screen.getByRole("button", { name: "Add category" }));
 
-    expect(errorToasts().some((message) => message.includes("icon is required"))).toBe(true);
+    expect(errorToasts().some((message) => message.includes("icon"))).toBe(true);
     expect(useAppStore.getState().state.categories).toHaveLength(count);
   });
 
@@ -102,5 +101,24 @@ describe("CategoryManager", () => {
     const filter = screen.getAllByPlaceholderText("Filter categories...")[0];
     await user.type(filter, "rent");
     expect(screen.getAllByPlaceholderText("Filter categories...")[0]).toBe(filter);
+  });
+
+  it("adds a new expense category through the modal", async () => {
+    const user = userEvent.setup();
+    const count = useAppStore.getState().state.categories.length;
+
+    render(<CategoryManager />);
+
+    await user.click(screen.getAllByRole("button", { name: "New" })[0]);
+    await user.type(screen.getByLabelText("Name"), "Snacks");
+    await user.click(screen.getByRole("button", { name: "Add category" }));
+
+    expect(useAppStore.getState().state.categories).toHaveLength(count + 1);
+    expect(
+      useAppStore
+        .getState()
+        .state.categories.some((c) => c.name === "Snacks" && c.kind === "expense"),
+    ).toBe(true);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

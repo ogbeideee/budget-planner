@@ -15,9 +15,9 @@ export interface ModalProps {
 }
 
 const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
-  sm: "max-w-sm",
-  md: "max-w-md",
-  lg: "max-w-lg",
+  sm: "max-w-[480px]",
+  md: "max-w-[720px]",
+  lg: "max-w-[920px]",
 };
 
 const FOCUSABLE =
@@ -87,7 +87,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4 backdrop-blur-[2px] animate-[overlay-in_180ms_var(--ease-premium)]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4 backdrop-blur-[3px] animate-[overlay-in_180ms_var(--ease-premium)]"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -99,19 +99,19 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={describedBy}
         tabIndex={-1}
-        className={`flex max-h-[90vh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-xl border border-border/60 bg-surface shadow-pop animate-[dialog-in_180ms_var(--ease-premium)] focus:outline-none`}
+        className={`flex max-h-[90vh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-[24px] border border-border/60 bg-surface shadow-pop animate-[dialog-in_180ms_var(--ease-premium)] focus:outline-none`}
       >
         <h2
           id={titleId}
-          className="flex shrink-0 items-center gap-2 border-b border-border/50 px-6 py-4 text-lg font-bold tracking-tight"
+          className="flex shrink-0 items-center gap-2 px-8 pb-0 pt-8 text-dialog-title font-bold tracking-tight"
         >
           {title}
         </h2>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 pb-2 pt-4">
           {children}
         </div>
         {footer && (
-          <div className="flex shrink-0 justify-end gap-3 border-t border-border/50 bg-surface px-6 py-4">
+          <div className="flex shrink-0 justify-end gap-3 border-t border-border/60 px-6 pb-6 pt-4">
             {footer}
           </div>
         )}
@@ -119,5 +119,3 @@ export function Modal({
     </div>
   );
 }
-
-

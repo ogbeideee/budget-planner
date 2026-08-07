@@ -6,7 +6,7 @@ import { BarChart } from "@/components/charts/BarChart";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { categoryColor } from "@/lib/accents";
+import { categoryAccent, categoryColor } from "@/lib/accents";
 import { formatMoney } from "@/lib/money";
 import { spendingByCategory } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
@@ -44,7 +44,7 @@ export function ExpenseBreakdown({
     const empty = (
       <EmptyState
         illustration="chart"
-        illustrationClass="bg-expense/10 text-expense"
+        illustrationClass="bg-expense/[0.08] text-expense"
         title="Nothing recorded yet"
         description="Add your first expense and your category breakdown will take shape."
         tip="Every expense you log is grouped by category here, biggest first."
@@ -90,6 +90,10 @@ export function ExpenseBreakdown({
         ? `${spentLabel} of ${formatMoney(budget.limit, currency)}`
         : spentLabel,
       overBudget: budget !== undefined && spend.amount > budget.limit,
+      icon: category?.icon,
+      iconClass: category
+        ? categoryAccent(category.name).chip
+        : "bg-canvas text-muted",
     };
   });
   const ariaLabel = `Expense breakdown: ${items
@@ -107,7 +111,7 @@ export function ExpenseBreakdown({
   let footer: ReactNode | null = null;
   if (limited) {
     footer = (
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">
         {hidden > 0 ? (
           onExpand ? (
             <Button variant="ghost" size="sm" onClick={onExpand}>
@@ -128,7 +132,7 @@ export function ExpenseBreakdown({
     );
   } else if (spends.length > MAX_SHOWN) {
     footer = (
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">
         {hidden > 0 ? (
           <Button variant="ghost" size="sm" onClick={() => setExpanded(true)}>
             {label(hidden)}

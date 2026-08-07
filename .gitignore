@@ -30,6 +30,10 @@
 .DS_Store
 *.pem
 
+# local debug/test artifacts (never release these)
+/cdp6-electron.log
+/temp-test-out.txt
+
 # debug
 npm-debug.log*
 yarn-debug.log*

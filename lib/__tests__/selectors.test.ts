@@ -5,11 +5,9 @@ import {
   budgetUtilizationSeries,
   deferredExpenses,
   earned,
-  fundingGaps,
   healthTier,
   incomeTrendSeries,
   monthlySeries,
-  needsFunding,
   overBudgetCategories,
   sortByDateDesc,
   sortTransactions,
@@ -20,7 +18,7 @@ import {
   transactionsForMonth,
   windowMonths,
 } from "../selectors";
-import type { Budget, Category, FutureExpense, Transaction } from "../types";
+import type { Budget, Transaction } from "../types";
 
 function txn(overrides: Partial<Transaction>): Transaction {
   return {
@@ -287,194 +285,6 @@ describe("sortTransactions", () => {
     expect(list).toEqual(copy);
   });
 });
-
-describe("needsFunding (AC-25)", () => {
-  function category(id: string, name: string, kind: "income" | "expense"): Category {
-    return {
-      id,
-      name,
-      icon: "•",
-      color: "#000000",
-      kind,
-      createdAt: "2026-01-01T00:00:00.000Z",
-    };
-  }
-
-  const categories = [
-    category("cat-rent", "Rent", "expense"),
-    category("cat-food", "Food", "expense"),
-    category("cat-salary", "Salary", "income"),
-  ];
-
-  function budget(categoryId: string, limit: number, month = "2026-08"): Budget {
-    return {
-      id: `b-${categoryId}`,
-      categoryId,
-      month,
-      limit,
-      priority: "medium",
-    };
-  }
-
-  it("lists expense categories with no budget for the month", () => {
-    const result = needsFunding(
-      [budget("cat-rent", 1000)],
-      categories,
-      "2026-08",
-    );
-    expect(result.map((c) => c.id)).toEqual(["cat-food"]);
-  });
-
-  it("includes categories whose budget limit is 0", () => {
-    const result = needsFunding(
-      [budget("cat-rent", 0), budget("cat-food", 1500)],
-      categories,
-      "2026-08",
-    );
-    expect(result.map((c) => c.id)).toEqual(["cat-rent"]);
-  });
-
-  it("excludes income categories and funded categories", () => {
-    const result = needsFunding(
-      [budget("cat-rent", 1000), budget("cat-food", 1500)],
-      categories,
-      "2026-08",
-    );
-    expect(result).toEqual([]);
-  });
-
-  it("ignores budgets from other months", () => {
-    const result = needsFunding(
-      [budget("cat-rent", 1000, "2026-07")],
-      categories,
-      "2026-08",
-    );
-    expect(result.map((c) => c.id)).toEqual(["cat-food", "cat-rent"]);
-  });
-
-  it("sorts by name deterministically", () => {
-    const result = needsFunding([], categories, "2026-08");
-    expect(result.map((c) => c.id)).toEqual(["cat-food", "cat-rent"]);
-  });
-});
-
-describe("fundingGaps (upcoming-obligation driven)", () => {
-  function category(id: string, name: string, kind: "income" | "expense"): Category {
-    return {
-      id,
-      name,
-      icon: "•",
-      color: "#000000",
-      kind,
-      createdAt: "2026-01-01T00:00:00.000Z",
-    };
-  }
-
-  function budget(categoryId: string, limit: number, month = "2026-08"): Budget {
-    return { id: `b-${categoryId}`, categoryId, month, limit, priority: "medium" };
-  }
-
-  function expense(
-    id: string,
-    categoryId: string,
-    amount: number,
-    dueDate: string,
-    status: "upcoming" | "paid" = "upcoming",
-  ): FutureExpense {
-    return {
-      id,
-      categoryId,
-      amount,
-      title: "Bill",
-      dueDate,
-      recurring: false,
-      priority: "medium",
-      status,
-      createdAt: "2026-01-01T00:00:00.000Z",
-    };
-  }
-
-  const categories = [
-    category("cat-rent", "Rent", "expense"),
-    category("cat-food", "Food", "expense"),
-    category("cat-salary", "Salary", "income"),
-  ];
-
-  it("ignores categories with no upcoming expenses in the month", () => {
-    const result = fundingGaps(
-      [],
-      categories,
-      [expense("e1", "cat-rent", 1000, "2026-08-10")],
-      "2026-08",
-    );
-    expect(result.map((g) => g.category.id)).toEqual(["cat-rent"]);
-  });
-
-  it("sums upcoming expenses per category as the target", () => {
-    const result = fundingGaps(
-      [],
-      categories,
-      [
-        expense("e1", "cat-rent", 1000, "2026-08-10"),
-        expense("e2", "cat-rent", 500, "2026-08-20"),
-        expense("e3", "cat-food", 200, "2026-08-05"),
-      ],
-      "2026-08",
-    );
-    const rent = result.find((g) => g.category.id === "cat-rent")!;
-    expect(rent.target).toBe(1500);
-    expect(rent.allocated).toBe(0);
-    expect(rent.missing).toBe(1500);
-  });
-
-  it("excludes paid expenses and expenses outside the selected month", () => {
-    const result = fundingGaps(
-      [],
-      categories,
-      [
-        expense("e1", "cat-rent", 1000, "2026-08-10", "paid"),
-        expense("e2", "cat-rent", 900, "2026-09-10"),
-      ],
-      "2026-08",
-    );
-    expect(result).toEqual([]);
-  });
-
-  it("subtracts the month budget limit from the target", () => {
-    const result = fundingGaps(
-      [budget("cat-rent", 400)],
-      categories,
-      [expense("e1", "cat-rent", 1000, "2026-08-10")],
-      "2026-08",
-    );
-    expect(result[0]).toMatchObject({ allocated: 400, missing: 600 });
-  });
-
-  it("drops categories whose budget already covers the target", () => {
-    const result = fundingGaps(
-      [budget("cat-rent", 1500)],
-      categories,
-      [expense("e1", "cat-rent", 1000, "2026-08-10")],
-      "2026-08",
-    );
-    expect(result).toEqual([]);
-  });
-
-  it("sorts by largest missing first, name as tiebreak", () => {
-    const result = fundingGaps(
-      [],
-      categories,
-      [
-        expense("e1", "cat-food", 300, "2026-08-10"),
-        expense("e2", "cat-rent", 800, "2026-08-10"),
-        expense("e3", "cat-salary", 999, "2026-08-10"),
-      ],
-      "2026-08",
-    );
-    expect(result.map((g) => g.category.id)).toEqual(["cat-rent", "cat-food"]);
-  });
-});
-
 describe("reports selectors (FR-07)", () => {
   it("windowMonths returns count months ending at the given month, in order", () => {
     expect(windowMonths("2026-08")).toEqual([

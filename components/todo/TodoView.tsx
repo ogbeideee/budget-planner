@@ -42,7 +42,7 @@ export function TodoView() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title="To-Do"
@@ -56,29 +56,27 @@ export function TodoView() {
             All clear — nothing needs your attention this month.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col divide-y divide-border/60">
             {items.map((item) => {
               const style = TONE_STYLES[item.tone];
               const Icon = style.icon;
               return (
-                <li key={item.id} className="rounded-lg bg-canvas px-3.5 py-3">
-                  <div className="flex items-start gap-3">
-                    <span aria-hidden="true" className={`mt-0.5 ${style.iconClass}`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-ink">
-                        {item.title}
-                      </p>
-                      <p className="text-sm text-muted">{item.detail}</p>
-                    </div>
-                    <Link
-                      href={item.href}
-                      className="shrink-0 rounded-sm text-sm font-semibold text-brand-600 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400"
-                    >
-                      Resolve
-                    </Link>
+                <li key={item.id} className="group flex items-start gap-3 py-3.5">
+                  <span aria-hidden="true" className={`mt-0.5 ${style.iconClass}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink">
+                      {item.title}
+                    </p>
+                    <p className="text-sm text-muted">{item.detail}</p>
                   </div>
+                  <Link
+                    href={item.href}
+                    className="inline-flex min-h-9 shrink-0 items-center rounded-lg px-3 text-sm font-semibold text-brand-600 underline-offset-2 transition-colors duration-150 ease-premium hover:bg-brand-500/10 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus:outline-none dark:text-brand-400"
+                  >
+                    Resolve
+                  </Link>
                 </li>
               );
             })}

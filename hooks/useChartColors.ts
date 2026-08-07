@@ -11,17 +11,23 @@ export interface ChartColors {
   brand: string;
   income: string;
   expense: string;
+  warn: string;
+  tooltip: string;
+  tooltipText: string;
 }
 
 const LIGHT: ChartColors = {
-  grid: "#e2e8f0",
+  grid: "#eef2f7",
   tick: "#64748b",
   ink: "#0f172a",
   surface: "#ffffff",
-  border: "#e2e8f0",
-  brand: "#5e6ad2",
+  border: "#edf2f7",
+  brand: "#0ea5a4",
   income: "#16a34a",
   expense: "#dc2626",
+  warn: "#d97706",
+  tooltip: "#0f172a",
+  tooltipText: "#f8fafc",
 };
 
 const TOKENS: Array<{ name: keyof ChartColors; cssVar: string }> = [
@@ -33,6 +39,9 @@ const TOKENS: Array<{ name: keyof ChartColors; cssVar: string }> = [
   { name: "brand", cssVar: "--color-brand-500" },
   { name: "income", cssVar: "--color-income" },
   { name: "expense", cssVar: "--color-expense" },
+  { name: "warn", cssVar: "--color-warn" },
+  { name: "tooltip", cssVar: "--color-tooltip" },
+  { name: "tooltipText", cssVar: "--color-tooltip-text" },
 ];
 
 function readColors(): ChartColors {
@@ -55,7 +64,7 @@ export function useChartColors(): ChartColors {
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "data-accent"],
     });
     return () => observer.disconnect();
   }, []);

@@ -1,10 +1,10 @@
 import { todayIso, monthOffset, daysBetween } from "./date";
 import { monthFinance } from "./finance";
+import { fundingNeeds } from "./funding";
 import { formatMoney } from "./money";
 import {
   budgetProgress,
   isDeeplyOverBudget,
-  needsFunding,
   spendingByCategory,
 } from "./selectors";
 import type {
@@ -60,7 +60,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
   const monthTransactions = transactions.filter((transaction) =>
     transaction.date.startsWith(month),
   );
-  const { net } = monthFinance(transactions, incomePlans, month);
+  const { net, received } = monthFinance(transactions, incomePlans, month);
   const fmt = (minor: number) => formatMoney(minor, currency);
   const list: Insight[] = [];
 
@@ -119,7 +119,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
       id: "unallocated",
       tone: "neutral",
       title: "Unallocated funds",
-      detail: `${fmt(net)} is unallocated this month — create a budget.`,
+      detail: `${fmt(received)} is unallocated this month — create a budget.`,
       action: { label: "Create a budget", href: "/" },
     });
   }
@@ -197,7 +197,12 @@ export function insightsFor(input: InsightsInput): Insight[] {
     });
   }
 
-  const unfunded = needsFunding(budgets, categories, month);
+  const unfunded = fundingNeeds(
+    budgets,
+    categories,
+    futureExpenses ?? [],
+    month,
+  );
   if (unfunded.length >= 3) {
     list.push({
       id: "needs-funding",
@@ -205,7 +210,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
       title: `${unfunded.length} categories need funding`,
       detail: `${unfunded
         .slice(0, 3)
-        .map((category) => category.name)
+        .map((need) => need.category.name)
         .join(", ")}${unfunded.length > 3 ? " and more" : ""} have no budget yet this month.`,
       action: { label: "Fund them", href: "/" },
     });

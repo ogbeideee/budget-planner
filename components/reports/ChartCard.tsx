@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Card } from "@/components/ui/Card";
 
 export interface ChartCardProps {
   title: string;
@@ -11,16 +10,16 @@ export interface ChartCardProps {
 
 export function ChartCard({ title, subtitle, children }: ChartCardProps) {
   return (
-    <Card
-      variant="quiet"
-      title={title}
-      action={
-        subtitle ? (
+    <section className="flex min-h-[300px] flex-col rounded-xl border border-border/70 bg-surface p-6 shadow-card">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <h2 className="text-card-title font-semibold tracking-tight text-ink">
+          {title}
+        </h2>
+        {subtitle && (
           <span className="text-sm font-medium text-muted">{subtitle}</span>
-        ) : undefined
-      }
-    >
-      {children}
-    </Card>
+        )}
+      </header>
+      <div className="min-w-0 flex-1">{children}</div>
+    </section>
   );
 }

@@ -27,18 +27,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
       >
         Skip to content
       </a>
       <Sidebar />
-      <div className="lg:pl-56">
+      <div className="lg:pl-60">
         <Suspense fallback={null}>
           <Header />
         </Suspense>
         <main
           id="main"
-          className="mx-auto w-full max-w-[1152px] px-6 pb-28 pt-6 lg:pb-12"
+          className="mx-auto w-full max-w-[1600px] px-8 pb-24 pt-6 lg:pb-12"
         >
           {children}
         </main>

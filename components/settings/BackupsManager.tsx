@@ -57,9 +57,9 @@ function kindLabel(kind: string): string {
 function kindTone(kind: string): string {
   switch (kind) {
     case "manual":
-      return "bg-brand-500/10 text-brand-600 dark:text-brand-400";
+      return "bg-brand-500/[0.08] text-brand-600 dark:text-brand-400";
     case "auto-corrupt":
-      return "bg-warn/10 text-warn";
+      return "bg-warn/[0.08] text-warn";
     default:
       return "bg-surface text-muted border border-border/60";
   }
@@ -234,7 +234,7 @@ export function BackupsManager({ onRecovered }: { onRecovered?: () => void }) {
           {backups.map((backup) => (
             <li
               key={backup.key}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-surface px-3 py-2.5"
+              className="flex flex-wrap items-center gap-3 rounded-lg px-2.5 py-2"
             >
               <span
                 className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${kindTone(backup.kind)}`}
@@ -310,7 +310,7 @@ export function BackupsManager({ onRecovered }: { onRecovered?: () => void }) {
             {fileBackups.map((file) => (
               <li
                 key={file.name}
-                className="flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-surface px-3 py-2.5"
+                className="flex flex-wrap items-center gap-3 rounded-lg px-2.5 py-2"
               >
                 <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-muted border border-border/60">
                   File

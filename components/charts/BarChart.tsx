@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import type { ReactNode } from "react";
 
 /** Longest bar spans this % of the track; shorter bars keep the same ratios. */
 const MAX_BAR_SPAN = 80;
@@ -17,6 +18,9 @@ export interface BarChartItem {
   /** Formatted spent-for-tooltip string; falls back to `valueLabel`. */
   spent?: string;
   overBudget?: boolean;
+  /** Optional leading icon tile rendered before the label. */
+  icon?: ReactNode;
+  iconClass?: string;
 }
 
 export interface BarChartProps {
@@ -37,14 +41,24 @@ const BarRow = memo(function BarRow({ item, animate }: BarRowProps) {
   return (
     <div
       aria-hidden="true"
-      className={`group relative flex items-center gap-3 ${
+      className={`group relative flex items-center gap-4 ${
         animate ? "animate-[list-in_220ms_var(--ease-premium)]" : ""
       }`}
     >
-      <span className="w-24 truncate text-sm text-ink">{item.label}</span>
-      <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-canvas">
+      {item.icon && (
+        <span
+          aria-hidden="true"
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-base ${
+            item.iconClass ?? "bg-sidebar-hover text-muted"
+          }`}
+        >
+          {item.icon}
+        </span>
+      )}
+      <span className="w-28 truncate text-sm text-ink">{item.label}</span>
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink/[0.06] dark:bg-white/[0.08]">
         <div
-          className="h-full rounded-full transition-[width] duration-150 ease-out motion-reduce:transition-none"
+          className="h-full rounded-full transition-[width] duration-300 ease-premium motion-reduce:transition-none"
           style={{
             width: `${width}%`,
             backgroundColor: item.color,
@@ -61,7 +75,7 @@ const BarRow = memo(function BarRow({ item, animate }: BarRowProps) {
       </div>
       <div
         role="tooltip"
-        className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-max whitespace-nowrap rounded-lg border border-border/40 bg-ink px-3 py-2 text-left text-canvas shadow-xl opacity-0 transition-opacity duration-100 group-hover:opacity-100 motion-reduce:transition-none"
+        className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-max whitespace-nowrap rounded-lg border border-border/40 bg-ink px-3 py-2 text-left text-canvas opacity-0 shadow-pop transition-opacity duration-100 group-hover:opacity-100 motion-reduce:transition-none"
       >
         <p className="text-sm font-semibold">{item.label}</p>
         <dl className="mt-1.5 space-y-0.5 text-xs">
@@ -97,7 +111,7 @@ const BarRow = memo(function BarRow({ item, animate }: BarRowProps) {
 
 export function BarChart({ items, ariaLabel, animateFrom }: BarChartProps) {
   return (
-    <div role="img" aria-label={ariaLabel} className="flex flex-col gap-3">
+    <div role="img" aria-label={ariaLabel} className="flex flex-col gap-4">
       {items.map((item, index) => (
         <BarRow
           key={item.label}

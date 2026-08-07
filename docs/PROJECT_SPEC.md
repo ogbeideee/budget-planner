@@ -115,13 +115,18 @@ shows:
   `monthFinance`/`financeSeries` — summary cards, allocation, budgets, health gauge, hero,
   monthly stats, recommendations, insights, to-dos, reports, KPIs and charts.
 - Month selector (header row).
-- Needs Funding section: a checklist of the month's expense categories that have no
-  budget yet (or a limit of 0). Each row has a "Fund" action that opens the budget form
-  with the category preselected; funding the category removes it from the checklist.
-  Empty state: everything is funded.
+- Needs Funding section: the month's funding needs, derived from ONE shared selector
+  (`fundingNeeds` in `lib/funding.ts`) that every funding surface consumes (Planner panel,
+  budget-health checklist, header status, insights). A category appears when it has no
+  budget for the month (or a limit of 0) OR when its unpaid upcoming expenses for the
+  month exceed its budget limit (Missing = Target − Allocated > 0). Each row shows
+  Allocated/Needed/Missing and a "Fund" action that opens the budget form with the
+  category preselected and the limit prefilled with the missing amount; funding a category
+  removes it from the checklist. Empty state: everything is funded.
 - Allocated section: per-category budgets with priority, limit, spent, remaining,
   progress, edit/delete, and the "New budget" form; a funding bar shows how much of the
-  allocatable balance is committed.
+  allocatable income (received, not remaining cash) is committed, with a true percentage
+  (no fake 100 %) and an "Over allocated" state when limits exceed income.
 - Allocation sliders (FR-11) and the budget health gauge (FR-14).
 - Insights & recommendations (FR-13) and the expense breakdown chart (FR-15).
 - Quick Add Expense: an inline form that logs an expense without leaving the Planner.
@@ -469,7 +474,7 @@ Salary          💰 #0ea5e9 income
 | AC-22 | Chart and progress bars animate (width transition ≤ 150 ms) and are disabled under `prefers-reduced-motion: reduce`; each chart exposes `role="img"` with an `aria-label` containing exact values |
 | AC-23 | The To-Do page lists only actions implied by current state (over-budget category, spending exceeding income, unallocated funds, spending category without a budget, deferred expenses) and each item links to the page that resolves it |
 | AC-24 | Moving an expense to the next month (FR-12) marks it `deferred`; the destination month's Planner "Deferred expenses" section lists it with the correct total, and History still shows the record (with a "Deferred" indicator) |
-| AC-25 | The Planner's Needs Funding checklist lists exactly the month's expense categories with no budget or a limit of 0 (income categories and funded categories excluded); funding a category via the checklist opens the budget form with that category preselected, and once a budget exists with a limit > 0 the category leaves the checklist |
+| AC-25 | The Planner's Needs Funding checklist is derived from the shared `fundingNeeds` selector (income categories and fully funded categories excluded): every month-scoped expense category with no budget or a limit of 0 appears immediately, and budgeted categories appear while their upcoming obligations exceed their limit; funding a category via the checklist opens the budget form with that category preselected and the limit prefilled with the missing amount, and once a budget exists with a limit > 0 the category leaves the checklist |
 
 ## 8. Non-functional Requirements
 

@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconValue } from "@/components/ui/IconValue";
 import { Modal } from "@/components/ui/Modal";
-import { ChevronDownIcon } from "@/components/ui/icons";
+import { CheckIcon, ChevronDownIcon } from "@/components/ui/icons";
 import {
   findIconByEmoji,
   ICON_GROUPS,
@@ -269,7 +269,7 @@ export function IconPicker({
         aria-expanded={open}
         aria-label={`${label}. Current icon: ${currentLabel ?? (value ? "custom" : "none")}. Open the icon picker.`}
         onClick={handleOpen}
-        className="flex h-11 w-full items-center gap-2.5 rounded-md border border-border bg-surface px-3 text-sm text-ink transition-colors duration-150 ease-premium hover:bg-canvas focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus:outline-none"
+        className="flex h-10 w-full items-center gap-2.5 rounded-lg border border-border/80 bg-surface px-3 text-sm text-ink transition-colors duration-150 ease-premium hover:bg-canvas focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus:outline-none"
       >
         <span
           aria-hidden="true"
@@ -314,7 +314,7 @@ export function IconPicker({
           >
             <span
               aria-hidden="true"
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-surface text-3xl shadow-sm"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-surface text-3xl"
             >
               {preview ? (
                 <IconValue value={preview} className="h-8 w-8 text-3xl" />
@@ -332,25 +332,27 @@ export function IconPicker({
             </div>
           </div>
 
-          <input
-            type="text"
-            role="combobox"
-            aria-expanded="true"
-            aria-controls="icon-picker-options"
-            aria-autocomplete="list"
-            value={query}
-            onChange={(event) => {
-              const next = event.target.value;
-              const first = buildSections(recent, favourites, next, vectors)
-                .flatMap((section) => section.icons)[0];
-              setQuery(next);
-              setActiveIndex(0);
-              setPreview(first ? first.emoji : value);
-            }}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search icons, e.g. groceries, rent, gym…"
-            className="h-11 w-full rounded-md border border-border bg-surface px-3 pr-3 text-sm text-ink transition-colors placeholder:text-muted/50 focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          />
+          <div className="sticky top-0 z-10 -mx-2 border-b border-border/40 bg-surface px-2 pb-3">
+            <input
+              type="text"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="icon-picker-options"
+              aria-autocomplete="list"
+              value={query}
+              onChange={(event) => {
+                const next = event.target.value;
+                const first = buildSections(recent, favourites, next, vectors)
+                  .flatMap((section) => section.icons)[0];
+                setQuery(next);
+                setActiveIndex(0);
+                setPreview(first ? first.emoji : value);
+              }}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search icons, e.g. groceries, rent, gym…"
+              className="h-11 w-full rounded-xl border border-border/80 bg-surface px-3.5 text-sm text-ink transition-colors placeholder:text-muted/50 focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </div>
 
           {!haveResults && (
             <p className="text-sm text-muted">
@@ -362,7 +364,7 @@ export function IconPicker({
             const start = offsets.get(section.id) ?? 0;
             return (
               <div key={section.id}>
-                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted">
                   {section.label}
                   <span
                     aria-hidden="true"
@@ -378,11 +380,12 @@ export function IconPicker({
                       : undefined
                   }
                   onKeyDown={handleGridKeyDown}
-                  className="grid grid-cols-6 gap-1.5"
+                  className="grid grid-cols-6 gap-2"
                 >
                   {section.icons.map((icon, localIndex) => {
                     const index = start + localIndex;
                     const active = index === activeIndex;
+                    const selected = icon.emoji === value;
                     const favourite = favourites.includes(icon.emoji);
                     return (
                       <div
@@ -396,15 +399,17 @@ export function IconPicker({
                           }}
                           type="button"
                           role="option"
-                          aria-selected={active}
+                          aria-selected={selected || active}
                           aria-label={icon.label}
                           tabIndex={active ? 0 : -1}
                           onMouseEnter={() => setPreview(icon.emoji)}
                           onClick={() => handleSelect(icon)}
-                          className={`flex h-11 w-full items-center justify-center rounded-lg border text-xl transition-all duration-150 ease-premium focus:outline-none ${
-                            active
-                              ? "border-brand-500/70 bg-brand-500/10 text-brand-700 shadow-sm dark:text-brand-300"
-                              : "border-border/60 bg-surface text-ink hover:border-brand-500/40 hover:bg-canvas"
+                          className={`flex h-12 w-full items-center justify-center rounded-xl border text-xl transition-all duration-150 ease-premium focus:outline-none motion-reduce:transition-none ${
+                            selected
+                              ? "border-brand-500/70 bg-brand-500/[0.08] text-brand-700 ring-2 ring-brand-500/30 dark:text-brand-300"
+                              : active
+                                ? "border-brand-500/50 bg-brand-500/[0.06] text-brand-700 dark:text-brand-300"
+                                : "border-border/60 bg-surface text-ink hover:-translate-y-0.5 hover:border-brand-500/40 hover:bg-canvas"
                           }`}
                         >
                           <IconValue
@@ -412,6 +417,14 @@ export function IconPicker({
                             className="h-6 w-6 text-xl"
                           />
                         </button>
+                        {selected && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 text-white"
+                          >
+                            <CheckIcon className="h-2.5 w-2.5" />
+                          </span>
+                        )}
                         <button
                           type="button"
                           tabIndex={-1}
@@ -419,7 +432,7 @@ export function IconPicker({
                             favourite ? "Unfavourite" : "Favourite"
                           } ${icon.label}`}
                           onClick={() => handleToggleFavourite(icon)}
-                          className={`absolute right-0.5 top-0.5 rounded-full p-0.5 text-[11px] leading-none transition-colors duration-150 ease-premium focus-visible:ring-2 focus-visible:ring-brand-500 focus:outline-none ${
+                          className={`absolute right-0.5 top-0.5 rounded-full p-0.5 text-xs leading-none transition-colors duration-150 ease-premium focus-visible:ring-2 focus-visible:ring-brand-500 focus:outline-none ${
                             favourite
                               ? "text-amber-500"
                               : "text-muted/30 hover:text-amber-500"

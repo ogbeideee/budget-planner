@@ -1,11 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { MonthPicker } from "@/components/ui/MonthPicker";
+import { SearchBar } from "@/components/ui/SearchBar";
 import { Select } from "@/components/ui/Select";
 import type { SortDirection, TransactionSort, TransactionSortKey } from "@/lib/selectors";
-import type { CategoryKind, Month } from "@/lib/types";
+import type { CategoryKind } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 
 export interface TransactionFiltersState {
@@ -47,16 +46,12 @@ export function sortIsDefault(sort: TransactionSort): boolean {
 }
 
 export interface TransactionFiltersProps {
-  month: Month;
-  onMonthChange: (month: Month) => void;
   filters: TransactionFiltersState;
   onChange: (filters: TransactionFiltersState) => void;
   onClear: () => void;
 }
 
 export function TransactionFilters({
-  month,
-  onMonthChange,
   filters,
   onChange,
   onClear,
@@ -69,8 +64,7 @@ export function TransactionFilters({
     !sortIsDefault(filters.sort);
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <MonthPicker value={month} onChange={onMonthChange} />
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-surface/80 p-3 shadow-card backdrop-blur-sm">
       <Select
         label="Type"
         options={[
@@ -105,9 +99,9 @@ export function TransactionFilters({
         onChange={(event) => onChange({ ...filters, sort: parseSort(event.target.value) })}
       />
       <div className="min-w-52 flex-1">
-        <Input
-          label="Search"
-          placeholder="Search notes…"
+        <SearchBar
+          aria-label="Search transactions, notes or categories"
+          placeholder="Search transactions, notes or categories..."
           value={filters.q}
           onChange={(event) => onChange({ ...filters, q: event.target.value })}
         />

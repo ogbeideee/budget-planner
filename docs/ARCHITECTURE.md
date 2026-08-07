@@ -54,11 +54,15 @@ components/
   reports/ ReportsView.tsx, ChartCard.tsx, chartStyles.ts, IncomeExpenseChart.tsx,
            SpendingTrendChart.tsx, SavingsChart.tsx, BudgetUtilizationChart.tsx,
            TopCategoriesChart.tsx, ExpectedVsActualChart.tsx, IncomeSourceChart.tsx,
-           IncomeTrendChart.tsx, ReportsInsights.tsx
+           IncomeTrendChart.tsx, MonthlyOverview.tsx, FinancialInsights.tsx,
+           CategoryAnalysisChart.tsx, CashFlowChart.tsx, ForecastCard.tsx,
+           Recommendations.tsx
   todo/    TodoView.tsx
   insights/ InsightList.tsx
-  settings/ SettingsView.tsx, CategoryManager.tsx, CategoryEditModal.tsx,
-            BackupsManager.tsx, iconLibrary.ts
+  settings/ SettingsView.tsx, SettingsNav.tsx, ProfilePanel.tsx, AppearancePanel.tsx,
+            BudgetPreferencesPanel.tsx, CategoryManager.tsx, CategoryModal.tsx,
+            IncomeSourcesPanel.tsx, IncomeSourceModal.tsx, DataBackupsPanel.tsx,
+            AboutPanel.tsx, BackupsManager.tsx, categoryColors.ts, iconLibrary.ts
   theme/   ThemeToggle.tsx
   recovery/ RecoveryPanel.tsx
   charts/  BarChart.tsx            # custom animated CSS chart (Planner, FR-15)
@@ -74,10 +78,14 @@ lib/                          # pure TS, zero React imports — unit-tested (17 
                               # source of truth for Received/Expected/Expenses/Net/Remaining/
                               # Projected remaining/Savings rate (pure)
   selectors.ts                # spent(), totals(), budgetProgress(), isDeeplyOverBudget(),
-                              # overBudgetCategories(), fundingGaps(), deferredExpenses(),
+                              # overBudgetCategories(), deferredExpenses(),
                               # spendingByCategory(), receivedForMonth(), sortTransactions(),
                               # windowMonths(), monthlySeries(), budgetUtilizationSeries(),
                               # incomePlan selectors (pure)
+  funding.ts                  # fundingNeeds(budgets, categories, futureExpenses, month) —
+                              # the single source of truth for "Needs Funding": every
+                              # funding surface (Planner panel, health checklist, header
+                              # status, insights) derives from it (pure)
   allocation.ts               # clampAllocation(), totalAllocated() (pure, FR-11)
   insights.ts                 # insightsFor(...) -> Insight[] (pure, FR-13)
   todo.ts                     # todoFor(state, month) -> TodoItem[] (pure, FR-17)
@@ -98,7 +106,10 @@ lib/                          # pure TS, zero React imports — unit-tested (17 
                               # snapshots), writeBackup(), snapshotCurrentState(),
                               # listBackupSnapshots(), scanRecoverablePayloads(),
                               # serializeExport(), parseExportPayload()
-  theme.ts                    # resolveTheme(), applyTheme(), THEME_BOOTSTRAP_SCRIPT
+  theme.ts                    # resolveTheme(), applyTheme(), THEME_BOOTSTRAP_SCRIPT;
+                              # accent system — Accent type, ACCENTS, ACCENT_STORAGE_KEY,
+                              # applyAccent/applyAnimations + extended bootstrap that sets
+                              # data-accent / data-animations pre-paint
   scrollLock.ts               # lockScroll()/unlockScroll() — shared by Modal/Drawer
 store/
   useAppStore.ts              # Zustand store (state + actions), persist middleware;
@@ -109,6 +120,8 @@ hooks/
   useRecurring.ts             # effect that materializes recurring instances
   useToast.ts                 # success()/error() wrappers over useToastStore
   useTheme.ts                 # theme state + applyTheme; useReducedMotion.ts (a11y)
+  useAppearance.ts            # accent + animation preferences (reads/writes storage,
+                              # applies data-accent / data-animations attributes)
   usePlannerStatus.ts         # planner derived flags; useAnimatedNumber.ts (rAF counter)
   useChartColors.ts           # theme-aware chart palette (MutationObserver on data-theme)
 public/                       # favicon.ico only (starter SVGs removed)

@@ -62,7 +62,7 @@ const FutureExpenseRow = memo(function FutureExpenseRow({
     <li className="group flex items-center gap-3 px-5 py-3.5">
       <span
         aria-hidden="true"
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${categoryAccent(categoryName).chip}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base ${categoryAccent(categoryName).chip}`}
       >
         {categoryIcon}
       </span>
@@ -269,11 +269,11 @@ export function UpcomingView() {
     return (
       <div key={label} className="flex flex-col">
         <div
-          className={`flex items-baseline justify-between gap-3 border-b border-border/70 py-2.5 ${
-            quiet ? "px-3" : "bg-canvas/50 px-5"
-          } ${isFirst ? "rounded-t-2xl" : ""}`}
+          className={`flex items-baseline justify-between gap-3 border-b border-border/60 py-2.5 ${
+            quiet ? "px-3" : "px-5"
+          } ${isFirst ? "rounded-t-xl" : ""}`}
         >
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted/80">
             {label}
           </h2>
           <span className="text-xs font-semibold tabular-nums text-ink">
@@ -334,7 +334,7 @@ export function UpcomingView() {
   const renderPreview = () => {
     if (previewRows.length === 0) return undefined;
     return (
-      <ul className="flex flex-col divide-y divide-border/60 rounded-xl bg-surface shadow-card">
+      <ul className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/70 bg-surface">
         {previewRows.map((expense) => (
           <li key={expense.id} className="flex items-center gap-3 px-4 py-2.5">
             <div className="min-w-0 flex-1">
@@ -355,7 +355,7 @@ export function UpcomingView() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <PageHeader
         title="Upcoming expenses"
         description="Know what's ahead, so nothing sneaks up on your budget."
@@ -367,10 +367,10 @@ export function UpcomingView() {
       />
 
       {isEmpty ? (
-        <div className="rounded-xl bg-surface p-5 shadow-card">
+        <div className="rounded-xl border border-border/70 bg-surface p-5">
           <EmptyState
             illustration="calendar"
-            illustrationClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+            illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
             title="No upcoming expenses yet"
             description="Plan the bills and subscriptions ahead — then nothing sneaks up on your budget."
             action={
@@ -389,14 +389,14 @@ export function UpcomingView() {
           variant="section"
         >
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col divide-y divide-border/70 rounded-2xl bg-surface shadow-card">
+            <div className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/70 bg-surface">
               {groups.map((group, index) =>
                 renderGroup(group.label, group.items, false, index === 0),
               )}
             </div>
 
             {paid.length > 0 && (
-              <div className="rounded-2xl border border-border/60 bg-canvas/40 p-2">
+              <div className="rounded-xl border border-border/50 bg-canvas/40 p-2">
                 {renderGroup("Paid", paid, true)}
               </div>
             )}
@@ -476,7 +476,7 @@ function RescheduleForm({
           type="date"
           value={date}
           onChange={(event) => setDate(event.target.value)}
-          className="h-11 rounded-md border border-border bg-surface px-3 text-sm text-ink transition-colors focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          className="h-10 rounded-lg border border-border/80 bg-surface px-3.5 text-sm text-ink transition-[border-color,box-shadow] duration-150 ease-premium focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         />
       </label>
       <div className="flex justify-end gap-3">

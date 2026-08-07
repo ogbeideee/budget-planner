@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createId } from "@/lib/ids";
 import type { ID } from "@/lib/types";
 
-export type ToastTone = "success" | "error";
+export type ToastTone = "success" | "error" | "info";
 
 export interface ToastItem {
   id: ID;
