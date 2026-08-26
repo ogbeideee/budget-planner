@@ -4,6 +4,7 @@ import type {
   ID,
   IncomePlan,
   Month,
+  RolloverRecord,
   Transaction,
 } from "./types";
 
@@ -59,23 +60,77 @@ export function totals(transactions: Transaction[], month: Month): Totals {
   return { income, expenses, net: income - expenses };
 }
 
+/** The carryover recorded for one category in one month, or null. */
+export function findRollover(
+  rollovers: RolloverRecord[],
+  categoryId: ID,
+  month: Month,
+): RolloverRecord | null {
+  return (
+    rollovers.find(
+      (record) => record.categoryId === categoryId && record.month === month,
+    ) ?? null
+  );
+}
+
+/** How much rolled INTO `month` for one category. 0 when nothing did. */
+export function rolledOverInto(
+  rollovers: RolloverRecord[],
+  categoryId: ID,
+  month: Month,
+): number {
+  return findRollover(rollovers, categoryId, month)?.amount ?? 0;
+}
+
+/**
+ * A budget's spendable limit for its month: the base limit plus whatever was
+ * recorded as rolling into that month.
+ *
+ * Reads only the persisted record and never recomputes, so a past month keeps
+ * the limit it actually had even if the cap default changes or the source
+ * month's transactions are edited later.
+ */
+export function effectiveLimit(
+  budget: Budget,
+  rollovers: RolloverRecord[] = [],
+): number {
+  return budget.limit + rolledOverInto(rollovers, budget.categoryId, budget.month);
+}
+
 export interface BudgetProgress {
+  /** Spendable limit: `baseLimit` plus `rolledOver`. Every existing consumer
+   *  reads this, so enabling rollover widens the limit everywhere at once. */
   limit: number;
+  /** The limit the user set for this month, before any carryover. */
+  baseLimit: number;
+  /** Carried in from last month; 0 unless the category opted into rollover. */
+  rolledOver: number;
   spent: number;
   remaining: number;
   progress: number;
   over: boolean;
 }
 
+/**
+ * Progress against a budget's spendable limit.
+ *
+ * `rollovers` is optional and defaults to none: called without it — as every
+ * pre-rollover call site does — `limit` is exactly `budget.limit` and
+ * `rolledOver` is 0, so categories that never opted in behave identically.
+ */
 export function budgetProgress(
   budget: Budget,
   transactions: Transaction[],
+  rollovers: RolloverRecord[] = [],
 ): BudgetProgress {
   const value = spent(transactions, budget.categoryId, budget.month);
-  const limit = budget.limit;
+  const rolledOver = rolledOverInto(rollovers, budget.categoryId, budget.month);
+  const limit = budget.limit + rolledOver;
   const progress = limit > 0 ? Math.min(1, value / limit) : 0;
   return {
     limit,
+    baseLimit: budget.limit,
+    rolledOver,
     spent: value,
     remaining: limit - value,
     progress,
@@ -90,20 +145,24 @@ export function isDeeplyOverBudget(progress: BudgetProgress): boolean {
 export interface OverBudgetEntry {
   budget: Budget;
   spent: number;
+  /** The limit actually breached — base plus any carryover. */
+  limit: number;
 }
 
 export function overBudgetCategories(
   budgets: Budget[],
   transactions: Transaction[],
   month: Month,
+  rollovers: RolloverRecord[] = [],
 ): OverBudgetEntry[] {
   return budgets
     .filter((budget) => budget.month === month)
     .map((budget) => ({
       budget,
       spent: spent(transactions, budget.categoryId, budget.month),
+      limit: effectiveLimit(budget, rollovers),
     }))
-    .filter((entry) => entry.spent > entry.budget.limit);
+    .filter((entry) => entry.spent > entry.limit);
 }
 
 export type TransactionSortKey = "date" | "amount";
@@ -163,16 +222,17 @@ export function budgetHealth(
   transactions: Transaction[],
   month: Month,
   incomePlans: IncomePlan[] = [],
+  rollovers: RolloverRecord[] = [],
 ): number {
   let health = 100;
   for (const budget of budgets) {
     if (budget.month !== month || budget.limit <= 0) continue;
+    // Scored against the spendable limit: a category still inside its
+    // carried-over funds has not overspent and must not be penalised.
+    const limit = effectiveLimit(budget, rollovers);
     const value = spent(transactions, budget.categoryId, month);
-    if (value > budget.limit) {
-      health -= Math.min(
-        30,
-        Math.floor((100 * (value - budget.limit)) / budget.limit),
-      );
+    if (value > limit) {
+      health -= Math.min(30, Math.floor((100 * (value - limit)) / limit));
     }
   }
   if (
@@ -317,17 +377,26 @@ export interface BudgetUtilizationPoint {
   pct: number;
 }
 
+/**
+ * `rollovers` defaults to none for backward compatibility. Passing it makes
+ * each month weigh the limit that month ACTUALLY had, carryover included,
+ * rather than recomputing history from today's settings.
+ */
 export function budgetUtilizationSeries(
   budgets: Budget[],
   transactions: Transaction[],
   months: Month[],
+  rollovers: RolloverRecord[] = [],
 ): BudgetUtilizationPoint[] {
   return months.flatMap((month) => {
     const monthBudgets = budgets.filter(
       (budget) => budget.month === month && budget.limit > 0,
     );
     if (monthBudgets.length === 0) return [];
-    const limit = monthBudgets.reduce((sum, budget) => sum + budget.limit, 0);
+    const limit = monthBudgets.reduce(
+      (sum, budget) => sum + effectiveLimit(budget, rollovers),
+      0,
+    );
     const spentTotal = monthBudgets.reduce(
       (sum, budget) => sum + spent(transactions, budget.categoryId, month),
       0,

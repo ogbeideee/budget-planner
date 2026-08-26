@@ -58,7 +58,7 @@ export function ForecastCard({
         <div className="flex items-center gap-4">
           <span
             aria-hidden="true"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400"
           >
             <SparklesIcon className="h-5 w-5" />
           </span>
@@ -86,7 +86,7 @@ export function ForecastCard({
         <div className="flex items-start gap-4">
           <span
             aria-hidden="true"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400"
           >
             <SparklesIcon className="h-5 w-5" />
           </span>

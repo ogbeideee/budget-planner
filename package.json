@@ -30,9 +30,11 @@
     "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.8.9",
     "next": "16.2.12",
+    "pdfjs-dist": "^6.2.108",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.10.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -49,7 +51,9 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "jsdom": "^30.0.1",
+    "mupdf": "^1.28.0",
     "tailwindcss": "^4",
+    "tesseract.js": "^5.1.1",
     "typescript": "^5",
     "vitest": "^4.1.10",
     "wait-on": "^9.1.0"

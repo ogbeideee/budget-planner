@@ -2,6 +2,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isIsoDate, isMonth, monthKeyFromIso, nextMonthDate } from "@/lib/date";
 import { createId } from "@/lib/ids";
+import {
+  markRulesUsed,
+  recordCorrection,
+  type RuleCorrectionInput,
+} from "@/lib/learnedRules";
 import { hasGeneratedInstance, recordException } from "@/lib/recurrence";
 import { createInitialState } from "@/lib/seed";
 import {
@@ -29,15 +34,21 @@ import type {
   FutureExpense,
   FutureExpenseInput,
   ID,
+  LearnedRule,
   Month,
+  Debt,
+  DebtInput,
+  EarnedBadge,
+  PayoffStrategyPreference,
   RecurrenceRule,
   RecurrenceRuleInput,
+  RolloverRecord,
   Settings,
   Transaction,
   TransactionInput,
 } from "@/lib/types";
 
-const STORE_VERSION = 3;
+const STORE_VERSION = 4;
 
 export interface AppStoreErrors {
   hydrateError: string | null;
@@ -52,6 +63,8 @@ export const useAppStoreErrors = create<AppStoreErrors>()((set) => ({
 export interface AppStore {
   state: AppState;
   addTransaction(input: TransactionInput): void;
+  /** Bulk add (single write) — used by the statement import confirmation. */
+  addTransactions(inputs: TransactionInput[]): void;
   updateTransaction(id: ID, patch: Partial<TransactionInput>): void;
   deleteTransaction(id: ID): void;
   moveTransactionToNextMonth(id: ID): void;
@@ -65,6 +78,15 @@ export interface AppStore {
       receivedAmount?: number;
     },
   ): boolean;
+  /** Learns from confirmed classification corrections (Prompt 6A) — one
+   *  single write for the whole batch. */
+  learnFromCorrections(corrections: RuleCorrectionInput[]): void;
+  updateLearnedRule(id: ID, patch: Partial<Pick<LearnedRule, "categoryId" | "enabled">>): void;
+  deleteLearnedRule(id: ID): void;
+  /** Removes every learned mapping — the Settings "start over" action. */
+  clearLearnedRules(): void;
+  /** Stamps `lastUsedAt` on rules whose suggestion was actually imported. */
+  markLearnedRulesUsed(ids: ID[]): void;
   addBudget(input: BudgetInput): boolean;
   updateBudget(id: ID, patch: Partial<Pick<Budget, "categoryId" | "limit" | "priority">>): void;
   deleteBudget(id: ID): void;
@@ -74,6 +96,21 @@ export interface AppStore {
   addCategory(input: CategoryInput): boolean;
   renameCategory(id: ID, name: string): boolean;
   updateCategory(id: ID, patch: Partial<Pick<Category, "name" | "icon" | "color">>): boolean;
+  /** Opt one category in or out of rolling unspent funds forward. Explicit
+   *  and per category — there is no bulk or global equivalent by design. */
+  setCategoryRollover(id: ID, rollover: boolean): void;
+  /** Creates or updates the debt record linked to a category (FR-20). One
+   *  record per category; passing `null` stops tracking and removes it. */
+  setCategoryDebt(categoryId: ID, input: DebtInput | null): void;
+  /** Which payoff projection to surface prominently. Display only. */
+  setDebtStrategy(strategy: PayoffStrategyPreference): void;
+  /** Records badges produced by `newlyEarnedBadges`. Appends only and ignores
+   *  any id already held, so an achievement can never be granted twice. */
+  grantBadges(badges: EarnedBadge[]): void;
+  /** Persists carryover records produced by `computeRollovers`. Appends only,
+   *  and ignores any record for a (category, month) already settled, so a
+   *  month transition can never be applied twice. */
+  applyRollovers(records: RolloverRecord[]): void;
   deleteCategory(id: ID): { ok: boolean; reason?: CategoryDeleteReason };
   addRecurrenceRule(input: RecurrenceRuleInput): void;
   updateRecurrenceRule(id: ID, patch: Partial<RecurrenceRule>): void;
@@ -104,8 +141,32 @@ export function createAppStore() {
                   type: input.type,
                   date: input.date,
                   note: input.note,
+                  deferred: input.deferred === true ? true : undefined,
                   createdAt: new Date().toISOString(),
                 },
+                ...s.state.transactions,
+              ],
+            },
+          })),
+
+        addTransactions: (inputs) =>
+          set((s) => ({
+            state: {
+              ...s.state,
+              transactions: [
+                ...inputs.map((input) => ({
+                  id: createId(),
+                  categoryId: input.categoryId,
+                  amount: input.amount,
+                  type: input.type,
+                  date: input.date,
+                  note: input.note,
+                  deferred: input.deferred === true ? true : undefined,
+                  // Statement-import provenance must survive the write — it
+                  // is the re-import detection signal (Prompt 5B).
+                  importSource: input.importSource,
+                  createdAt: new Date().toISOString(),
+                })),
                 ...s.state.transactions,
               ],
             },
@@ -484,6 +545,7 @@ export function createAppStore() {
                   icon: input.icon,
                   color: input.color,
                   kind: input.kind,
+                  rollover: input.rollover === true ? true : undefined,
                   createdAt: new Date().toISOString(),
                 },
               ],
@@ -553,6 +615,107 @@ export function createAppStore() {
           return true;
         },
 
+        setCategoryRollover: (id, rollover) =>
+          set((s) => ({
+            state: {
+              ...s.state,
+              categories: s.state.categories.map((category) =>
+                category.id === id
+                  ? // Stored as absent rather than false, matching the
+                    // validator, so an untouched category is byte-identical
+                    // to how it looked before this feature existed.
+                    { ...category, rollover: rollover ? true : undefined }
+                  : category,
+              ),
+            },
+          })),
+
+        setCategoryDebt: (categoryId, input) =>
+          set((s) => {
+            const existing = s.state.debts.find(
+              (debt) => debt.categoryId === categoryId,
+            );
+            if (input === null) {
+              if (!existing) return s;
+              return {
+                state: {
+                  ...s.state,
+                  debts: s.state.debts.filter(
+                    (debt) => debt.categoryId !== categoryId,
+                  ),
+                },
+              };
+            }
+            const clean = (value: number) =>
+              Number.isFinite(value) && Number.isInteger(value) && value >= 0
+                ? value
+                : 0;
+            const balance = clean(input.balance);
+            const now = new Date().toISOString();
+            const next: Debt = {
+              id: existing?.id ?? createId(),
+              categoryId,
+              balance,
+              // Only set on creation, or when explicitly supplied: editing the
+              // current balance must not silently rewrite where it started, or
+              // the progress figure would always read 0%.
+              startingBalance:
+                input.startingBalance !== undefined
+                  ? clean(input.startingBalance)
+                  : existing
+                    ? Math.max(existing.startingBalance, balance)
+                    : balance,
+              aprBps: clean(input.aprBps),
+              minimumPayment: clean(input.minimumPayment),
+              createdAt: existing?.createdAt ?? now,
+              updatedAt: now,
+            };
+            return {
+              state: {
+                ...s.state,
+                debts: existing
+                  ? s.state.debts.map((debt) =>
+                      debt.categoryId === categoryId ? next : debt,
+                    )
+                  : [...s.state.debts, next],
+              },
+            };
+          }),
+
+        setDebtStrategy: (strategy) =>
+          set((s) =>
+            strategy !== "avalanche" && strategy !== "snowball"
+              ? s
+              : {
+                  state: {
+                    ...s.state,
+                    settings: { ...s.state.settings, debtStrategy: strategy },
+                  },
+                },
+          ),
+
+        grantBadges: (badges) =>
+          set((s) => {
+            const held = new Set(s.state.badges.map((badge) => badge.id));
+            const fresh = badges.filter((badge) => !held.has(badge.id));
+            if (fresh.length === 0) return s;
+            return { state: { ...s.state, badges: [...s.state.badges, ...fresh] } };
+          }),
+
+        applyRollovers: (records) =>
+          set((s) => {
+            const settled = new Set(
+              s.state.rollovers.map((record) => `${record.categoryId}|${record.month}`),
+            );
+            const fresh = records.filter(
+              (record) => !settled.has(`${record.categoryId}|${record.month}`),
+            );
+            if (fresh.length === 0) return s;
+            return {
+              state: { ...s.state, rollovers: [...s.state.rollovers, ...fresh] },
+            };
+          }),
+
         deleteCategory: (id) => {
           const { state } = get();
           if (state.transactions.some((t) => t.categoryId === id)) {
@@ -573,6 +736,14 @@ export function createAppStore() {
               categories: s.state.categories.filter(
                 (category) => category.id !== id,
               ),
+              // Carryover history is meaningless without its category, and
+              // the validator drops orphans on the next load anyway.
+              rollovers: s.state.rollovers.filter(
+                (record) => record.categoryId !== id,
+              ),
+              // A debt record without its category is meaningless, and the
+              // validator drops orphans on the next load anyway.
+              debts: s.state.debts.filter((debt) => debt.categoryId !== id),
             },
           }));
           return { ok: true };
@@ -672,6 +843,53 @@ export function createAppStore() {
           useAppStoreErrors.getState().setHydrateError(null);
           set({ state: createInitialState() });
         },
+
+        learnFromCorrections: (corrections) =>
+          set((s) => {
+            if (corrections.length === 0) return s;
+            let rules = s.state.learnedRules;
+            for (const correction of corrections) {
+              rules = recordCorrection(rules, correction);
+            }
+            return {
+              state: { ...s.state, learnedRules: rules },
+            };
+          }),
+
+        updateLearnedRule: (id, patch) =>
+          set((s) => ({
+            state: {
+              ...s.state,
+              learnedRules: s.state.learnedRules.map((rule) =>
+                rule.id === id
+                  ? { ...rule, ...patch, updatedAt: new Date().toISOString() }
+                  : rule,
+              ),
+            },
+          })),
+
+        deleteLearnedRule: (id) =>
+          set((s) => ({
+            state: {
+              ...s.state,
+              learnedRules: s.state.learnedRules.filter((rule) => rule.id !== id),
+            },
+          })),
+
+        clearLearnedRules: () =>
+          set((s) =>
+            s.state.learnedRules.length === 0
+              ? s
+              : { state: { ...s.state, learnedRules: [] } },
+          ),
+
+        markLearnedRulesUsed: (ids) =>
+          set((s) => {
+            const next = markRulesUsed(s.state.learnedRules, ids);
+            return next === s.state.learnedRules
+              ? s
+              : { state: { ...s.state, learnedRules: next } };
+          }),
 
         addGeneratedInstances: (instances) =>
           set((s) => {

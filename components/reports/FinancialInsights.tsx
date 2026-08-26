@@ -12,14 +12,16 @@ import {
 } from "@/components/ui/icons";
 import { formatMonthShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
-import { spendingByCategory } from "@/lib/selectors";
+import { effectiveLimit, spendingByCategory } from "@/lib/selectors";
 import type { ReportTrendsData } from "@/lib/reportTrends";
-import type { Budget, Category, Currency, Month, Transaction } from "@/lib/types";
+import type { Budget, Category, Currency, Month, RolloverRecord, Transaction } from "@/lib/types";
+import { categoryLabel, categoryLabelOr } from "@/lib/categoryDisplay";
 
 interface FinancialInsightsProps {
   month: Month;
   trends: ReportTrendsData;
   budgets: Budget[];
+  rollovers: RolloverRecord[];
   categories: Category[];
   transactions: Transaction[];
   currency: Currency;
@@ -29,6 +31,7 @@ export function FinancialInsights({
   month,
   trends,
   budgets,
+  rollovers,
   categories,
   transactions,
   currency,
@@ -55,10 +58,13 @@ export function FinancialInsights({
         .map((budget) => ({
           budget,
           spent: spent.get(budget.categoryId) ?? 0,
+          // The spendable limit, so carried-over funds are not misreported
+          // as an overspend.
+          limit: effectiveLimit(budget, rollovers),
         }))
-        .filter(({ budget, spent }) => spent > budget.limit)
+        .filter(({ limit, spent }) => spent > limit)
         .slice(0, 3),
-    [budgets, month, spent],
+    [budgets, month, spent, rollovers],
   );
 
   const observations = useMemo(() => {
@@ -100,22 +106,17 @@ export function FinancialInsights({
         text: `Savings ${improved ? "improved" : "fell"} by ${fmt(Math.abs(trends.savingsDelta.delta))} this month.`,
       });
     }
-    if (trends.highestCategory) {
-      rows.push({
-        key: "top-category",
-        icon: <TrendDownIcon className="h-4 w-4" />,
-        iconClass: "bg-expense/[0.08] text-expense",
-        text: `${trends.highestCategory.category.icon} ${trends.highestCategory.category.name} is your biggest cost this month at ${fmt(trends.highestCategory.amount)}.`,
-      });
-    }
+    // No "biggest cost" chip here: the headline card directly above already
+    // states it. The over-budget chips below stay because the headline only
+    // summarises those as a count, never the per-category figures.
 
-    const overBudgetRows = overBudget.map(({ budget, spent }) => {
+    const overBudgetRows = overBudget.map(({ budget, spent, limit }) => {
       const category = categories.find((c) => c.id === budget.categoryId);
       return {
         key: `over-${budget.id}`,
         icon: <AlertTriangleIcon className="h-4 w-4" />,
         iconClass: "bg-warn/[0.08] text-warn",
-        text: `"${category?.name ?? "Budget"}" is over budget by ${fmt(spent - budget.limit)}.`,
+        text: `"${categoryLabelOr(category?.name, "Budget")}" is over budget by ${fmt(spent - limit)}.`,
       } as const;
     });
     for (const row of overBudgetRows) rows.push(row);
@@ -137,7 +138,7 @@ export function FinancialInsights({
       return `Spending fell ${fmt(Math.abs(trends.largestDecrease.delta))} from ${formatMonthShort(trends.largestDecrease.fromMonth)} to ${formatMonthShort(trends.largestDecrease.toMonth)}`;
     }
     if (trends.highestCategory) {
-      return `${trends.highestCategory.category.name} is your biggest cost this month`;
+      return `${categoryLabel(trends.highestCategory.category.name)} is your biggest cost this month`;
     }
     return "A steady month so far";
   }, [trends, fmt]);
@@ -159,7 +160,7 @@ export function FinancialInsights({
   const paragraphParts: string[] = [];
   if (trends.highestCategory && topShare !== null) {
     paragraphParts.push(
-      `${trends.highestCategory.category.name} takes ${topShare}% of this month's spending.`,
+      `${categoryLabel(trends.highestCategory.category.name)} takes ${topShare}% of this month's spending.`,
     );
   }
   if (overBudgetCount > 0) {
@@ -177,7 +178,7 @@ export function FinancialInsights({
   }
 
   return (
-    <Card className="print-block">
+    <Card className="print-block border-brand-500/20 bg-brand-500/[0.03] shadow-none">
       <div className="flex flex-col gap-6">
         <div className="flex items-start gap-4">
           <span
@@ -200,7 +201,7 @@ export function FinancialInsights({
             {observations.map((row) => (
               <li
                 key={row.key}
-                className="flex items-start gap-3 rounded-lg bg-canvas/50 p-3.5"
+                className="flex items-start gap-3 rounded-xl border border-border/60 bg-surface p-3.5"
               >
                 <span
                   aria-hidden="true"

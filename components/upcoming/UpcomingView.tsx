@@ -6,12 +6,16 @@ import { PageHeader } from "@/components/shell/PageHeader";
 import { PriorityBadge } from "@/components/planner/PriorityBadge";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Disclosure } from "@/components/ui/Disclosure";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
+import { MetricIcon } from "@/components/ui/MetricIcon";
 import { Modal } from "@/components/ui/Modal";
 import {
+  ArrowDownRightIcon,
+  ArrowUpRightIcon,
   CalendarClockIcon,
+  CalendarIcon,
   CheckIcon,
+  ClockIcon,
   ForwardIcon,
   MoreHorizontalIcon,
   PencilIcon,
@@ -20,19 +24,28 @@ import {
   TrashIcon,
 } from "@/components/ui/icons";
 import { useToast } from "@/hooks/useToast";
-import { categoryAccent } from "@/lib/accents";
 import { formatDateShort, formatMonthLabel, monthKeyFromIso, nextMonthDate } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import type { Currency, FutureExpense } from "@/lib/types";
-import { groupFutureExpenses, sortedPaidExpenses } from "@/lib/upcoming";
+import {
+  daysUntilLabel,
+  filterUpcoming,
+  groupFutureExpenses,
+  sortedPaidExpenses,
+  upcomingSummary,
+} from "@/lib/upcoming";
+import type { UpcomingFilter } from "@/lib/upcoming";
+import { categoryDisplay } from "@/lib/categoryRegistry";
+import type { CategoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
 import { FutureExpenseForm } from "./FutureExpenseForm";
 
 interface FutureExpenseRowProps {
   expense: FutureExpense;
-  categoryName: string;
-  categoryIcon: string;
+  display: CategoryDisplay;
   currency: Currency;
+  /** Subtle teal tint for the soonest upcoming expense. */
+  accent?: boolean;
   menuOpen: boolean;
   onToggleMenu: () => void;
   onMenuRef: (element: HTMLDivElement | null) => void;
@@ -45,9 +58,9 @@ interface FutureExpenseRowProps {
 
 const FutureExpenseRow = memo(function FutureExpenseRow({
   expense,
-  categoryName,
-  categoryIcon,
+  display,
   currency,
+  accent = false,
   menuOpen,
   onToggleMenu,
   onMenuRef,
@@ -58,37 +71,69 @@ const FutureExpenseRow = memo(function FutureExpenseRow({
   onDelete,
 }: FutureExpenseRowProps) {
   const skipLabel = expense.recurring ? "Skip month" : "Postpone";
+  const daysChip =
+    expense.status === "paid" ? null : daysUntilLabel(expense.dueDate);
+  const chipClass =
+    expense.status === "paid"
+      ? ""
+      : daysChip?.includes("overdue")
+        ? "bg-warn/[0.1] text-warn"
+        : daysChip === "due today"
+          ? "bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
+          : "bg-sidebar-hover text-muted";
   return (
-    <li className="group flex items-center gap-3 px-5 py-3.5">
-      <span
-        aria-hidden="true"
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base ${categoryAccent(categoryName).chip}`}
+    <li
+      className={`group flex items-center gap-3 rounded-xl border px-4 py-3 shadow-card transition-[border-color,background-color,box-shadow] duration-150 ease-premium hover:border-border hover:bg-sidebar-hover ${
+        accent
+          ? "border-brand-500/15 bg-brand-500/[0.05]"
+          : "border-border/60 bg-surface"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onEdit}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none"
       >
-        {categoryIcon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold tracking-tight text-ink">
-          {expense.title}
-        </p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-          <span>{categoryName}</span>
-          {expense.recurring && (
-            <span className="inline-flex items-center gap-1">
-              <RepeatIcon className="h-3 w-3" />
-              Recurring
+        <span
+          aria-hidden="true"
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base ${display.chip}`}
+        >
+          {display.icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold tracking-tight text-ink">
+            {expense.title}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
+            <span className="font-medium sm:hidden">
+              {formatDateShort(expense.dueDate)}
             </span>
-          )}
+            <span>{display.name}</span>
+            {expense.recurring && (
+              <span className="inline-flex items-center gap-1">
+                <RepeatIcon className="h-3 w-3" />
+                Recurring
+              </span>
+            )}
+            {daysChip && (
+              <span
+                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${chipClass}`}
+              >
+                {daysChip}
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="hidden sm:block">
+          <PriorityBadge priority={expense.priority} />
+        </div>
+        <p className="hidden text-sm font-medium tabular-nums text-muted sm:block">
+          {formatDateShort(expense.dueDate)}
         </p>
-      </div>
-      <div className="hidden sm:block">
-        <PriorityBadge priority={expense.priority} />
-      </div>
-      <p className="hidden text-xs text-muted md:block">
-        {formatDateShort(expense.dueDate)}
-      </p>
-      <p className="text-sm font-semibold tabular-nums">
-        {formatMoney(expense.amount, currency)}
-      </p>
+        <p className="text-sm font-semibold tabular-nums">
+          {formatMoney(expense.amount, currency)}
+        </p>
+      </button>
       <div className="relative">
         <button
           type="button"
@@ -107,12 +152,14 @@ const FutureExpenseRow = memo(function FutureExpenseRow({
             ref={onMenuRef}
             className="absolute right-0 top-full z-20 mt-1.5 w-44 animate-[menu-in_150ms_var(--ease-premium)] overflow-hidden rounded-lg border border-border/70 bg-surface p-1 shadow-pop"
           >
-            <MenuItem
-              icon={<CheckIcon className="h-3.5 w-3.5 text-income" />}
-              onClick={onMarkPaid}
-            >
-              Mark as paid
-            </MenuItem>
+            {expense.status !== "paid" && (
+              <MenuItem
+                icon={<CheckIcon className="h-3.5 w-3.5 text-income" />}
+                onClick={onMarkPaid}
+              >
+                Mark as paid
+              </MenuItem>
+            )}
             <MenuItem
               icon={<CalendarClockIcon className="h-3.5 w-3.5 text-muted" />}
               onClick={onReschedule}
@@ -173,6 +220,41 @@ function MenuItem({
   );
 }
 
+const UPCOMING_FILTERS: { value: UpcomingFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "month", label: "This month" },
+  { value: "later", label: "Later" },
+];
+
+function SummaryTile({
+  icon,
+  iconClass = "bg-sidebar-hover text-muted",
+  label,
+  value,
+  support,
+}: {
+  icon: ReactNode;
+  iconClass?: string;
+  label: string;
+  value: string;
+  support: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-xl border border-border/70 bg-surface p-3.5 shadow-card">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-xs font-semibold text-muted">
+          {label}
+        </span>
+        <MetricIcon className={iconClass}>{icon}</MetricIcon>
+      </div>
+      <span className="whitespace-nowrap text-xl font-bold leading-none tracking-[-0.02em] tabular-nums text-ink">
+        {value}
+      </span>
+      <span className="truncate text-xs font-medium text-muted">{support}</span>
+    </div>
+  );
+}
+
 export function UpcomingView() {
   const futureExpenses = useAppStore((s) => s.state.futureExpenses);
   const categories = useAppStore((s) => s.state.categories);
@@ -187,6 +269,8 @@ export function UpcomingView() {
   const [pendingDelete, setPendingDelete] = useState<FutureExpense | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [rescheduling, setRescheduling] = useState<FutureExpense | null>(null);
+  const [filter, setFilter] = useState<UpcomingFilter>("all");
+  const [sort, setSort] = useState<"soonest" | "latest">("soonest");
   const menuElRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -206,14 +290,30 @@ export function UpcomingView() {
     };
   }, []);
 
-  const groups = useMemo(
-    () => groupFutureExpenses(futureExpenses),
+  const summary = useMemo(
+    () => upcomingSummary(futureExpenses),
     [futureExpenses],
+  );
+  const filtered = useMemo(
+    () => filterUpcoming(futureExpenses, filter),
+    [futureExpenses, filter],
+  );
+  const groups = useMemo(
+    () => groupFutureExpenses(filtered),
+    [filtered],
+  );
+  const latest = useMemo(
+    () =>
+      sort === "latest"
+        ? [...filtered].sort((a, b) => b.dueDate.localeCompare(a.dueDate))
+        : [],
+    [filtered, sort],
   );
   const paid = useMemo(
     () => sortedPaidExpenses(futureExpenses),
     [futureExpenses],
   );
+  const nearestId = summary.next?.id ?? null;
 
   const categoryById = useMemo(
     () => new Map(categories.map((category) => [category.id, category])),
@@ -259,150 +359,306 @@ export function UpcomingView() {
     setPendingDelete(null);
   };
 
-  const renderGroup = (
+  const renderGroupContent = (
     label: string,
     items: FutureExpense[],
     quiet = false,
-    isFirst = false,
   ) => {
     const total = items.reduce((sum, expense) => sum + expense.amount, 0);
     return (
-      <div key={label} className="flex flex-col">
+      <div className="flex flex-col gap-2">
         <div
-          className={`flex items-baseline justify-between gap-3 border-b border-border/60 py-2.5 ${
-            quiet ? "px-3" : "px-5"
-          } ${isFirst ? "rounded-t-xl" : ""}`}
+          className={`flex items-baseline justify-between gap-3 ${quiet ? "px-3" : "px-1"}`}
         >
-          <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted/80">
+          <h3 className="flex items-baseline gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted/80">
             {label}
-          </h2>
+            <span className="text-caption font-medium normal-case tracking-normal tabular-nums text-muted">
+              {items.length} {items.length === 1 ? "item" : "items"}
+            </span>
+          </h3>
           <span className="text-xs font-semibold tabular-nums text-ink">
             {formatMoney(total, currency)}
           </span>
         </div>
-        <ul className="flex flex-col divide-y divide-border/50">
-          {items.map((expense) => {
-            const category = categoryById.get(expense.categoryId);
-            return (
-              <FutureExpenseRow
-                key={expense.id}
-                expense={expense}
-                categoryName={category?.name ?? "Uncategorized"}
-                categoryIcon={category?.icon ?? "•"}
-                currency={currency}
-                menuOpen={menuFor === expense.id}
-                onToggleMenu={() =>
-                  setMenuFor((current) =>
-                    current === expense.id ? null : expense.id,
-                  )
-                }
-                onMenuRef={(element) => {
-                  menuElRef.current = element;
-                }}
-                onMarkPaid={() => markPaid(expense)}
-                onReschedule={() => {
-                  setMenuFor(null);
-                  setRescheduling(expense);
-                }}
-                onSkip={() => skip(expense)}
-                onEdit={() => openEdit(expense)}
-                onDelete={() => {
-                  setMenuFor(null);
-                  setPendingDelete(expense);
-                }}
-              />
-            );
-          })}
+        <ul className={`flex flex-col ${quiet ? "gap-1" : "gap-1.5"}`}>
+          {items.map((expense) => renderRow(expense))}
         </ul>
       </div>
     );
   };
 
-  const isEmpty = groups.length === 0 && paid.length === 0;
-
-  const previewRows = useMemo(() => {
-    const rows: FutureExpense[] = [];
-    for (const group of groups) {
-      for (const expense of group.items) {
-        rows.push(expense);
-        if (rows.length === 3) return rows;
-      }
-    }
-    return rows;
-  }, [groups]);
-
-  const renderPreview = () => {
-    if (previewRows.length === 0) return undefined;
+  const renderRow = (expense: FutureExpense) => {
+    const category = categoryById.get(expense.categoryId);
     return (
-      <ul className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/70 bg-surface">
-        {previewRows.map((expense) => (
-          <li key={expense.id} className="flex items-center gap-3 px-4 py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-ink">
-                {expense.title}
-              </p>
-              <p className="text-xs text-muted">
-                {formatDateShort(expense.dueDate)}
-              </p>
-            </div>
-            <span className="text-sm font-semibold tabular-nums">
-              {formatMoney(expense.amount, currency)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <FutureExpenseRow
+        key={expense.id}
+        expense={expense}
+        display={categoryDisplay(category)}
+        currency={currency}
+        accent={expense.id === nearestId}
+        menuOpen={menuFor === expense.id}
+        onToggleMenu={() =>
+          setMenuFor((current) =>
+            current === expense.id ? null : expense.id,
+          )
+        }
+        onMenuRef={(element) => {
+          menuElRef.current = element;
+        }}
+        onMarkPaid={() => markPaid(expense)}
+        onReschedule={() => {
+          setMenuFor(null);
+          setRescheduling(expense);
+        }}
+        onSkip={() => skip(expense)}
+        onEdit={() => openEdit(expense)}
+        onDelete={() => {
+          setMenuFor(null);
+          setPendingDelete(expense);
+        }}
+      />
     );
   };
 
+    const isEmpty = filtered.length === 0;
+
   return (
-    <div className="flex flex-col gap-8">
-      <PageHeader
-        title="Upcoming expenses"
-        description="Know what's ahead, so nothing sneaks up on your budget."
-        action={
-          <Button icon={<PlusIcon className="h-4 w-4" />} onClick={openAdd}>
-            Add expense
-          </Button>
-        }
-      />
-
-      {isEmpty ? (
-        <div className="rounded-xl border border-border/70 bg-surface p-5">
-          <EmptyState
-            illustration="calendar"
-            illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
-            title="No upcoming expenses yet"
-            description="Plan the bills and subscriptions ahead — then nothing sneaks up on your budget."
-            action={
-              <Button icon={<PlusIcon className="h-4 w-4" />} onClick={openAdd}>
-                Plan an expense
-              </Button>
-            }
-            tip="Mark an expense as paid from its menu — it lands in your timeline automatically."
-          />
-        </div>
-      ) : (
-        <Disclosure
-          id="upcoming:list"
-          title="Upcoming"
-          preview={() => renderPreview()}
-          variant="section"
+    <div className="relative">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+      >
+        <div className="absolute -right-20 top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(14,165,164,0.08),transparent_65%)]" />
+        <div className="absolute -left-24 bottom-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.07),transparent_65%)]" />
+        <svg
+          className="absolute right-10 top-16 hidden select-none md:block"
+          width="300"
+          height="170"
+          viewBox="0 0 300 170"
+          fill="none"
         >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/70 bg-surface">
-              {groups.map((group, index) =>
-                renderGroup(group.label, group.items, false, index === 0),
-              )}
-            </div>
+          <circle cx="240" cy="36" r="52" stroke="rgba(14,165,164,0.12)" strokeWidth="2" />
+          <circle cx="240" cy="36" r="30" stroke="rgba(14,165,164,0.14)" strokeWidth="2" />
+          <path
+            d="M36 146 C 96 140, 122 96, 176 92 C 220 88, 246 52, 288 44"
+            stroke="rgba(14,165,164,0.2)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+          <path
+            d="M36 162 C 110 156, 142 118, 204 114"
+            stroke="rgba(37,99,235,0.13)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="relative z-10 flex flex-col gap-8">
+        <PageHeader
+          title="Upcoming expenses"
+          description="Know what's ahead, so nothing sneaks up on your budget."
+          action={
+            <Button icon={<PlusIcon className="h-4 w-4" />} onClick={openAdd}>
+              Add expense
+            </Button>
+          }
+        />
 
-            {paid.length > 0 && (
-              <div className="rounded-xl border border-border/50 bg-canvas/40 p-2">
-                {renderGroup("Paid", paid, true)}
+        <section
+          aria-label="Upcoming summary"
+          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        >
+          <SummaryTile
+            icon={<CalendarClockIcon className="h-4 w-4" />}
+            label="Upcoming expenses"
+            value={formatMoney(summary.total, currency)}
+            support={
+              summary.count === 1
+                ? "1 expense planned"
+                : `${summary.count} expenses planned`
+            }
+          />
+          <SummaryTile
+            icon={<ClockIcon className="h-4 w-4" />}
+            iconClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
+            label="Next due"
+            value={
+              summary.next ? formatMoney(summary.next.amount, currency) : "—"
+            }
+            support={
+              summary.next
+                ? `${daysUntilLabel(summary.next.dueDate)} · ${formatDateShort(summary.next.dueDate)}`
+                : "Nothing scheduled"
+            }
+          />
+          <SummaryTile
+            icon={<CalendarIcon className="h-4 w-4" />}
+            label="This month"
+            value={formatMoney(summary.thisMonthTotal, currency)}
+            support={
+              summary.thisMonthCount === 1
+                ? "1 expense this month"
+                : `${summary.thisMonthCount} expenses this month`
+            }
+          />
+          <SummaryTile
+            icon={<RepeatIcon className="h-4 w-4" />}
+            label="Recurring"
+            value={String(summary.recurringCount)}
+            support={
+              summary.recurringCount === 1
+                ? "recurring expense"
+                : "recurring expenses"
+            }
+          />
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-section-title font-bold tracking-tight text-ink">
+              Upcoming
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="group"
+                aria-label="Filter upcoming expenses"
+                className="flex items-center gap-1 rounded-lg border border-border/70 bg-surface p-1"
+              >
+                {UPCOMING_FILTERS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={filter === option.value}
+                    onClick={() => setFilter(option.value)}
+                    className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors duration-150 ease-premium focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none ${
+                      filter === option.value
+                        ? "bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
+                        : "text-muted hover:text-ink"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
-            )}
+              <button
+                type="button"
+                aria-pressed={sort === "soonest"}
+                onClick={() =>
+                  setSort((current) =>
+                    current === "soonest" ? "latest" : "soonest",
+                  )
+                }
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/70 bg-surface px-3 text-sm font-medium text-muted transition-colors duration-150 ease-premium hover:border-border hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none"
+              >
+                {sort === "soonest" ? (
+                  <ArrowUpRightIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <ArrowDownRightIcon className="h-3.5 w-3.5" />
+                )}
+                {sort === "soonest" ? "Soonest" : "Latest"}
+              </button>
+            </div>
           </div>
-        </Disclosure>
-      )}
+
+          {isEmpty ? (
+            <div className="relative overflow-hidden rounded-xl border border-border/70 bg-surface p-8 shadow-card">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0"
+              >
+                <svg
+                  className="absolute -bottom-3 right-6 hidden select-none sm:block"
+                  width="240"
+                  height="130"
+                  viewBox="0 0 240 130"
+                  fill="none"
+                >
+                  <circle
+                    cx="200"
+                    cy="36"
+                    r="26"
+                    stroke="rgba(14,165,164,0.14)"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    cx="200"
+                    cy="36"
+                    r="14"
+                    stroke="rgba(14,165,164,0.16)"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M10 112 C 66 106, 100 72, 158 66"
+                    stroke="rgba(37,99,235,0.16)"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
+              <div className="relative z-10 flex flex-col items-center gap-1 text-center">
+                <p className="text-empty-title font-bold tracking-tight text-ink">
+                  You&apos;re clear for the rest of the month.
+                </p>
+                <p className="text-sm font-medium text-muted">
+                  Nothing else is scheduled.
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<PlusIcon className="h-3.5 w-3.5" />}
+                  className="mt-3"
+                  onClick={openAdd}
+                >
+                  Add upcoming expense
+                </Button>
+              </div>
+            </div>
+          ) : sort === "soonest" ? (
+            <ol
+              aria-label="Upcoming timeline"
+              className="relative flex flex-col gap-3 border-l-2 border-border/60 pl-4"
+            >
+              {groups.map((group) => (
+                <li key={group.key} className="relative">
+                  <span
+                    aria-hidden="true"
+                    className="absolute -left-[22px] top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-muted/70"
+                  />
+                  {renderGroupContent(group.label, group.items)}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-baseline justify-between gap-3 px-1">
+                <h3 className="flex items-baseline gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted/80">
+                  All upcoming
+                  <span className="text-caption font-medium normal-case tracking-normal tabular-nums text-muted">
+                    {latest.length} {latest.length === 1 ? "item" : "items"}
+                  </span>
+                </h3>
+                <span className="text-xs font-semibold tabular-nums text-ink">
+                  {formatMoney(
+                    latest.reduce((sum, expense) => sum + expense.amount, 0),
+                    currency,
+                  )}
+                </span>
+              </div>
+              <ul
+                aria-label="Upcoming timeline"
+                className="flex flex-col gap-1.5"
+              >
+                {latest.map((expense) => renderRow(expense))}
+              </ul>
+            </div>
+          )}
+
+          {paid.length > 0 && (
+            <div className="rounded-xl border border-border/50 bg-canvas/40 p-2">
+              {renderGroupContent("Paid", paid, true)}
+            </div>
+          )}
+        </section>
 
       <FutureExpenseForm
         key={editing?.id ?? "new"}
@@ -435,6 +691,7 @@ export function UpcomingView() {
         onConfirm={confirmDelete}
         onClose={() => setPendingDelete(null)}
       />
+      </div>
     </div>
   );
 }
@@ -470,15 +727,13 @@ function RescheduleForm({
           </>
         ) : null}
       </p>
-      <label className="flex flex-col gap-1.5 text-sm font-medium text-ink">
-        New due date
-        <input
-          type="date"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-          className="h-10 rounded-lg border border-border/80 bg-surface px-3.5 text-sm text-ink transition-[border-color,box-shadow] duration-150 ease-premium focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-        />
-      </label>
+      <Input
+        label="New due date"
+        type="date"
+        value={date}
+        onChange={(event) => setDate(event.target.value)}
+        className="[&>input]:bg-canvas"
+      />
       <div className="flex justify-end gap-3">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel

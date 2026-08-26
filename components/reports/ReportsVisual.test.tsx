@@ -5,14 +5,12 @@ import { createInitialState } from "@/lib/seed";
 import { useAppStore } from "@/store/useAppStore";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { ChartCard } from "./ChartCard";
-import { ExpectedVsActualChart } from "./ExpectedVsActualChart";
+import { IncomeComparisonChart } from "./IncomeComparisonChart";
 import { IncomeSourceChart } from "./IncomeSourceChart";
-import { IncomeTrendChart } from "./IncomeTrendChart";
 import { IncomeExpenseChart } from "./IncomeExpenseChart";
 import { SpendingTrendChart } from "./SpendingTrendChart";
 import { SavingsChart } from "./SavingsChart";
 import { BudgetUtilizationChart } from "./BudgetUtilizationChart";
-import { TopCategoriesChart } from "./TopCategoriesChart";
 import type { Month } from "@/lib/types";
 
 const MONTHS: Month[] = [
@@ -88,12 +86,6 @@ describe("Reports chart subtitles", () => {  const specs: ChartSpec[] = [
       props: { months: MONTHS },
     },
     {
-      Chart: IncomeTrendChart as unknown as ChartSpec["Chart"],
-      title: "Income trend",
-      subtitle: "Last 6 months",
-      props: { months: MONTHS },
-    },
-    {
       Chart: SpendingTrendChart as unknown as ChartSpec["Chart"],
       title: "Monthly spending trend",
       subtitle: "Last 6 months",
@@ -112,16 +104,10 @@ describe("Reports chart subtitles", () => {  const specs: ChartSpec[] = [
       props: { months: MONTHS },
     },
     {
-      Chart: TopCategoriesChart as unknown as ChartSpec["Chart"],
-      title: "Top categories",
-      subtitle: "Last 6 months",
-      props: { months: MONTHS },
-    },
-    {
-      Chart: ExpectedVsActualChart as unknown as ChartSpec["Chart"],
-      title: "Expected vs actual",
-      subtitle: "This month",
-      props: { month: "2026-08" },
+      Chart: IncomeComparisonChart as unknown as ChartSpec["Chart"],
+      title: "Income: expected vs received",
+      subtitle: "This month, by source",
+      props: { month: "2026-08", months: MONTHS },
     },
     {
       Chart: IncomeSourceChart as unknown as ChartSpec["Chart"],

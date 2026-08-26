@@ -6,12 +6,21 @@ import type { InputHTMLAttributes } from "react";
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
   error?: string;
+  /** Static adornment rendered inside the left edge of the field. */
+  prefix?: string;
 }
 
 const FIELD =
   "h-12 rounded-md border border-border bg-surface px-4 text-input text-ink transition-[border-color,box-shadow] duration-150 ease-premium placeholder:text-muted focus-visible:border-brand-500 focus-visible:ring-4 focus-visible:ring-brand-500/15 focus:outline-none";
 
-export function Input({ label, error, id, className = "", ...rest }: InputProps) {
+export function Input({
+  label,
+  error,
+  prefix,
+  id,
+  className = "",
+  ...rest
+}: InputProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const errorId = error ? `${inputId}-error` : undefined;
@@ -20,13 +29,23 @@ export function Input({ label, error, id, className = "", ...rest }: InputProps)
       <label htmlFor={inputId} className="text-label font-semibold text-ink">
         {label}
       </label>
-      <input
-        id={inputId}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={errorId}
-        className={FIELD}
-        {...rest}
-      />
+      <div className="relative">
+        {prefix && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-input font-medium text-muted"
+          >
+            {prefix}
+          </span>
+        )}
+        <input
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={errorId}
+          className={`${FIELD} ${prefix ? "pl-11" : ""}`}
+          {...rest}
+        />
+      </div>
       {error && (
         <p id={errorId} role="alert" className="text-sm font-medium text-danger">
           {error}

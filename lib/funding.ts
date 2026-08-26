@@ -19,7 +19,8 @@
 //     a new category appears immediately, before any expense exists), or
 //   - its upcoming obligations for the month exceed the allocated limit
 //     (obligation gap: Missing = max(Target - Allocated, 0) > 0).
-import type { Budget, Category, FutureExpense, Month } from "./types";
+import { effectiveLimit } from "./selectors";
+import type { Budget, Category, FutureExpense, Month, RolloverRecord } from "./types";
 
 export interface FundingNeed {
   category: Category;
@@ -38,6 +39,9 @@ export function fundingNeeds(
   categories: Category[],
   futureExpenses: FutureExpense[],
   month: Month,
+  /** Optional and empty by default — without it, allocation is the base limit
+   *  exactly as before rollover existed. */
+  rollovers: RolloverRecord[] = [],
 ): FundingNeed[] {
   const needs: FundingNeed[] = [];
   for (const category of categories) {
@@ -46,7 +50,9 @@ export function fundingNeeds(
       (candidate) =>
         candidate.month === month && candidate.categoryId === category.id,
     );
-    const allocated = budget?.limit ?? 0;
+    // Carried-over funds are real money available to this category, so a bill
+    // they already cover is not a funding gap.
+    const allocated = budget ? effectiveLimit(budget, rollovers) : 0;
     const budgeted = allocated > 0;
     const target = futureExpenses
       .filter(

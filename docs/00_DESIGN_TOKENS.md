@@ -100,6 +100,40 @@ Dialog
 TYPOGRAPHY
 --------------------------------------------------
 
+Font Family (primary)
+
+Inter
+
+Token
+
+--font-sans
+
+Implementation
+
+`app/layout.tsx` loads Inter through `next/font/google`, which self-hosts the
+woff2 (no runtime request to Google) and exposes it as `--font-inter`.
+`app/globals.css` then sets, inside the Tailwind `@theme` block:
+
+  --font-sans: var(--font-inter), system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+
+and `body { font-family: var(--font-sans); }`. Every component inherits from
+there — no component may name a typeface itself.
+
+Weights
+
+400 / 500 / 600 / 700 are the weights the UI uses. Inter is loaded as a
+VARIABLE font (one file per unicode-range, `font-weight: 100 900`), so all four
+come from a single ~48KB latin file; splitting it into four static instances
+would mean more files and more bytes, not fewer.
+
+Numerals
+
+Currency and other figures use tabular-nums (`font-variant-numeric`) so digits
+share one advance width and columns line up. It is baked into the number
+primitives (`AnimatedNumber`, `AnimatedMoney`, `MetricCard`'s value and support
+slots) rather than repeated per call site. Running prose that happens to
+contain an amount is left proportional.
+
 Page Title
 
 32px

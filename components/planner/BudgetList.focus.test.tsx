@@ -41,11 +41,13 @@ function seedMonthWithBudget() {
 }
 
 describe("BudgetList focus-budget flow", () => {
-  it("expands the disclosure, highlights the row and targets the allocation slider", async () => {
+  it("highlights the row without mounting any always-on allocation slider", async () => {
     seedMonthWithBudget();
     render(<BudgetList month="2026-08" />);
 
-    expect(document.getElementById("budget-row-budget-rent")).toBeNull();
+    const row = document.getElementById("budget-row-budget-rent");
+    expect(row).toBeTruthy();
+    expect(row).not.toHaveClass("ring-2");
 
     await act(async () => {
       window.dispatchEvent(
@@ -55,15 +57,13 @@ describe("BudgetList focus-budget flow", () => {
       );
     });
 
-    const row = document.getElementById("budget-row-budget-rent");
-    expect(row).toBeTruthy();
     expect(row).toHaveClass("ring-2");
-    const slider = document.getElementById("allocation-slider-budget-rent");
-    expect(slider).toBeTruthy();
-    expect(slider!.querySelector('input[type="range"]')).toBeTruthy();
+    // Allocation now lives in an on-demand drawer, so the page itself carries
+    // no sliders until the user asks for one.
+    expect(screen.queryAllByRole("slider")).toHaveLength(0);
   });
 
-  it("ignores events for unknown budgets without expanding", async () => {
+  it("ignores events for unknown budgets without highlighting anything", async () => {
     seedMonthWithBudget();
     render(<BudgetList month="2026-08" />);
 
@@ -75,8 +75,12 @@ describe("BudgetList focus-budget flow", () => {
       );
     });
 
-    expect(screen.queryByText("Budget Allocation")).toBeInTheDocument();
-    expect(document.getElementById("budget-row-budget-rent")).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: /Budgets/ }),
+    ).toBeInTheDocument();
+    const row = document.getElementById("budget-row-budget-rent");
+    expect(row).toBeTruthy();
+    expect(row).not.toHaveClass("ring-2");
   });
 
   it("handles a focus event dispatched synchronously right after the budget is added", async () => {
@@ -106,9 +110,6 @@ describe("BudgetList focus-budget flow", () => {
 
     await act(async () => {});
 
-    expect(
-      screen.getByRole("button", { name: /Budget Allocation/ }),
-    ).toHaveAttribute("aria-expanded", "true");
     const row = document.getElementById(`budget-row-${budgetId}`);
     expect(row).toBeTruthy();
     expect(row).toHaveClass("ring-2");

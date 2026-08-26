@@ -106,6 +106,14 @@ export function ChevronDownIcon({ className }: IconProps) {
   );
 }
 
+export function ChevronUpIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <polyline points="6 15 12 9 18 15" />
+    </Svg>
+  );
+}
+
 export function PlusIcon({ className }: IconProps) {
   return (
     <Svg className={className}>
@@ -157,6 +165,15 @@ export function ArrowUpRightIcon({ className }: IconProps) {
     <Svg className={className}>
       <path d="M7 17 17 7" />
       <polyline points="7 7 17 7 17 17" />
+    </Svg>
+  );
+}
+
+export function ArrowDownRightIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M7 7 17 17" />
+      <polyline points="17 7 17 17 7 17" />
     </Svg>
   );
 }
@@ -281,6 +298,18 @@ export function RepeatIcon({ className }: IconProps) {
       <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
       <path d="m7 22-4-4 4-4" />
       <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </Svg>
+  );
+}
+
+/** Two opposing arrows — "move funds between categories". */
+export function ArrowsExchangeIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="m16 3 4 4-4 4" />
+      <path d="M20 7H4" />
+      <path d="m8 21-4-4 4-4" />
+      <path d="M4 17h16" />
     </Svg>
   );
 }

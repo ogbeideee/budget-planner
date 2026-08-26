@@ -5,13 +5,13 @@ import type { FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { todayIso } from "@/lib/date";
-import { formatMonthLabel } from "@/lib/date";
+import { defaultDateForMonth, formatMonthLabel } from "@/lib/date";
 import { formatMoney, isMinorUnitsValid, toMinorUnits } from "@/lib/money";
 import type { Month } from "@/lib/types";
 import { MAX_NOTE_LENGTH } from "@/lib/validate";
-import { useAppStore } from "@/store/useAppStore";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useToast } from "@/hooks/useToast";
+import { useAppStore } from "@/store/useAppStore";
 
 export function QuickAddExpense({ month }: { month: Month }) {
   const categories = useAppStore((s) => s.state.categories);
@@ -23,7 +23,7 @@ export function QuickAddExpense({ month }: { month: Month }) {
     categories.find((category) => category.kind === "expense")?.id ?? "",
   );
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayIso());
+  const [date, setDate] = useState(() => defaultDateForMonth(month));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +70,7 @@ export function QuickAddExpense({ month }: { month: Month }) {
             value={categoryId}
             options={expenseCategories.map((category) => ({
               value: category.id,
-              label: `${category.icon} ${category.name}`,
+              label: `${categoryDisplay(category).icon} ${categoryDisplay(category).name}`,
             }))}
             onChange={(event) => setCategoryId(event.target.value)}
             error={error?.startsWith("Choose") ? error : undefined}

@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { atomicWriteText } = require("./atomicWrite.cjs");
 
 const BACKUP_PREFIX = "budget-planner-backup-";
 const MAX_FILES = 30;
@@ -113,9 +114,8 @@ function writeBackup(dir, content) {
   }
   const name = `${BACKUP_PREFIX}${timestampToken()}.json`;
   const filePath = path.join(dir, name);
-  const tmpPath = `${filePath}.tmp`;
-  fs.writeFileSync(tmpPath, content, "utf8");
-  fs.renameSync(tmpPath, filePath);
+  const written = atomicWriteText(filePath, content);
+  if (!written.ok) throw new Error(written.error);
   pruneBackups(dir);
   return inspectBackupFile(dir, name);
 }

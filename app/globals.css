@@ -203,7 +203,7 @@ html[data-animations="off"] *::after {
   --color-brand-700: #115e59;
   --color-brand-800: #134e4a;
   --color-brand-900: #042f2e;
-  --color-brand-950: #042f2e;
+  --color-brand-950: #021514;
 
   --color-ink: #0f172a;
   --color-secondary: #475569;
@@ -334,9 +334,47 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  transition:
-    background-color 250ms var(--ease-premium),
-    color 250ms var(--ease-premium);
+  /* No background-color/color transition here: body is the page canvas (html
+   * has no background of its own), so a transition makes the canvas lag a
+   * beat behind the instantly-switching surfaces (sidebar, title bar, cards)
+   * and paints a visible strip of the old theme at their boundaries. The
+   * whole app switches theme in the same frame instead. */
+}
+
+/* Overlay scrollbars, painted by the app (VS Code / Windows 11 Settings
+ * behaviour): the thumb is transparent at rest, fades in (220 ms) on hover
+ * or while scrolling, and fades out 600 ms after the last scroll event
+ * (`html[data-scrolling]` toggled by lib/overlayScrollbars.ts). Painting the
+ * scrollbar ourselves makes the behaviour identical on every machine,
+ * independent of the OS "Automatically hide scroll bars" setting. Custom
+ * ::-webkit-scrollbar scrollbars are overlay in this Chromium (verified: no
+ * layout space is reserved), so there is never a layout shift. The
+ * scrollbar-width/scrollbar-color pair below is a Firefox-only fallback —
+ * Chromium ignores it while ::-webkit-scrollbar is styled. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-muted) 60%, transparent)
+    transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+  transition: background-color 220ms var(--ease-premium);
+}
+html[data-scrolling="on"]::-webkit-scrollbar-thumb,
+html[data-scrolling="on"] *::-webkit-scrollbar-thumb,
+*:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-muted) 60%, transparent);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-muted) 75%, transparent);
 }
 
 ::selection {

@@ -16,20 +16,119 @@ describe("validateAppState", () => {
     const result = validateAppState(validState());
     expect(result.categories).toHaveLength(11);
     expect(result.incomePlans).toEqual([]);
-    expect(result.version).toBe(3);
-    expect(result.settings.firstRunDone).toBe(true);
+    expect(result.learnedRules).toEqual([]);
+    expect(result.version).toBe(9);
+    // A new install starts with onboarding pending; the flag is only set once
+    // guided setup completes (see lib/onboarding.ts).
+    expect(result.settings.firstRunDone).toBe(false);
   });
 
   it("rejects an unsupported version (AC-10)", () => {
     const state = clone(validState());
-    (state as { version: number }).version = 4;
+    (state as { version: number }).version = 10;
     expect(() => validateAppState(state)).toThrow(ValidationError);
   });
 
-  it("migrates a version 2 state to version 3", () => {
+  it("migrates a version 3 state to version 4 (learned rules backfilled)", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 3;
+    (state as unknown as Record<string, unknown>).learnedRules = undefined;
+    const result = validateAppState(state);
+    expect(result.version).toBe(9);
+    expect(result.learnedRules).toEqual([]);
+  });
+
+  it("migrates a version 4 state to 5, correcting the Edi and Essentials icons", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 4;
+    state.categories = [
+      { ...state.categories[0], id: "c-edi", name: "Edi", icon: "🌱" },
+      { ...state.categories[0], id: "c-ess", name: "essentials", icon: "🏪" },
+    ];
+    state.budgets = [];
+    state.transactions = [];
+    state.futureExpenses = [];
+    state.recurrenceRules = [];
+    state.incomePlans = [];
+
+    const result = validateAppState(state);
+
+    expect(result.version).toBe(9);
+    expect(result.categories.find((c) => c.id === "c-edi")?.icon).toBe("📶");
+    expect(result.categories.find((c) => c.id === "c-ess")?.icon).toBe("🧺");
+  });
+
+  it("leaves an icon the user already changed, and other categories, alone", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 4;
+    state.categories = [
+      // Already personalised — the migration must not stomp it.
+      { ...state.categories[0], id: "c-edi", name: "Edi", icon: "🚀" },
+      // A gift icon on any other category is legitimate.
+      { ...state.categories[0], id: "c-gifts", name: "Gifts", icon: "🎁" },
+    ];
+    state.budgets = [];
+    state.transactions = [];
+    state.futureExpenses = [];
+    state.recurrenceRules = [];
+    state.incomePlans = [];
+
+    const result = validateAppState(state);
+
+    expect(result.categories.find((c) => c.id === "c-edi")?.icon).toBe("🚀");
+    expect(result.categories.find((c) => c.id === "c-gifts")?.icon).toBe("🎁");
+  });
+
+  it("migrates a version 5 state to 6, correcting the second icon audit", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 5;
+    state.categories = [
+      { ...state.categories[0], id: "c-loan", name: "Loan", icon: "💰" },
+      { ...state.categories[0], id: "c-misc", name: "Misc", icon: "🛒" },
+      { ...state.categories[0], id: "c-net", name: "internet", icon: "💡" },
+    ];
+    state.budgets = [];
+    state.transactions = [];
+    state.futureExpenses = [];
+    state.recurrenceRules = [];
+    state.incomePlans = [];
+
+    const result = validateAppState(state);
+
+    expect(result.version).toBe(9);
+    expect(result.categories.find((c) => c.id === "c-loan")?.icon).toBe("💸");
+    expect(result.categories.find((c) => c.id === "c-misc")?.icon).toBe("📦");
+    expect(result.categories.find((c) => c.id === "c-net")?.icon).toBe("🌐");
+  });
+
+  it("leaves categories the second audit did not flag alone", () => {
+    const state = clone(validState());
+    (state as { version: number }).version = 5;
+    state.categories = [
+      // Salary keeps the piggy bank: only "Loan" was flagged for that glyph.
+      { ...state.categories[0], id: "c-salary", name: "Salary", icon: "💰" },
+      // A cart on a groceries category is correct, so it must not move.
+      { ...state.categories[0], id: "c-groc", name: "Groceries", icon: "🛒" },
+      // Already re-iconed by the user.
+      { ...state.categories[0], id: "c-loan2", name: "Loan", icon: "🏦" },
+    ];
+    state.budgets = [];
+    state.transactions = [];
+    state.futureExpenses = [];
+    state.recurrenceRules = [];
+    state.incomePlans = [];
+
+    const result = validateAppState(state);
+
+    expect(result.categories.find((c) => c.id === "c-salary")?.icon).toBe("💰");
+    expect(result.categories.find((c) => c.id === "c-groc")?.icon).toBe("🛒");
+    expect(result.categories.find((c) => c.id === "c-loan2")?.icon).toBe("🏦");
+  });
+
+  it("migrates a version 2 state to version 4", () => {
     const state = clone(validState());
     (state as { version: number }).version = 2;
-    expect(validateAppState(state).version).toBe(3);
+    expect(validateAppState(state).version).toBe(9);
   });
 
   it("migrates a version 1 state: backfills income categories and converts monthly income to plans", () => {
@@ -52,7 +151,7 @@ describe("validateAppState", () => {
     ] as unknown as Transaction[];
     (state as unknown as Record<string, unknown>).incomePlans = undefined;
     const result = validateAppState(state);
-    expect(result.version).toBe(3);
+    expect(result.version).toBe(9);
     expect(result.incomePlans).toEqual([
       expect.objectContaining({
         month: "2026-08",
@@ -312,6 +411,79 @@ describe("validateAppState", () => {
     expect(() => validateAppState(state)).toThrow(ValidationError);
 
     state.transactions = [{ ...base, note: "x".repeat(201) }];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+  });
+
+  it("round-trips statement-import provenance (Prompt 5A)", () => {
+    const state = clone(validState());
+    const expenseCategory = state.categories.find((c) => c.kind === "expense")!;
+    state.transactions = [
+      {
+        id: "t1",
+        categoryId: expenseCategory.id,
+        amount: 100,
+        type: "expense",
+        date: "2026-08-01",
+        createdAt: "2026-08-01T00:00:00.000Z",
+        importSource: {
+          source: "statement-import",
+          bank: "opay",
+          reference: "OP-001",
+          originalDescription: "RENT FOR AUGUST",
+          statementDate: "2026-07-31",
+        },
+      },
+    ];
+    const validated = validateAppState(state);
+    expect(validated.transactions[0].importSource).toEqual({
+      source: "statement-import",
+      bank: "opay",
+      reference: "OP-001",
+      originalDescription: "RENT FOR AUGUST",
+      statementDate: "2026-07-31",
+    });
+  });
+
+  it("rejects malformed import provenance", () => {
+    const state = clone(validState());
+    const expenseCategory = state.categories.find((c) => c.kind === "expense")!;
+    const base = {
+      id: "t1",
+      categoryId: expenseCategory.id,
+      amount: 100,
+      type: "expense" as const,
+      date: "2026-08-01",
+      createdAt: "2026-08-01T00:00:00.000Z",
+    };
+    state.transactions = [
+      {
+        ...base,
+        importSource: { source: "manual", bank: "opay" } as unknown as Transaction["importSource"],
+      },
+    ];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.transactions = [
+      {
+        ...base,
+        importSource: {
+          source: "statement-import",
+          bank: "visa",
+        } as unknown as Transaction["importSource"],
+      },
+    ];
+    expect(() => validateAppState(state)).toThrow(ValidationError);
+
+    state.transactions = [
+      {
+        ...base,
+        importSource: {
+          source: "statement-import",
+          bank: "opay",
+          reference: "x".repeat(201),
+        },
+      },
+    ];
     expect(() => validateAppState(state)).toThrow(ValidationError);
   });
 

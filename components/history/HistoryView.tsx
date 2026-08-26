@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/Button";
 import { MonthPicker } from "@/components/ui/MonthPicker";
 import {
   ArrowDownLeftIcon,
@@ -14,6 +15,7 @@ import { useMonth } from "@/hooks/useMonth";
 import { useToast } from "@/hooks/useToast";
 import { formatMoney, MINOR_UNITS_PER_UNIT } from "@/lib/money";
 import { transactionsForMonth } from "@/lib/selectors";
+import { categoryLabelOr } from "@/lib/categoryDisplay";
 import { useAppStore } from "@/store/useAppStore";
 import { TransactionList } from "./TransactionList";
 
@@ -90,7 +92,7 @@ export function HistoryView() {
       const category = categoryById.get(transaction.categoryId);
       rows.push([
         transaction.date,
-        category?.name ?? "Uncategorized",
+        categoryLabelOr(category?.name, "Uncategorized"),
         transaction.type,
         (transaction.amount / MINOR_UNITS_PER_UNIT).toFixed(2),
         currency,
@@ -102,21 +104,51 @@ export function HistoryView() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="relative">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+      >
+        <div className="absolute -right-24 top-16 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(14,165,164,0.06),transparent_65%)]" />
+        <div className="absolute -left-24 bottom-40 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.05),transparent_65%)]" />
+        <svg
+          className="absolute right-10 top-20 hidden select-none md:block"
+          width="300"
+          height="170"
+          viewBox="0 0 300 170"
+          fill="none"
+        >
+          <circle cx="240" cy="36" r="52" stroke="rgba(14,165,164,0.12)" strokeWidth="2" />
+          <circle cx="240" cy="36" r="30" stroke="rgba(14,165,164,0.14)" strokeWidth="2" />
+          <path
+            d="M36 146 C 96 140, 122 96, 176 92 C 220 88, 246 52, 288 44"
+            stroke="rgba(14,165,164,0.2)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+          <path
+            d="M36 162 C 110 156, 142 118, 204 114"
+            stroke="rgba(37,99,235,0.13)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="relative z-10 flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title="Timeline"
           description="Review every transaction and understand your financial journey."
         />
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            className="no-print"
+            icon={<DownloadIcon className="h-4 w-4" />}
             onClick={handleCsvExport}
-            className="no-print flex h-10 items-center gap-2 rounded-lg border border-border/80 bg-surface px-3.5 text-sm font-semibold text-ink transition-colors hover:border-border hover:bg-canvas focus-visible:ring-2 focus-visible:ring-brand-500/50 focus:outline-none"
           >
-            <DownloadIcon className="h-4 w-4" />
             Export
-          </button>
+          </Button>
           <MonthPicker value={month} onChange={setMonth} />
         </div>
       </div>
@@ -152,6 +184,7 @@ export function HistoryView() {
       </div>
 
       <TransactionList />
+      </div>
     </div>
   );
 }

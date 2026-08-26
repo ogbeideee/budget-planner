@@ -35,7 +35,13 @@ All data lives in `localStorage` under a single namespaced key. Amounts display 
 ## 3. Non-goals
 
 - Multi-user accounts, syncing, or a server API.
-- Bank/account aggregation or CSV ingestion.
+- Bank/account aggregation. The Planner's "Import Statement" flow (2026-08-14)
+  ingests CSV/Excel/PDF files **fully client-side** into plain transactions —
+  it is an import convenience, not account linking or ongoing aggregation.
+  Automatic/continuous sync with external banks stays out of scope.
+  Password-protected PDFs (2026-08-17) are unlocked locally by the built-in
+  PDF engine — the password is held in memory only, never persisted, logged
+  or sent anywhere, and the PDF never leaves the device.
 - Currency conversion or exchange rates (NGN/USD are display-only; amounts are never converted or re-denominated).
 - Native mobile packaging (web app only).
 
@@ -55,11 +61,27 @@ Identifiers `FR-01 …` are referenced by acceptance criteria in §7 and by the 
 
 - App renders a responsive shell: sidebar navigation on `≥ 1024px`, bottom tab bar on
   `< 1024px`.
+- On a first run the shell is replaced entirely by the onboarding flow (FR-01a).
 - Routes: `/` (Planner — the primary screen), `/todo`, `/history`, `/reports`,
   `/settings`.
 - Navigation labels: **Planner**, **To-Do**, **History**, **Reports**, **Settings**.
   Budget planning lives inside the Planner; `/history` is a chronological ledger of
   completed income/expense records.
+
+### FR-01a — First-run onboarding
+
+- A new install starts with `settings.firstRunDone === false` and sees a full-window
+  onboarding flow INSTEAD of the shell: no sidebar, no nav, no header. Only the custom
+  title bar (so the window stays draggable) and the toast host remain mounted.
+- Three value-pitch screens (Next / Back / "Skip introduction"; the last reads
+  "Get started"), then a REQUIRED guided setup: at least one income source above zero,
+  then at least two budgets with a limit above zero.
+- Guided setup writes through the app's ordinary actions — `setIncomePlan`,
+  `addCategory`, `addBudget` — never an onboarding-only path.
+- `firstRunDone` is set to true only on "Finish setup". Step position persists
+  separately (`onboarding:step`) so closing the app mid-flow resumes in place.
+- Existing installs carry `firstRunDone: true` and are never re-onboarded.
+- Full specification: `13_ONBOARDING_FLOW.md`.
 
 ### FR-02 — Categories
 
@@ -115,20 +137,29 @@ shows:
   `monthFinance`/`financeSeries` — summary cards, allocation, budgets, health gauge, hero,
   monthly stats, recommendations, insights, to-dos, reports, KPIs and charts.
 - Month selector (header row).
-- Needs Funding section: the month's funding needs, derived from ONE shared selector
-  (`fundingNeeds` in `lib/funding.ts`) that every funding surface consumes (Planner panel,
-  budget-health checklist, header status, insights). A category appears when it has no
-  budget for the month (or a limit of 0) OR when its unpaid upcoming expenses for the
-  month exceed its budget limit (Missing = Target − Allocated > 0). Each row shows
-  Allocated/Needed/Missing and a "Fund" action that opens the budget form with the
-  category preselected and the limit prefilled with the missing amount; funding a category
-  removes it from the checklist. Empty state: everything is funded.
-- Allocated section: per-category budgets with priority, limit, spent, remaining,
-  progress, edit/delete, and the "New budget" form; a funding bar shows how much of the
-  allocatable income (received, not remaining cash) is committed, with a true percentage
-  (no fake 100 %) and an "Over allocated" state when limits exceed income.
-- Allocation sliders (FR-11) and the budget health gauge (FR-14).
-- Insights & recommendations (FR-13) and the expense breakdown chart (FR-15).
+- Budget status band: ONE card below the Summary KPI cards carrying the whole budget
+  status — the health-score ring (`budgetHealth`), a derived "At risk"/"Good" pill, the
+  over-limit flag (every over-limit category with its overage, from `overBudgetCategories`),
+  the funding flag, and a "Review budgets" action that opens Budget Allocation. It replaced
+  the separate alert banner, Needs Funding card and Budget Health card. Funding counts come
+  from ONE shared selector (`fundingNeeds` in `lib/funding.ts`) that every funding surface
+  consumes (status band, header status, insights). A category counts as needing funding when
+  it has no budget for the month (or a limit of 0) OR when its unpaid upcoming expenses for
+  the month exceed its budget limit (Missing = Target − Allocated > 0). The band is not
+  rendered when no categories are configured.
+- Budgets section (`#budget-allocation`): the ONE place the month's categories are listed
+  with progress — a fixed-width donut card (segments + top-5 legend) beside the flexible
+  category list (priority, limit, spent, remaining, progress, over-limit badge + overflow
+  tick + danger tint, and three distinct row actions — edit budget (pencil, limit +
+  priority, on EVERY row), allocate funds (arrows/exchange), delete) plus the
+  "New budget" form; a funding bar
+  shows how much of the allocatable income (received, not remaining cash) is committed,
+  with a true percentage (no fake 100 %) and an "Over allocated" state when limits exceed
+  income. The Planner no longer carries a separate expense-breakdown list.
+- The on-demand allocation drawer (FR-11) and the budget health gauge (FR-14). There is no
+  permanent "Allocate remaining" section on the page.
+- Insights & recommendations (FR-13); the expense breakdown chart (FR-15) now lives on
+  Reports only.
 - Quick Add Expense: an inline form that logs an expense without leaving the Planner.
 - Deferred expenses: expenses moved into this month via FR-12, with their total (FR-17).
 
@@ -177,18 +208,34 @@ existing pure selectors; no new persisted state.
   list sorts by priority (high → medium → low) within a month.
 - Priority drives insights (FR-13); it never affects money math.
 
-### FR-11 — Expense allocation sliders
+### FR-11 — Expense allocation sliders (on-demand drawer)
 
-- On the Planner for the selected month, when `net(month) > 0` and the month has at least one
-  budget, an "Allocate remaining" panel shows one slider per expense budget.
-- Each slider ranges `0 … remaining` in integer minor units, where
-  `remaining = max(0, net(month))`. The sum of all slider values never exceeds `remaining`:
-  raising a slider clamps it to `remaining − sum(other sliders)`.
-- The panel shows each allocation as money, its share of `remaining` as a percentage, and a
-  running "Unallocated" total.
-- "Apply allocations" raises each budget's limit by its slider value (one `updateBudget` call
-  per budget; limits only ever increase) and confirms with a toast; panel state resets.
-- "Reset" clears all sliders without touching budgets.
+- Allocation is NOT a permanent section on the Planner. Nothing renders until the user asks
+  for it: the `AllocationDrawer` is mounted on demand by a per-category trigger (a budget
+  row's arrows/exchange action — the pencil beside it opens the budget edit form instead)
+  or by the "Remaining" summary card's "Allocate remaining" picker, which
+  lists the month's budgets and hands one to the same shared drawer.
+- The drawer is per-category and always reads live store data at open time: title
+  "Add funds to {category}", a close (X) button, and a body of —
+  - an over-budget hint ("{category} is {overage} over its {limit} limit this month. Move
+    money from a category with room to spare, or raise the limit.") when the target is over,
+    otherwise "Choose how much to allocate to {category} from this month's unallocated funds.";
+  - one "move funds from" row per OTHER month budget whose `available = limit − spent > 0`,
+    each with the category name, its available amount, and a slider `0 … available`
+    defaulting to 0. Categories with nothing available are never offered, and the whole
+    subsection is omitted (no placeholder) when no category has room;
+  - a dashed-border row raising the target's own limit, slider from the current limit to
+    `limit + overage` (or `limit + max(unallocated, 1 unit)` when not over).
+- Sliders are independent — moving one updates only its own value display. When the target is
+  over budget the sum of all moves is clamped to the overage, so the moves can bring the
+  target exactly to its limit and no further; a single move is additionally clamped to its
+  source's `available`, so no source can go negative.
+- Footer: "Cancel" (discards) and "Apply". Escape and a scrim click behave exactly like
+  Cancel. Every open remounts the body from live data, so drafts never leak between opens.
+- Apply dispatches one `updateBudget(id, { limit: limit − moved })` per contributing source
+  and one `updateBudget(target, { limit: newLimit + totalMoved })` for the target — the same
+  single persistence path as before — then closes and confirms with a toast. The affected
+  rows' spent/left/limit re-render from the store; no reload.
 - Allocation values are transient UI state — never persisted until applied.
 
 ### FR-12 — Move expense to next month
@@ -236,7 +283,10 @@ existing pure selectors; no new persisted state.
 - `components/charts/BarChart.tsx`: pure CSS horizontal bars (no chart library). Bar widths
   transition ≤ 150 ms ease-out; mount animation is a two-pass `requestAnimationFrame`
   (`width 0 → target`) so bars grow into place.
-- Planner "Expense breakdown" panel: per-category spending for the month, ranked
+- Reports "Category analysis" card (`CategoryAnalysisChart`) is the app's ONE category
+  breakdown visualization; the Planner's Budgets section covers per-category budget
+  progress. The former `ExpenseBreakdown` panel and `TopCategoriesChart` were removed.
+  Per-category spending, ranked
   descending, bar fill in the category color, amount + % beside each bar in a right-aligned
   column, longest bar capped at 80% of the track with proportions preserved, hover tooltip
   (Category, Amount, Percentage, Budget limit, Spent), and a >5-category collapse behind a
@@ -290,6 +340,150 @@ existing pure selectors; no new persisted state.
   standalone entry named/iconed after its category, `expectedAmount` from the old `expected`,
   and `receivedAmount` backfilled from that category's income transactions in that month.
 
+### FR-19 — Rollover budgets (carry unspent funds forward)
+
+- **Opt-in per category, off by default.** `Category.rollover` is absent unless the user
+  turns it on; no migration, bulk action or heuristic ever sets it, and there is no global
+  equivalent. A category that never opts in behaves exactly as it did before this feature.
+- The switch lives on the budget edit form (limit + priority) as "Roll over unused funds",
+  and is written through `setCategoryRollover(id, boolean)`. It is stored on the **category**,
+  not on the month's `Budget`: budgets are created fresh each month, so a per-budget flag
+  would silently switch itself off every month and break the chain.
+- **Carry rule**, evaluated once per category at the transition into a new month:
+  - Underspent and enabled -> `leftover = effectiveLimit(closing month) - spent`, added on
+    top of the new month's base limit. Measuring against the *effective* limit is what makes
+    rollover compound: funds carried in that also go unspent carry again.
+  - Over the limit -> nothing carries, regardless of the setting. The new month starts at
+    its base limit only. **A negative balance is never carried forward** — overspending does
+    not compound into a shrinking budget. This is a deliberate choice; see ROADMAP.
+- **Cap.** Accumulated carryover is capped at `ROLLOVER_CAP_MULTIPLIER` (currently `1`) times
+  the destination month's base limit, so the effective limit never exceeds 2x base. Fixed
+  constant for now, not user-configurable; every record persists the `cap` that was in force,
+  so exposing or changing it later cannot rewrite settled months.
+- **Timing.** No backend and no scheduler: `useRollover()` runs at mount from `AppShell` and
+  detects the transition by noticing the current month has no carryover records yet. That
+  same check is the idempotency guard, which is why no separate "last opened month" marker
+  exists — a marker could drift out of sync with the records it describes.
+- **Persistence.** Each computed carryover is a `RolloverRecord` keyed by (category, month),
+  written once and never recalculated. A record is written even when nothing carries
+  (overspent, or opted out), which seals the transition: flipping the switch mid-month cannot
+  retroactively grant funds for a month already under way — it takes effect at the next
+  month end.
+- **Display.** Any row showing a boosted limit must show where it came from, never a silently
+  bigger number: `RolloverBadge` renders "+X" in the category's own registry chip colours,
+  with the full sum ("1,000 + 600 rolled over = 1,600") as its accessible label, and the row
+  prints the base + carry breakdown under the headline figure.
+- **Historical accuracy.** Reads go through `effectiveLimit()` / `budgetProgress()`, which
+  consult the stored record only. A past month therefore keeps the limit it actually had,
+  even if the source month's transactions are edited later or the cap default changes.
+- **Known limitation (deliberate, out of scope).** Editing past transactions after a rollover
+  has been computed does **not** reconcile the already-applied carryover; the settled record
+  stands. Retroactive recalculation is not attempted.
+
+### FR-20 — Debt payoff planning (avalanche vs snowball)
+
+- **Opt-in per category, off by default.** A "Track as debt" switch on the category edit
+  form reveals three fields: current balance, interest rate (optional, **0% is valid and
+  expected** for informal/family loans) and minimum monthly payment.
+- Available for ANY category, expense or income. Gatekeeping by kind would be a guess about
+  the user's bookkeeping.
+- **Stored as a separate `Debt` record linked one-to-one to the category** — NOT by
+  overloading `Budget.limit`. A balance, a rate and a minimum describe an obligation that
+  outlives a month; a budget limit is one month's spending allowance. Overloading them would
+  make "limit" mean different things for different categories.
+- A category with no linked `Debt` behaves exactly as it always has. This is purely additive.
+- **Screen:** `/debt`, in the sidebar's **Analytics** section (see `14_DEBT_PAYOFF_SCREEN.md`).
+- **Extra payment:** one editable amount, seeded from the Planner's "Remaining" figure
+  (`monthFinance().remaining`) and never re-locked to it.
+- **Two strategies, standard monthly amortization:**
+  - *Avalanche* — extra goes to the highest interest rate first.
+  - *Snowball* — extra goes to the smallest balance first.
+  - Both maintain minimums on everything else, and both hold the monthly outlay constant at
+    `sum(minimums) + extra`, so a cleared debt's minimum rolls onto the next debt.
+  - Each reports total months, total interest, and a per-debt payoff order with the month
+    each debt clears.
+- **0% debts** keep their balance-based position under snowball and sink to the bottom under
+  avalanche — there is no interest to front-load. Interest accrued on them is always 0.
+- **Fewer than 2 debts → NO comparison.** With one debt the strategies are identical by
+  definition, so the screen shows a single projection (months, interest) instead of two
+  columns of the same numbers.
+- **Active plan:** `settings.debtStrategy` records which projection to surface prominently.
+  A display preference only — this app moves no money and automates no payment.
+- **Deterministic by design.** `lib/debtPayoff.ts` is a pure module with no AI/LLM call, no
+  network access and no per-use cost, kept separate from the UI so the amortization can be
+  unit tested against known schedules. See ARCHITECTURE.md §3.4.
+- A plan whose payments cannot outrun the interest is reported as **stalled** rather than
+  given an invented payoff date.
+
+### FR-21 — Savings streaks and badges (cosmetic)
+
+- **"On track" is not redefined here.** A month qualifies iff the app's existing
+  total-spent-versus-total-budgeted calculation says so: `budgetUtilizationSeries`
+  (lib/selectors.ts), which already sums rollover-aware effective limits. `monthStatus`
+  compares `spentTotal <= limit` on the RAW totals, never the rounded `pct` — at 100.4%
+  the percentage rounds to 100 and would read as on track. That selector is only READ;
+  nothing about budget health changed.
+- **Three outcomes, not two.** `on-track` / `over` / `no-data`. A month with no budgets is
+  not a month you stayed within budget, so it can never count by having nothing to fail;
+  it breaks a run exactly as an overspend does.
+- **The month in progress never counts.** The streak describes finished months only.
+  Counting the current month would hand a free +1 to someone three days in, and would show
+  a streak as broken mid-month for someone who will be inside their limits by the 31st.
+  This is also what makes a brand-new user's first month behave correctly: it contributes
+  nothing until it ends.
+- **The streak is derived, never stored.** `streakStats` walks back from the last complete
+  month on every read, so editing a past month corrects the count instead of leaving a
+  stored counter that quietly disagrees with the ledger. It reports `current`, `longest`,
+  and `onTrackMonths`.
+- **Display:** one more flag inside the existing Budget status band — `"{n}-month streak"`
+  with a sparkle icon — NOT a new card or section. Hidden at zero, except that the row
+  persists as "{n} badges earned" when the user holds any, since it is the only way into
+  the badges drawer.
+- **Badges are data, not code.** `BADGES` in lib/streak.ts holds `{ id, name, icon,
+  description, tier, criteria, reward }`. `criteria` is a DESCRIPTOR
+  (`{kind: "first-on-track-month"}` or `{kind: "streak-months", months: N}`) interpreted by
+  one shared evaluator, so adding a badge is a new array entry — no new component code, no
+  new conditional. Launch set is deliberately four.
+- **`reward` is reserved and always `null`.** Nothing reads it and there is NO
+  reward-granting logic anywhere; badges are recognition only. See ARCHITECTURE §3.5.
+- **Earned badges are persisted and never revoked.** Only the fact of earning is stored
+  (`id`, `earnedAt`, `value`); wording and artwork stay in the definition list, so editing
+  them needs no migration. Locked badges are shown greyed with what is still required —
+  never hidden, so there is something visible to work toward.
+
+### FR-22 — Learned categorization (shared engine)
+
+Extends the existing learned-rules system (Prompt 6A) rather than replacing it.
+
+- **Shared entry point.** `suggestCategory(input, rules, categories)` in
+  `lib/learnedRules.ts` takes plain strings — `{ description, merchant?, provider?,
+  direction? }` — not a statement row, so any caller can use it. The planned
+  email-alert parser must call this (or the bare-string `suggestCategoryForText`)
+  rather than growing a second copy of the learning. `activeRuleFor` is a thin
+  enabled-only wrapper kept for the import pipeline.
+- **Exact first, then fuzzy.** All exact key matches are tried across every signal
+  before any fuzzy match, because an exact key is what the user actually corrected.
+  Fuzzy matching is token-overlap (Dice) at `FUZZY_MATCH_THRESHOLD = 0.82`, resolved
+  per signal so a fuzzy provider hit still beats a fuzzy description hit.
+- **Pre-fill, never auto-finalize.** A mapping confirmed once (`strength` 1) pre-fills
+  the category but leaves the row flagged for review; only an enabled rule
+  (`RULE_MIN_STRENGTH` = 2) classifies without review. Either way the import batch is
+  confirmed by the user, who can override any single row first.
+- **Visible provenance.** A row pre-filled from a learned mapping shows a "Learned"
+  chip beside its category select, with hover text explaining it came from a past
+  correction and can be changed.
+- **Override wins.** A correction naming a different category rewrites the existing
+  mapping and re-baselines it (strength 1, disabled) — never two conflicting entries,
+  and flip-flopping never leaves a confidently-wrong rule behind.
+- **Usage tracking.** `lastUsedAt` is stamped when a pre-filled row is imported
+  WITHOUT being overridden, so mappings that have gone quiet can be identified.
+  Nothing expires automatically.
+- **Management (Settings → Learned rules):** list, enable/disable, re-target the
+  category, delete one, or clear the whole set (confirmed first).
+- Deterministic throughout: no AI/ML, no network, no per-use cost.
+- Manual (non-import) transaction entry is unchanged; this affects the import review
+  flow and the Settings panel only.
+
 ## 6. Data Model
 
 All values are plain JSON-serializable objects. Money is stored as integer minor units
@@ -311,6 +505,7 @@ interface Category {
   color: string;       // hex, e.g. "#0ea5e9"
   kind: CategoryKind;
   createdAt: string;   // ISO 8601
+  rollover?: boolean;  // FR-19 — opt-in; absent unless the user turned it on
 }
 
 interface Budget {
@@ -344,6 +539,34 @@ interface IncomePlan {     // FR-18 — standalone expected-income source
   receivedAmount: number;  // minor units, >= 0 (actually collected from this source)
 }
 
+interface RolloverRecord {  // FR-19 — one category's carryover into one month
+  id: ID;
+  categoryId: ID;
+  month: Month;             // the month the funds carried INTO
+  fromMonth: Month;         // always the month before `month`
+  amount: number;           // minor units, >= 0; added to that month's base limit
+  leftover: number;         // uncapped unspent balance at fromMonth's close
+  cap: number;              // the cap in force when this was computed
+  computedAt: string;       // ISO 8601
+}
+
+interface Debt {              // FR-20 — one per category, linked by categoryId
+  id: ID;
+  categoryId: ID;             // exactly one Debt per category
+  balance: number;            // minor units, >= 0 (outstanding)
+  startingBalance: number;    // minor units, >= 0; display-only progress figure
+  aprBps: number;             // annual rate in integer BASIS POINTS; 0 = interest-free
+  minimumPayment: number;     // minor units, >= 0
+  createdAt: string;          // ISO 8601
+  updatedAt: string;          // ISO 8601
+}
+
+interface EarnedBadge {       // FR-21 — append-only; an achievement is never revoked
+  id: string;                 // matches a BadgeDefinition.id in lib/streak.ts
+  earnedAt: string;           // ISO 8601
+  value: number;              // the streak value when earned; context for a future perk
+}
+
 interface Transaction {
   id: ID;
   categoryId: ID;
@@ -360,7 +583,8 @@ interface Transaction {
 interface Settings {
   currency: Currency;            // "USD" | "NGN"; default "USD" (FR-16)
   recurringEnabled: boolean;     // default true
-  firstRunDone: boolean;         // seeded with default categories
+  firstRunDone: boolean;         // false until onboarding completes (FR-01a)
+  debtStrategy: "avalanche" | "snowball"; // FR-20 — display preference only
 }
 
 interface AppState {
@@ -371,6 +595,9 @@ interface AppState {
   futureExpenses: FutureExpense[];
   recurrenceRules: RecurrenceRule[];
   incomePlans: IncomePlan[];   // FR-18
+  rollovers: RolloverRecord[]; // FR-19 — append-only carryover history
+  debts: Debt[];               // FR-20 — one per tracked category
+  badges: EarnedBadge[];       // FR-21 — append-only; the streak itself is derived
   settings: Settings;
 }
 ```
@@ -450,7 +677,7 @@ Salary          💰 #0ea5e9 income
 
 | ID | Criterion |
 |----|-----------|
-| AC-01 | First visit seeds 6 default categories; `firstRunDone` becomes true |
+| AC-01 | First visit seeds the default categories and leaves `firstRunDone` FALSE, so onboarding runs; the flag becomes true only when guided setup finishes (FR-01a) |
 | AC-02 | Creating a budget for (category, month) that already has one shows an inline validation error |
 | AC-03 | A budget at 100–120 % of limit shows amber state; > 120 % shows red state; both appear on the Planner alert banner |
 | AC-04 | Adding a transaction updates Planner totals and category progress without a page reload |
@@ -474,7 +701,28 @@ Salary          💰 #0ea5e9 income
 | AC-22 | Chart and progress bars animate (width transition ≤ 150 ms) and are disabled under `prefers-reduced-motion: reduce`; each chart exposes `role="img"` with an `aria-label` containing exact values |
 | AC-23 | The To-Do page lists only actions implied by current state (over-budget category, spending exceeding income, unallocated funds, spending category without a budget, deferred expenses) and each item links to the page that resolves it |
 | AC-24 | Moving an expense to the next month (FR-12) marks it `deferred`; the destination month's Planner "Deferred expenses" section lists it with the correct total, and History still shows the record (with a "Deferred" indicator) |
-| AC-25 | The Planner's Needs Funding checklist is derived from the shared `fundingNeeds` selector (income categories and fully funded categories excluded): every month-scoped expense category with no budget or a limit of 0 appears immediately, and budgeted categories appear while their upcoming obligations exceed their limit; funding a category via the checklist opens the budget form with that category preselected and the limit prefilled with the missing amount, and once a budget exists with a limit > 0 the category leaves the checklist |
+| AC-25 | The Planner's funding count is derived from the shared `fundingNeeds` selector (income categories and fully funded categories excluded): every month-scoped expense category with no budget or a limit of 0 counts immediately, and budgeted categories count while their upcoming obligations exceed their limit; the Budget status band shows "{n} categories need funding" while any remain and "Every category funded · Income covers expenses" once none do (and income covers expenses), and once a budget exists with a limit > 0 the category leaves the count |
+| AC-26 | Rollover is off for every existing and newly created category; enabling it on one category leaves every other category untouched, and a category with it off carries nothing forward however much went unspent (identical to pre-FR-19 behaviour) |
+| AC-27 | A category with rollover on that underspent month M has `limit − spent` added on top of month M+1's base limit, capped at 1x that base limit; a category that went over its limit in M carries nothing into M+1 and never a negative balance |
+| AC-28 | Three consecutive underspent months compound up to the cap and then plateau at 2x base rather than growing without bound |
+| AC-29 | Running the month transition again — on any later app open, or after past transactions are edited — creates no new record for a month already settled, so an applied carryover never changes |
+| AC-30 | A budget row whose limit was boosted shows the carryover explicitly (a "+X" badge in the category's registry colours plus a "base + carry" breakdown), never a silently larger number; a row with no carryover shows no rollover marking |
+| AC-31 | "Track as debt" is off for every category; enabling it writes a separate `Debt` record linked by `categoryId` and creates/changes NO budget, and a category without one behaves exactly as before |
+| AC-32 | With 2+ debts the screen shows avalanche and snowball side by side; with exactly 1 it shows a single projection and no comparison; with 0 it shows an empty state |
+| AC-33 | Avalanche targets the highest interest rate first and snowball the smallest balance first; both maintain minimums and hold the monthly outlay at `sum(minimums) + extra`, so a cleared debt's minimum rolls onto the next |
+| AC-34 | A 0%-interest debt accrues zero interest, keeps its balance-based position under snowball, and sorts last under avalanche |
+| AC-35 | An extra payment too small for quick progress still yields a finite projection; only a budget that cannot outrun the interest is reported as stalled, never given an invented payoff date |
+| AC-36 | The extra-payment input starts from the Planner's "Remaining" figure and is freely editable, never re-locked to it |
+| AC-37 | A month counts toward the streak iff the existing total-spent-vs-total-budgeted check passes; a month with no budgets counts as `no-data` and breaks the run rather than passing by default |
+| AC-38 | The streak increments across consecutive qualifying months and resets to 0 on the first failure; the month in progress is excluded, so a new user's first month reads 0 until it ends |
+| AC-39 | The streak appears as a flag inside the existing Budget status band ("{n}-month streak"), not as a new card, and is hidden at 0 |
+| AC-40 | Badges are evaluated from `BADGES` data by one shared evaluator; the drawer lists earned AND locked badges, locked ones greyed with their remaining requirement |
+| AC-41 | A badge already held is never re-granted or duplicated on a later launch, and stays earned after a streak reset; every badge's `reward` is `null` and nothing grants perks |
+| AC-42 | An exact learned-key match suggests its category; EVERY learned mapping matches its own merchant, not only the first one of each signal kind |
+| AC-43 | A near-miss key at or above `FUZZY_MATCH_THRESHOLD` suggests; below it, no suggestion is made at all |
+| AC-44 | Correcting a row to a different category rewrites the existing mapping (one entry, newest choice) instead of creating a conflicting second one |
+| AC-45 | Deleting a mapping in Settings, or clearing them all, stops it suggesting on later imports; other mappings are unaffected |
+| AC-46 | A row pre-filled from a learned mapping shows a visible "Learned" indicator and is still overridable before the batch is imported |
 
 ## 8. Non-functional Requirements
 

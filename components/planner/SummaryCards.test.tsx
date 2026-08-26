@@ -139,7 +139,7 @@ describe("SummaryCards expected income", () => {
     expect(within(remaining).getByText("$750.00")).toBeInTheDocument();
 
     const net = screen.getByRole("button", { name: "Savings rate" });
-    expect(within(net).getByText(/You keep \$750\.00 after expenses/)).toBeInTheDocument();
+    expect(within(net).getByText(/\$750\.00 remaining/)).toBeInTheDocument();
 
     await userEvent.setup().click(net);
     const dialog = screen.getByRole("dialog");
@@ -147,5 +147,88 @@ describe("SummaryCards expected income", () => {
     expect(within(dialog).getByText("$3,500.00")).toBeInTheDocument();
     expect(within(dialog).getByText("-$1,750.00")).toBeInTheDocument();
     expect(within(dialog).getByText("+$750.00")).toBeInTheDocument();
+  });
+});
+
+describe("SummaryCards allocate-remaining entry point", () => {
+  function seedBudgets() {
+    const state = useAppStore.getState().state;
+    const id = (name: string) =>
+      state.categories.find((category) => category.name === name)!.id;
+    useAppStore.setState({
+      state: {
+        ...state,
+        incomePlans: [
+          {
+            id: "plan-1",
+            month: "2026-08",
+            name: "Salary",
+            icon: "💰",
+            expectedAmount: 1000000,
+            receivedAmount: 1000000,
+          },
+        ],
+        budgets: [
+          {
+            id: "budget-rent",
+            categoryId: id("Rent"),
+            month: "2026-08",
+            limit: 100000,
+            priority: "high",
+          },
+          {
+            id: "budget-groceries",
+            categoryId: id("Groceries"),
+            month: "2026-08",
+            limit: 80000,
+            priority: "medium",
+          },
+        ],
+        transactions: [
+          {
+            id: "t1",
+            type: "expense",
+            categoryId: id("Rent"),
+            amount: 150000,
+            date: "2026-08-05",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+  }
+
+  it("mounts no allocation sliders until a category is chosen", async () => {
+    const user = userEvent.setup();
+    seedBudgets();
+    render(<SummaryCards month="2026-08" />);
+
+    expect(screen.queryAllByRole("slider")).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: /Remaining/ }));
+    const picker = screen.getByRole("dialog");
+    expect(within(picker).getByText("Allocate remaining")).toBeInTheDocument();
+    expect(within(picker).queryAllByRole("slider")).toHaveLength(0);
+    expect(within(picker).getByText("$500.00 over")).toBeInTheDocument();
+  });
+
+  it("opens the shared drawer for the category picked there", async () => {
+    const user = userEvent.setup();
+    seedBudgets();
+    render(<SummaryCards month="2026-08" />);
+
+    await user.click(screen.getByRole("button", { name: /Remaining/ }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /Rent/ }),
+    );
+
+    const drawer = screen.getByRole("dialog");
+    expect(within(drawer).getByText("Add funds to Rent")).toBeInTheDocument();
+    expect(
+      within(drawer).getByText(/Rent is \$500\.00 over its \$1,000\.00 limit/),
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).getByRole("slider", { name: "Move from Groceries" }),
+    ).toBeInTheDocument();
   });
 });

@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { defaultDateForMonth, monthKeyFromIso, monthOffset, todayIso } from "@/lib/date";
+import { monthFinance } from "@/lib/finance";
 import { createInitialState } from "@/lib/seed";
 import { totals } from "@/lib/selectors";
 import { useAppStore } from "@/store/useAppStore";
@@ -35,7 +37,7 @@ describe("TransactionForm (AC-04, AC-05)", () => {
       expenseCategoryId(),
     );
     await user.type(screen.getByLabelText("Amount"), "12.50");
-    await user.click(screen.getByRole("button", { name: "Add transaction" }));
+    await user.click(screen.getByRole("button", { name: "Add Expense" }));
 
     const { state } = useAppStore.getState();
     expect(state.transactions).toHaveLength(1);
@@ -73,7 +75,7 @@ describe("TransactionForm (AC-04, AC-05)", () => {
     const user = userEvent.setup();
     render(<TransactionForm open onClose={() => {}} />);
     await user.type(screen.getByLabelText("Amount"), "abc");
-    await user.click(screen.getByRole("button", { name: "Add transaction" }));
+    await user.click(screen.getByRole("button", { name: "Add Expense" }));
 
     expect(useAppStore.getState().state.transactions).toHaveLength(0);
     expect(screen.getByRole("alert")).toHaveTextContent("Enter an amount");
@@ -96,7 +98,7 @@ describe("TransactionForm (AC-04, AC-05)", () => {
       expenseCategoryId(),
     );
     await user.type(screen.getByLabelText("Amount"), "12.50");
-    await user.click(screen.getByRole("button", { name: "Add transaction" }));
+    await user.click(screen.getByRole("button", { name: "Add Expense" }));
 
     expect(screen.queryByRole("alert")).toBeNull();
     expect(useAppStore.getState().state.transactions).toHaveLength(1);
@@ -120,5 +122,164 @@ describe("TransactionForm (AC-04, AC-05)", () => {
     expect(select.selectedOptions[0]?.value).toBe(categoryId);
     const preview = select.selectedOptions[0]?.textContent ?? "";
     expect(preview).toContain(transactionCategoryName(categoryId));
+  });
+
+  it("defaults the date inside the passed planner month", () => {
+    const past = monthOffset(monthKeyFromIso(todayIso()), -2);
+    render(<TransactionForm open onClose={() => {}} defaultMonth={past} />);
+    const dateInput = screen.getByLabelText("Date") as HTMLInputElement;
+    expect(monthKeyFromIso(dateInput.value)).toBe(past);
+    expect(dateInput.value).toBe(defaultDateForMonth(past));
+  });
+
+  it("records a backdated transaction in its calendar month, not the current one", async () => {
+    const user = userEvent.setup();
+    const past = monthOffset(monthKeyFromIso(todayIso()), -1);
+    render(<TransactionForm open onClose={() => {}} defaultMonth={past} />);
+    await user.selectOptions(
+      screen.getByLabelText("Category"),
+      expenseCategoryId(),
+    );
+    await user.type(screen.getByLabelText("Amount"), "100000.00");
+    await user.click(screen.getByRole("button", { name: "Add Expense" }));
+
+    const { state } = useAppStore.getState();
+    expect(state.transactions).toHaveLength(1);
+    expect(monthKeyFromIso(state.transactions[0].date)).toBe(past);
+    const finance = monthFinance(
+      state.transactions,
+      state.incomePlans,
+      past,
+    );
+    expect(finance.expenses).toBe(10000000);
+    expect(finance.net).toBe(-10000000);
+  });
+
+  it("records a transfer as a deferred expense (timeline Transfers)", async () => {
+    const user = userEvent.setup();
+    render(<TransactionForm open onClose={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "Transfer" }));
+    await user.selectOptions(
+      screen.getByLabelText("Category"),
+      expenseCategoryId(),
+    );
+    await user.type(screen.getByLabelText("Amount"), "40.00");
+    await user.click(screen.getByRole("button", { name: "Add Transfer" }));
+
+    const { state } = useAppStore.getState();
+    expect(state.transactions).toHaveLength(1);
+    expect(state.transactions[0].type).toBe("expense");
+    expect(state.transactions[0].deferred).toBe(true);
+  });
+
+  it("offers expense categories on the Transfer tab", async () => {
+    const user = userEvent.setup();
+    render(<TransactionForm open onClose={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "Transfer" }));
+    const select = screen.getByLabelText("Category") as HTMLSelectElement;
+    expect(select.textContent).toContain("Transport");
+    expect(
+      useAppStore
+        .getState()
+        .state.categories.some(
+          (category) =>
+            category.kind === "expense" && category.name === "Transport",
+        ),
+    ).toBe(true);
+  });
+
+  it("opens the Transfer tab when editing a deferred expense", () => {
+    useAppStore.getState().addTransaction({
+      categoryId: expenseCategoryId(),
+      amount: 500,
+      type: "expense",
+      date: "2026-08-10",
+      deferred: true,
+    });
+    const transaction = useAppStore.getState().state.transactions[0];
+
+    render(
+      <TransactionForm open onClose={() => {}} transaction={transaction} />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Transfer" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("clears the deferred flag when an edited transfer is saved as an expense", async () => {
+    const user = userEvent.setup();
+    useAppStore.getState().addTransaction({
+      categoryId: expenseCategoryId(),
+      amount: 500,
+      type: "expense",
+      date: "2026-08-10",
+      deferred: true,
+    });
+    const transaction = useAppStore.getState().state.transactions[0];
+
+    render(
+      <TransactionForm open onClose={() => {}} transaction={transaction} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Expense" }));
+    await user.selectOptions(
+      screen.getByLabelText("Category"),
+      expenseCategoryId(),
+    );
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    const { state } = useAppStore.getState();
+    expect(state.transactions[0].deferred).toBeUndefined();
+  });
+
+  it("adds an income record from the Income tab", async () => {
+    const user = userEvent.setup();
+    const incomeCategory = useAppStore
+      .getState()
+      .state.categories.find((category) => category.kind === "income")!;
+    render(<TransactionForm open onClose={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "Income" }));
+    await user.selectOptions(
+      screen.getByLabelText("Category"),
+      incomeCategory.id,
+    );
+    await user.type(screen.getByLabelText("Amount"), "1500.00");
+    await user.click(screen.getByRole("button", { name: "Add Income" }));
+
+    const { state } = useAppStore.getState();
+    expect(state.transactions).toHaveLength(1);
+    expect(state.transactions[0].type).toBe("income");
+    expect(state.transactions[0].categoryId).toBe(incomeCategory.id);
+    expect(state.transactions[0].deferred).toBeUndefined();
+  });
+
+  it("titles the modal Add Expense for a new expense", () => {
+    render(<TransactionForm open onClose={() => {}} />);
+    expect(
+      screen.getByRole("heading", { name: "Add Expense" }),
+    ).toBeInTheDocument();
+  });
+
+  it("closes the modal via the close icon", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<TransactionForm open onClose={onClose} />);
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the currency prefix on the Amount field", () => {
+    render(<TransactionForm open onClose={() => {}} />);
+    expect(screen.getByText("$")).toBeInTheDocument();
+  });
+
+  it("shows the note character counter while typing", async () => {
+    const user = userEvent.setup();
+    render(<TransactionForm open onClose={() => {}} />);
+    expect(screen.getByText("0/200")).toBeInTheDocument();
+    await user.type(
+      screen.getByPlaceholderText("Add a note..."),
+      "Groceries",
+    );
+    expect(screen.getByText("9/200")).toBeInTheDocument();
   });
 });

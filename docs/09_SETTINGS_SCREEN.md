@@ -417,6 +417,46 @@ Repository (future)
 Check for updates
 
 --------------------------------------------------
+LEARNED RULES SECTION (FR-22)
+--------------------------------------------------
+
+Where the app's learned category mappings are managed. Reached from the
+left navigation like any other section; follows the standard section
+pattern (heading + one-line explanation, then a Card).
+
+Header
+
+- "Learned rules" title, with a plain-language explanation: correcting a
+  transaction's category twice while importing teaches the app, and it
+  suggests that choice next time. It says explicitly that nothing is
+  learned from a single correction.
+- A secondary "Clear all" button, right-aligned, rendered ONLY when at
+  least one mapping exists — a destructive control with nothing to
+  destroy is noise.
+
+Rows (one per mapping)
+
+- The signal kind and matched key ("provider · mtn", "merchant · shoprite
+  lekki"), the target category, and how many times it has been confirmed.
+- A candidate (confirmed once) is visibly distinct from an active rule:
+  it pre-fills a suggestion but does not classify on its own.
+- Controls per row: enable/disable toggle, a category select to re-target
+  it, and a delete button. Delete confirms first and says the mapping can
+  be relearned by correcting again.
+
+Clear all
+
+Opens a `ConfirmDialog` naming the exact count ("All 2 learned rules will
+be removed…"). The copy states that transactions and categories are NOT
+affected and that learning restarts from the next import — the risk of
+this control is that it reads as "delete my data", and it does not.
+
+Empty state
+
+When nothing has been learned yet, the section explains how learning
+happens rather than showing an empty table.
+
+--------------------------------------------------
 TOGGLES
 --------------------------------------------------
 

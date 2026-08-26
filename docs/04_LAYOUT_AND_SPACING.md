@@ -237,7 +237,22 @@ HERO SECTION
 
 Maximum height
 
-260px
+260px (the Planner hero renders ~254px at 1440px wide)
+
+Padding
+
+px-6 py-5 (24/20px) · sm:px-7 (28px) · lg:px-8 (32px)
+
+Vertical padding stays 20px at every breakpoint. Condensed on purpose: the
+hero's decorative layer is absolutely positioned, so the card's height comes
+entirely from its content column and extra vertical padding only pushes the
+metric cards down the page.
+
+Internal rhythm
+
+Blocks do not share one gap. Top to bottom: date → greeting 6px → supporting
+sentence 10px → stat row 14px → progress block 14px (label → bar 6px) →
+actions 16px. See 06_PLANNER_SCREEN.md → PAGE HERO for the full spec.
 
 Large title
 
@@ -247,7 +262,7 @@ Primary actions
 
 Never more than two actions.
 
-Whitespace should dominate.
+Whitespace should dominate the horizontal axis; the vertical axis is tight.
 
 --------------------------------------------------
 SIDEBAR

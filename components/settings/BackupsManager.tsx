@@ -234,7 +234,7 @@ export function BackupsManager({ onRecovered }: { onRecovered?: () => void }) {
           {backups.map((backup) => (
             <li
               key={backup.key}
-              className="flex flex-wrap items-center gap-3 rounded-lg px-2.5 py-2"
+              className="flex flex-wrap items-center gap-3 rounded-lg px-2.5 py-2 transition-colors duration-150 ease-premium hover:bg-sidebar-hover"
             >
               <span
                 className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${kindTone(backup.kind)}`}

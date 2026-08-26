@@ -9,6 +9,10 @@ const DECIMAL_RE = /^\d+(\.\d{1,2})?$/;
 
 export const MINOR_UNITS_PER_UNIT = 100;
 
+export function currencySymbol(currency: Currency): string {
+  return SYMBOLS[currency];
+}
+
 export function toMinorUnits(input: string): number {
   let cleaned = input.trim();
   for (const symbol of Object.values(SYMBOLS)) {

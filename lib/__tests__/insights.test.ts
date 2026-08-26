@@ -61,7 +61,7 @@ describe("insightsFor (AC-21)", () => {
     });
     expect(result[0].id).toBe("high-over");
     expect(result[0].tone).toBe("danger");
-    expect(result[0].action?.href).toBe("/");
+    expect(result[0].action?.href).toBe("/?focus=over");
     expect(result[0].detail).toContain("$10.00");
   });
 
@@ -85,6 +85,7 @@ describe("insightsFor (AC-21)", () => {
     });
     expect(result[0].id).toBe("over-120");
     expect(result[0].tone).toBe("danger");
+    expect(result[0].action?.href).toBe("/?focus=over");
   });
 
   it("warns when spending exceeds income", () => {
@@ -107,7 +108,7 @@ describe("insightsFor (AC-21)", () => {
       transactions: [txn({ id: "inc", type: "income", amount: 5000 })],
     });
     expect(result.map((insight) => insight.id)).toEqual(["unallocated"]);
-    expect(result[0].action?.href).toBe("/");
+    expect(result[0].action?.href).toBe("/?focus=create");
   });
 
   it("notes the top unbudgeted spending category", () => {
@@ -125,6 +126,7 @@ describe("insightsFor (AC-21)", () => {
     });
     expect(result[0].id).toBe("no-budget");
     expect(result[0].detail).toContain("Clothing");
+    expect(result[0].action?.href).toBe("/?focus=create");
   });
 
   it("reports on-track for a high-priority budget under half", () => {

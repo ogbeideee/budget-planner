@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
+import { Switch } from "@/components/ui/Switch";
 import { formatMoney, isMinorUnitsValid, minorToInput, toMinorUnits } from "@/lib/money";
 import type { Budget, Month, Priority } from "@/lib/types";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
 
 export interface BudgetFormProps {
@@ -37,6 +39,7 @@ export function BudgetForm({
   const budgets = useAppStore((s) => s.state.budgets);
   const addBudget = useAppStore((s) => s.addBudget);
   const updateBudget = useAppStore((s) => s.updateBudget);
+  const setCategoryRollover = useAppStore((s) => s.setCategoryRollover);
   const currency = useAppStore((s) => s.state.settings.currency);
 
   const [categoryId, setCategoryId] = useState(
@@ -50,6 +53,14 @@ export function BudgetForm({
         : "",
   );
   const [priority, setPriority] = useState<Priority>(budget?.priority ?? "medium");
+  // Rollover is a property of the CATEGORY, not of this month's budget, so
+  // the preference survives into months whose budget does not exist yet.
+  // Seeded from the selected category and off whenever none is chosen.
+  const [rollover, setRollover] = useState(
+    () =>
+      categories.find((c) => c.id === (budget?.categoryId ?? presetCategoryId))
+        ?.rollover === true,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const formId = useId();
@@ -91,6 +102,7 @@ export function BudgetForm({
     }
     if (budget) {
       updateBudget(budget.id, { categoryId, limit: amount, priority });
+      setCategoryRollover(categoryId, rollover);
       onClose();
       return;
     }
@@ -99,6 +111,7 @@ export function BudgetForm({
       setError("A budget already exists for this category and month.");
       return;
     }
+    setCategoryRollover(categoryId, rollover);
     onClose();
   };
 
@@ -123,11 +136,15 @@ export function BudgetForm({
           label="Category"
           options={available.map((category) => ({
             value: category.id,
-            label: `${category.icon} ${category.name}`,
+            label: `${categoryDisplay(category).icon} ${categoryDisplay(category).name}`,
           }))}
           value={categoryId}
           onChange={(event) => {
-            setCategoryId(event.target.value);
+            const next = event.target.value;
+            setCategoryId(next);
+            setRollover(
+              categories.find((c) => c.id === next)?.rollover === true,
+            );
             if (error?.startsWith("Choose")) setError(null);
           }}
           error={error?.startsWith("Choose") ? error : undefined}
@@ -168,6 +185,23 @@ export function BudgetForm({
           value={priority}
           onChange={(event) => setPriority(event.target.value as Priority)}
         />
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-canvas px-3 py-2.5">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-ink">
+              Roll over unused funds
+            </span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Anything left at month end is added to next month&rsquo;s limit,
+              up to one extra month&rsquo;s worth. Going over rolls nothing
+              forward &mdash; next month still starts at its full limit.
+            </span>
+          </span>
+          <Switch
+            checked={rollover}
+            onChange={setRollover}
+            label="Roll over unused funds"
+          />
+        </div>
       </form>
     </Modal>
   );

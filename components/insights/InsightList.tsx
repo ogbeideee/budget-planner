@@ -65,6 +65,7 @@ export function InsightList({
   const categories = useAppStore((s) => s.state.categories);
   const futureExpenses = useAppStore((s) => s.state.futureExpenses);
   const incomePlans = useAppStore((s) => s.state.incomePlans);
+  const rollovers = useAppStore((s) => s.state.rollovers);
   const currency = useAppStore((s) => s.state.settings.currency);
 
   const insights = useMemo(() => {
@@ -75,6 +76,7 @@ export function InsightList({
         categories,
         futureExpenses,
         incomePlans,
+        rollovers,
         month,
         currency,
       },
@@ -88,6 +90,7 @@ export function InsightList({
     categories,
     futureExpenses,
     incomePlans,
+    rollovers,
     month,
     currency,
     actionsOnly,

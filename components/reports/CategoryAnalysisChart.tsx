@@ -9,11 +9,11 @@ import {
   Tooltip,
 } from "recharts";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { categoryColor } from "@/lib/accents";
 import { formatMonthShort, monthOffset } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { spendingByCategory, totals } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useChartColors } from "@/hooks/useChartColors";
@@ -75,9 +75,9 @@ export function CategoryAnalysisChart({ month }: CategoryAnalysisChartProps) {
 
   const data = rows.map((row) => ({
     key: row.categoryId,
-    name: row.category!.name,
+    name: categoryDisplay(row.category).name,
     value: row.amount,
-    color: categoryColor(row.category),
+    color: categoryDisplay(row.category).color,
   }));
 
   const ariaLabel = `Category analysis: ${data
@@ -153,6 +153,7 @@ export function CategoryAnalysisChart({ month }: CategoryAnalysisChartProps) {
           {rows.map((row, index) => {
             const pct = Math.round((100 * row.amount) / total);
             const highlighted = activeIndex === null || activeIndex === index;
+            const display = categoryDisplay(row.category);
             return (
               <li
                 key={row.categoryId}
@@ -165,14 +166,14 @@ export function CategoryAnalysisChart({ month }: CategoryAnalysisChartProps) {
                 <span
                   aria-hidden="true"
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base"
-                  style={{ backgroundColor: `${row.category!.color}1a` }}
+                  style={{ backgroundColor: `${display.color}1a` }}
                 >
-                  {row.category!.icon}
+                  {display.icon}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="truncate text-sm font-semibold text-ink">
-                      {row.category!.name}
+                      {display.name}
                     </span>
                     <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
                       {formatMoney(row.amount, currency)}

@@ -7,7 +7,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatMonthLabel, monthKeyFromIso, monthOffset } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
-import { sortTransactions, spent, transactionsForMonth } from "@/lib/selectors";
+import { effectiveLimit, sortTransactions, spent, transactionsForMonth } from "@/lib/selectors";
 import { groupTransactionsByTime } from "@/lib/timeline";
 import type { Transaction } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
@@ -44,6 +44,7 @@ export function TransactionList() {
   const transactions = useAppStore((s) => s.state.transactions);
   const categories = useAppStore((s) => s.state.categories);
   const budgets = useAppStore((s) => s.state.budgets);
+  const rollovers = useAppStore((s) => s.state.rollovers);
   const currency = useAppStore((s) => s.state.settings.currency);
   const deleteTransaction = useAppStore((s) => s.deleteTransaction);
   const moveTransactionToNextMonth = useAppStore(
@@ -135,7 +136,9 @@ export function TransactionList() {
     );
     if (!budget || budget.limit <= 0) return null;
     return {
-      limit: budget.limit,
+      // The spendable limit for that month, carryover included, so a past
+      // month reads as it did at the time.
+      limit: effectiveLimit(budget, rollovers),
       spent: spent(transactions, transaction.categoryId, monthKey),
     };
   };
@@ -160,41 +163,76 @@ export function TransactionList() {
       </div>
 
       {pageRows.length === 0 ? (
-        <EmptyState
-          illustration="list"
-          illustrationClass={
-            monthHasTransactions
-              ? "bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
-              : "bg-canvas text-muted"
-          }
-          title={
-            monthHasTransactions
-              ? "Nothing matches these filters"
-              : "No transactions yet"
-          }
-          description={
-            monthHasTransactions
-              ? "Loosen the filters or clear the search."
-              : "Add your first income or expense — your timeline grows from here."
-          }
-          action={
-            monthHasTransactions ? (
-              <Button variant="secondary" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            ) : (
-              <Button
-                onClick={() => {
-                  setEditing(null);
-                  setFormSession((session) => session + 1);
-                  setFormOpen(true);
-                }}
-              >
-                Add your first transaction
-              </Button>
-            )
-          }
-        />
+        <div className="relative overflow-hidden rounded-xl border border-border/70 bg-surface p-5 shadow-card">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+          >
+            <svg
+              className="absolute -bottom-3 right-6 hidden select-none sm:block"
+              width="240"
+              height="130"
+              viewBox="0 0 240 130"
+              fill="none"
+            >
+              <circle
+                cx="200"
+                cy="36"
+                r="26"
+                stroke="rgba(14,165,164,0.14)"
+                strokeWidth="2"
+              />
+              <circle
+                cx="200"
+                cy="36"
+                r="14"
+                stroke="rgba(14,165,164,0.16)"
+                strokeWidth="2"
+              />
+              <path
+                d="M10 112 C 66 106, 100 72, 158 66"
+                stroke="rgba(37,99,235,0.16)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+          <EmptyState
+            illustration="list"
+            illustrationClass={
+              monthHasTransactions
+                ? "bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
+                : "bg-canvas text-muted"
+            }
+            title={
+              monthHasTransactions
+                ? "Nothing matches these filters"
+                : "No transactions yet"
+            }
+            description={
+              monthHasTransactions
+                ? "Loosen the filters or clear the search."
+                : "Add your first income or expense — your timeline grows from here."
+            }
+            action={
+              monthHasTransactions ? (
+                <Button variant="secondary" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => {
+                    setEditing(null);
+                    setFormSession((session) => session + 1);
+                    setFormOpen(true);
+                  }}
+                >
+                  Add your first transaction
+                </Button>
+              )
+            }
+          />
+        </div>
       ) : (
         <div role="list" aria-label="Transaction activity" className="flex flex-col gap-8">
           {groups.map((group) => {
@@ -205,7 +243,7 @@ export function TransactionList() {
             return (
               <section key={group.key} aria-label={group.label} className="flex flex-col gap-3">
                 <h2
-                  className={`sticky top-16 z-10 -mx-2 rounded-lg bg-canvas px-2 py-2 lg:top-0 ${
+                  className={`sticky top-[100px] z-10 -mx-2 rounded-lg bg-canvas px-2 py-2 lg:top-11 ${
                     isToday ? "text-brand-600" : "text-ink"
                   }`}
                 >
@@ -251,6 +289,9 @@ export function TransactionList() {
                       }}
                       onDelete={() => setPendingDelete(transaction)}
                       onMoveNextMonth={() => handleMove(transaction)}
+                      onViewDetails={() =>
+                        router.push(`/history/expense?id=${transaction.id}`)
+                      }
                     />
                   ))}
                 </div>
@@ -287,6 +328,7 @@ export function TransactionList() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         transaction={editing}
+        defaultMonth={month}
       />
 
       <ConfirmDialog

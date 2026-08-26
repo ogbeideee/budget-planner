@@ -33,7 +33,7 @@ Add to `package.json` scripts:
 | 6 | `store/useAppStore.ts` (+ `updateBudget`, `moveTransactionToNextMonth` marks `deferred`), `store/useToastStore.ts` + tests | AC-08, AC-17, AC-24 |
 | 7 | `app/globals.css` tokens; `app/layout.tsx`, `app/error.tsx`; `components/shell/*`, `components/ui/*` (+ `Slider`, `ToastHost`), `hooks/useToast.ts` | Shell renders; skip link; error boundary |
 | 8 | `components/txn/*` (+ move-to-next-month action) + `components/history/HistoryView.tsx` + `app/history/page.tsx` | AC-04, AC-05, AC-13, AC-17, AC-24 |
-| 9 | `components/planner/*` (BudgetList, BudgetForm, BudgetRow, PriorityBadge, AllocationPanel, BudgetHealthCard, NeedsFundingSection) | AC-02, AC-03, AC-18, AC-25 |
+| 9 | `components/planner/*` (BudgetList, BudgetForm, BudgetRow, PriorityBadge, AllocationDrawer, BudgetStatusBand) | AC-02, AC-03, AC-18, AC-25 |
 | 10 | `components/planner/*` (PlannerView, SummaryCards, OverBudgetAlert, QuickAddExpense, DeferredSection, InsightsPanel, ExpenseBreakdown), `components/charts/BarChart.tsx` + `app/page.tsx` | Planner totals + alert + insights + health + quick add + deferred (AC-04, AC-19, AC-21, AC-22, AC-24) |
 | 11 | `components/reports/*` (Recharts: income vs expenses, spending trend, savings & remaining, budget utilization, top categories) + `app/reports/page.tsx` | FR-07: 6-month window, analytical only, empty states, reduced-motion |
 | 12 | `app/settings/page.tsx` + import/export + recurring UI + currency select | AC-01, AC-09, AC-11, AC-20 |
@@ -68,7 +68,7 @@ Test files live next to code: `lib/__tests__/*.test.ts`, `store/__tests__/*.test
 | `lib/validate.test.ts` | AC-10: wrong version, missing arrays, wrong types → throw; AC-16: legacy `currencySymbol`/missing `priority` normalize |
 | `store/useAppStore.test.ts` | AC-08: set state → new store instance (rehydrated) reads same data; AC-02 duplicate budget rejected; AC-17 `moveTransactionToNextMonth` (recurring detach + exception); AC-24 move sets `deferred: true` |
 | `components/txn/TransactionForm.test.tsx` | AC-04/AC-05: add → totals change; edit → contributions change; delete → removed |
-| `components/planner/NeedsFundingSection.test.tsx` | AC-25: checklist shows exactly the unfunded expense categories; income and funded categories absent; "Fund" opens the budget form with the category preselected; funding removes the category |
+| `components/planner/BudgetStatusBand.test.tsx` | AC-25: the status band counts exactly the unfunded expense categories (income and funded categories excluded) and switches to the funded flag once none remain |
 
 Run: `npm test` (must pass), `npx tsc --noEmit`, `npm run lint`.
 

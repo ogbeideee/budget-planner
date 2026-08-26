@@ -28,6 +28,32 @@ function pctDelta(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 100);
 }
 
+function DeltaLine({
+  delta,
+  good,
+  currency,
+  pct = false,
+}: {
+  delta: number | null;
+  good: boolean;
+  currency: Currency;
+  pct?: boolean;
+}) {
+  if (delta === null) return null;
+  const value = pct
+    ? `${Math.abs(delta)}%`
+    : formatMoney(Math.abs(delta), currency);
+  return (
+    <span
+      className={`text-caption font-semibold tabular-nums ${
+        good ? "text-income" : "text-expense"
+      }`}
+    >
+      {delta >= 0 ? "↑" : "↓"} {value} from last month
+    </span>
+  );
+}
+
 function TrendChip({ delta }: { delta: number | null }) {
   if (delta === null) return null;
   const up = delta >= 0;
@@ -108,13 +134,21 @@ export function MonthlyOverview({
 
   const incomeDelta = pctDelta(current.received, previous.received);
   const expensesDelta = pctDelta(current.expenses, previous.expenses);
-  const rateDelta = pctDelta(
-    current.savingsRate ?? 0,
-    previous.savingsRate ?? 0,
-  );
   const netDelta =
     previous.net > 0 ? pctDelta(current.net, previous.net) : null;
-  const vsLastMonth = `vs ${formatMoney(previous.received, currency)} last month`;
+  const incomeDeltaAmount =
+    previous.received > 0 ? current.received - previous.received : null;
+  const expensesDeltaAmount =
+    previous.expenses > 0 ? current.expenses - previous.expenses : null;
+  const netDeltaAmount =
+    previous.net !== 0 || current.net !== 0
+      ? current.net - previous.net
+      : null;
+  const rateDeltaPoints =
+    previous.savingsRate !== null && current.savingsRate !== null
+      ? current.savingsRate - previous.savingsRate
+      : null;
+  const cardChrome = "shadow-none hover:shadow-none";
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,7 +159,18 @@ export function MonthlyOverview({
           chip={<TrendChip delta={incomeDelta} />}
           icon={<ArrowDownLeftIcon className="h-[18px] w-[18px]" />}
           iconClass="bg-success-surface text-success-text"
-          support={previous.received > 0 ? vsLastMonth : "Record income to start comparing"}
+          className={cardChrome}
+          support={
+            incomeDeltaAmount !== null ? (
+              <DeltaLine
+                delta={incomeDeltaAmount}
+                good={incomeDeltaAmount >= 0}
+                currency={currency}
+              />
+            ) : (
+              "Record income to start comparing"
+            )
+          }
         />
         <MetricCard
           label="Total expenses"
@@ -133,10 +178,17 @@ export function MonthlyOverview({
           chip={<TrendChip delta={expensesDelta} />}
           icon={<ArrowUpRightIcon className="h-[18px] w-[18px]" />}
           iconClass="bg-expense-surface text-danger-text"
+          className={cardChrome}
           support={
-            previous.expenses > 0
-              ? `vs ${formatMoney(previous.expenses, currency)} last month`
-              : "No prior month to compare yet"
+            expensesDeltaAmount !== null ? (
+              <DeltaLine
+                delta={expensesDeltaAmount}
+                good={expensesDeltaAmount <= 0}
+                currency={currency}
+              />
+            ) : (
+              "No prior month to compare yet"
+            )
           }
         />
         <MetricCard
@@ -145,10 +197,17 @@ export function MonthlyOverview({
           chip={<TrendChip delta={netDelta} />}
           icon={<TrendingUpIcon className="h-[18px] w-[18px]" />}
           iconClass="bg-savings-surface text-savings-text"
+          className={cardChrome}
           support={
-            previous.net !== 0 || current.net !== 0
-              ? `vs ${formatMoney(previous.net, currency)} last month`
-              : "Spending more than you earn"
+            netDeltaAmount !== null ? (
+              <DeltaLine
+                delta={netDeltaAmount}
+                good={netDeltaAmount >= 0}
+                currency={currency}
+              />
+            ) : (
+              "Spending more than you earn"
+            )
           }
         />
         <MetricCard
@@ -156,13 +215,22 @@ export function MonthlyOverview({
           value={
             current.savingsRate !== null ? `${current.savingsRate}%` : "—"
           }
-          chip={<TrendChip delta={rateDelta} />}
           icon={<TargetIcon className="h-[18px] w-[18px]" />}
           iconClass="bg-brand-500/10 text-brand-600 dark:text-brand-400"
+          className={cardChrome}
           support={
-            current.savingsRate !== null
-              ? "of income kept this month"
-              : "Record income to see your savings rate"
+            rateDeltaPoints !== null ? (
+              <DeltaLine
+                delta={rateDeltaPoints}
+                good={rateDeltaPoints >= 0}
+                currency={currency}
+                pct
+              />
+            ) : current.savingsRate !== null ? (
+              "of income kept this month"
+            ) : (
+              "Record income to see your savings rate"
+            )
           }
         />
       </div>

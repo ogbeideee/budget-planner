@@ -9,6 +9,7 @@ const {
   net,
   ipcMain,
   Menu,
+  nativeTheme,
   shell,
 } = require("electron");
 const path = require("path");
@@ -17,6 +18,7 @@ const { pathToFileURL } = require("url");
 const pkg = require("../package.json");
 const { openDatabase } = require("./db.cjs");
 const backupStore = require("./backups.cjs");
+const { atomicWriteText } = require("./atomicWrite.cjs");
 const { createSplashScreen } = require("./splash.cjs");
 const { initAutoUpdates } = require("./updater.cjs");
 const { MENU_ACTIONS, buildApplicationMenu } = require("./menu.cjs");
@@ -26,6 +28,17 @@ const APP_HOST = "bundle";
 const OUT_DIR = path.join(__dirname, "..", "out");
 const DEV_URL = process.env.ELECTRON_DEV_URL || "http://localhost:3000";
 const MAX_TEXT_BYTES = 16 * 1024 * 1024; // 16 MB cap for fs reads/writes
+
+// Custom title bar (titleBarStyle: "hidden" + titleBarOverlay). The overlay
+// keeps native Windows min/max/close controls with OS hover states; the
+// renderer paints the bar itself. Colors mirror the --color-surface /
+// --color-ink design tokens (light + dark). The window canvas mirrors the
+// --color-canvas token so the frame never paints an off-theme color.
+const TITLE_BAR_HEIGHT = 44;
+const TITLE_BAR_LIGHT = { color: "#ffffff", symbolColor: "#0f172a" };
+const TITLE_BAR_DARK = { color: "#1e293b", symbolColor: "#f8fafc" };
+const CANVAS_LIGHT = "#f7f8fc";
+const CANVAS_DARK = "#0f172a";
 
 let db = null;
 let mainWindow = null;
@@ -120,6 +133,33 @@ function windowFor(event) {
   return BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
 }
 
+// Resolve the persisted appearance ("light" | "dark" | "system") to a concrete
+// "light" | "dark". Best effort: a missing or unreadable state falls back to
+// light. Used for the first-paint window canvas and the title-bar overlay.
+function resolvedAppearance() {
+  try {
+    const raw = db.get("budget-planner:state");
+    const theme =
+      typeof raw === "string" ? JSON.parse(raw)?.state?.settings?.theme : null;
+    if (theme === "dark") return "dark";
+    if (theme === "light") return "light";
+    if (theme === "system") {
+      return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+    }
+  } catch {
+    // unreadable state — fall through to light
+  }
+  return "light";
+}
+
+function titleBarOverlayColors() {
+  return resolvedAppearance() === "dark" ? TITLE_BAR_DARK : TITLE_BAR_LIGHT;
+}
+
+function windowCanvasColor() {
+  return resolvedAppearance() === "dark" ? CANVAS_DARK : CANVAS_LIGHT;
+}
+
 function isAbsolutePath(target) {
   return typeof target === "string" && path.isAbsolute(target);
 }
@@ -141,6 +181,30 @@ function safeFilters(filters) {
 }
 
 function registerDesktopHandlers() {
+  // Custom title bar: the renderer repaints the overlay colors whenever the
+  // resolved theme changes (colors come from the design tokens, hex only).
+  ipcMain.on("desktop:window:setTitleBarOverlay", (event, payload) => {
+    if (typeof payload !== "object" || payload === null) return;
+    const color = typeof payload.color === "string" ? payload.color : null;
+    const symbolColor =
+      typeof payload.symbolColor === "string" ? payload.symbolColor : null;
+    if (
+      color === null ||
+      symbolColor === null ||
+      !/^#[0-9a-fA-F]{6}$/.test(color) ||
+      !/^#[0-9a-fA-F]{6}$/.test(symbolColor)
+    ) {
+      return;
+    }
+    const win = windowFor(event);
+    if (!win) return;
+    try {
+      win.setTitleBarOverlay({ color, symbolColor, height: TITLE_BAR_HEIGHT });
+    } catch {
+      // platform without overlay support — colors stay as created
+    }
+  });
+
   // Native file dialogs (generic).
   ipcMain.handle("desktop:dialog:open", async (event, options) => {
     const opts = typeof options === "object" && options !== null ? options : {};
@@ -182,6 +246,8 @@ function registerDesktopHandlers() {
 
   // File reads/writes. Restricted: absolute paths only, .json-only writes,
   // 16 MB size cap. Never expose a generic fs module to the renderer.
+  // Writes are atomic (temp file + rename); the temp file is removed even
+  // when the write fails (Prompt 7B — no partial sensitive content).
   ipcMain.handle("desktop:fs:writeText", (event, payload) => {
     const { target, content } =
       typeof payload === "object" && payload !== null ? payload : {};
@@ -193,18 +259,7 @@ function registerDesktopHandlers() {
     ) {
       return { ok: false, error: "invalid target or content" };
     }
-    try {
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      const tmpPath = `${target}.tmp`;
-      fs.writeFileSync(tmpPath, content, "utf8");
-      fs.renameSync(tmpPath, target);
-      return { ok: true };
-    } catch (error) {
-      return {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    return atomicWriteText(target, content, { mkdir: true });
   });
 
   ipcMain.handle("desktop:fs:readText", (event, payload) => {
@@ -362,17 +417,10 @@ function registerDesktopHandlers() {
       filters: [{ name: "Budget Planner data", extensions: ["json"] }],
     });
     if (saved.canceled || !saved.filePath) return { canceled: true };
-    try {
-      const tmpPath = `${saved.filePath}.tmp`;
-      fs.writeFileSync(tmpPath, content, "utf8");
-      fs.renameSync(tmpPath, saved.filePath);
-      return { ok: true, filePath: saved.filePath };
-    } catch (error) {
-      return {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    const written = atomicWriteText(saved.filePath, content);
+    return written.ok
+      ? { ok: true, filePath: saved.filePath }
+      : { ok: false, error: written.error };
   });
 
   // Composite restore: main picks the newest file backup, confirms, reads it.
@@ -462,8 +510,10 @@ function createWindow() {
     minWidth: 375,
     minHeight: 600,
     show: false,
-    autoHideMenuBar: false,
-    backgroundColor: "#0d0f14",
+    autoHideMenuBar: true,
+    titleBarStyle: "hidden",
+    titleBarOverlay: { ...titleBarOverlayColors(), height: TITLE_BAR_HEIGHT },
+    backgroundColor: windowCanvasColor(),
     icon: fs.existsSync(windowIcon) ? windowIcon : undefined,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -583,6 +633,78 @@ async function runSmokeTest(win) {
       throw new Error("app shell rendered no content");
     }
 
+    // The custom title bar must be painted by the renderer at the top of the
+    // window, exactly TITLE_BAR_HEIGHT tall, with the app branding.
+    const titlebar = await win.webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector('[data-titlebar]');
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return {
+          text: (el.textContent || '').trim(),
+          top: Math.round(rect.top),
+          height: Math.round(rect.height),
+        };
+      })()
+    `);
+    if (
+      !titlebar ||
+      !titlebar.text.includes("Budget Planner") ||
+      titlebar.top !== 0 ||
+      titlebar.height !== TITLE_BAR_HEIGHT
+    ) {
+      throw new Error(`custom title bar missing: ${JSON.stringify(titlebar)}`);
+    }
+
+    // App-painted overlay scrollbars: a 6 px rounded thumb that is transparent
+    // at rest and visible while scrolling (html[data-scrolling] is toggled by
+    // lib/overlayScrollbars.ts on scroll events; the CSS paints the thumb).
+    const scrollbarStyle = await win.webContents.executeJavaScript(`
+      (() => {
+        const root = document.documentElement;
+        const width = getComputedStyle(root, '::-webkit-scrollbar').width;
+        const rest = getComputedStyle(root, '::-webkit-scrollbar-thumb').backgroundColor;
+        root.dataset.scrolling = 'on';
+        const active = getComputedStyle(root, '::-webkit-scrollbar-thumb').backgroundColor;
+        delete root.dataset.scrolling;
+        return { width, rest, active };
+      })()
+    `);
+    const isTransparent = (color) =>
+      color === "transparent" || color === "rgba(0, 0, 0, 0)";
+    if (
+      scrollbarStyle.width !== "6px" ||
+      !isTransparent(scrollbarStyle.rest) ||
+      isTransparent(scrollbarStyle.active)
+    ) {
+      throw new Error(
+        `overlay scrollbars not applied: ${JSON.stringify(scrollbarStyle)}`,
+      );
+    }
+
+    // Theme switching must be instantaneous and simultaneous across every
+    // container. The page canvas is body's background (html carries none), so
+    // a background-color transition on body would make the canvas lag a beat
+    // behind the instantly-switching surfaces and paint a visible strip of the
+    // old theme at their boundaries. Assert there is no theme crossfade.
+    const bodyTransition = await win.webContents.executeJavaScript(`
+      (() => {
+        const s = getComputedStyle(document.body);
+        return {
+          duration: s.transitionDuration,
+          property: s.transitionProperty,
+        };
+      })()
+    `);
+    if (
+      bodyTransition.duration !== "0s" ||
+      bodyTransition.property === "background-color"
+    ) {
+      throw new Error(
+        `body theme transition must be removed: ${JSON.stringify(bodyTransition)}`,
+      );
+    }
+
     // The secure preload bridge must be present and answer over IPC.
     const bridge = await win.webContents.executeJavaScript(`
       (() => ({
@@ -654,6 +776,9 @@ async function runSmokeTest(win) {
         throw new Error(`native menu missing accelerator for ${needle}`);
       }
     }
+    if (win.isMenuBarVisible()) {
+      throw new Error("menu bar must be hidden on launch (autoHideMenuBar)");
+    }
 
     // Phase 3: the renderer bridge must expose the desktop feature surface.
     const surface = await win.webContents.executeJavaScript(`
@@ -671,12 +796,39 @@ async function runSmokeTest(win) {
           && typeof window.budgetPlannerDesktop?.backups?.read === 'function'
           && typeof window.budgetPlannerDesktop?.backups?.delete === 'function',
         menu: typeof window.budgetPlannerDesktop?.menu?.on === 'function',
+        window: typeof window.budgetPlannerDesktop?.window?.setTitleBarOverlay === 'function',
       }))()
     `);
-    for (const key of ["dialog", "fs", "shell", "notify", "paths", "backups", "menu"]) {
+    for (const key of ["dialog", "fs", "shell", "notify", "paths", "backups", "menu", "window"]) {
       if (surface[key] !== true) {
         throw new Error(`bridge surface missing: ${key}`);
       }
+    }
+
+    // The title-bar overlay IPC must accept the app's own design-token colors
+    // (tokens may be compressed shorthand like "#fff"; normalize to 6-digit).
+    const overlay = await win.webContents.executeJavaScript(`
+      (() => {
+        const styles = getComputedStyle(document.documentElement);
+        const expand = (v) => {
+          let hex = (v || '').trim();
+          if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
+            hex = '#' + hex.slice(1).split('').map((c) => c + c).join('');
+          }
+          return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.toLowerCase() : null;
+        };
+        const color = expand(styles.getPropertyValue('--color-surface')) || '#ffffff';
+        const symbolColor = expand(styles.getPropertyValue('--color-ink')) || '#0f172a';
+        window.budgetPlannerDesktop.window.setTitleBarOverlay({ color, symbolColor });
+        return { color, symbolColor };
+      })()
+    `);
+    if (
+      !overlay ||
+      !/^#[0-9a-fA-F]{6}$/.test(overlay.color) ||
+      !/^#[0-9a-fA-F]{6}$/.test(overlay.symbolColor)
+    ) {
+      throw new Error(`title-bar overlay IPC rejected tokens: ${JSON.stringify(overlay)}`);
     }
 
     // Phase 3: file-based backup roundtrip through the bridge (create -> list
@@ -725,7 +877,29 @@ async function runSmokeTest(win) {
 app.whenReady().then(() => {
   app.setAppUserModelId("com.budgetplanner.desktop");
 
-  db = openDatabase(app.getPath("userData"));
+  // SQLite is embedded (better-sqlite3, unpacked by electron-builder), so a
+  // fresh Windows install needs no separate database. Opening it can still
+  // fail (locked file, disk error, unwritable userData) — fail loudly with a
+  // dialog instead of running a broken app whose storage IPC handlers crash.
+  try {
+    db = openDatabase(app.getPath("userData"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (isSmokeMode()) {
+      console.error(`SMOKE_FAIL: sqlite open failed: ${detail}`);
+      app.exit(1);
+      return;
+    }
+    dialog.showErrorBox(
+      "Budget Planner",
+      "The app database could not be opened. Your data is safe — it lives " +
+        "in this database and will be available again once the problem is " +
+        "fixed.\n\n" +
+        detail,
+    );
+    app.exit(1);
+    return;
+  }
   console.log(`[desktop] sqlite: ${db.info().file}`);
 
   ipcMain.handle("desktop:app-info", () => ({

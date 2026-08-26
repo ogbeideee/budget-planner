@@ -4,6 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "./nav";
 
+// Tailwind needs whole class names, so the counts are spelled out rather than
+// interpolated. Derived from NAV_ITEMS.length so adding a destination cannot
+// silently overflow the bar into a second row again.
+const GRID_COLUMNS: Record<number, string> = {
+  5: "grid grid-cols-5",
+  6: "grid grid-cols-6",
+  7: "grid grid-cols-7",
+};
+
 export function BottomNav() {
   const pathname = usePathname();
   return (
@@ -11,7 +20,7 @@ export function BottomNav() {
       aria-label="Bottom navigation"
       className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-surface/95 backdrop-blur-md lg:hidden"
     >
-      <ul className="grid grid-cols-6">
+      <ul className={GRID_COLUMNS[NAV_ITEMS.length] ?? "grid grid-cols-6"}>
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
@@ -24,8 +33,10 @@ export function BottomNav() {
                   active ? "text-brand-600" : "text-muted hover:text-ink"
                 }`}
               >
-                <Icon className="h-5 w-5" />
-                <span>{item.label}</span>
+                <Icon className="h-5 w-5 shrink-0" />
+                <span className="w-full truncate px-0.5 text-center">
+                  {item.shortLabel ?? item.label}
+                </span>
               </Link>
               <span
                 aria-hidden="true"

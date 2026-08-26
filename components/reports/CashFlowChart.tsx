@@ -124,7 +124,7 @@ export function CashFlowChart({ months }: CashFlowChartProps) {
 
   if (!hasData) {
     return (
-      <ChartCard title="Cash flow" subtitle="Last 6 months">
+      <ChartCard title="Money in vs out" subtitle="Last 6 months">
         <EmptyState
           illustration="chart"
           illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
@@ -143,7 +143,7 @@ export function CashFlowChart({ months }: CashFlowChartProps) {
     .join("; ")}`;
 
   return (
-    <ChartCard title="Cash flow" subtitle="Money in, money out and what's left">
+    <ChartCard title="Money in vs out" subtitle="Monthly income, expenses and what's left">
       <div className="mb-3 flex items-center gap-5 text-xs font-medium text-muted">
         <span className="flex items-center gap-1.5">
           <span

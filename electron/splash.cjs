@@ -8,6 +8,35 @@ const { BrowserWindow } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
+/**
+ * The splash is a data: URL document, so it cannot reference the bundled font
+ * by path (opaque origin + CORS). Inline the latin subset that next/font
+ * already emitted as a data: URI instead, so the splash renders in Inter like
+ * the rest of the app. Returns "" when the file is not found (dev before a
+ * build, or a future Next output-naming change) and the system stack is used —
+ * the splash must never fail to open over a font.
+ */
+function interFontFace() {
+  try {
+    const dir = path.join(__dirname, "..", "out", "_next", "static", "media");
+    const file = fs
+      .readdirSync(dir)
+      // next/font marks the preloaded (latin) subset with "-s.p."
+      .find((name) => name.includes("-s.p.") && name.endsWith(".woff2"));
+    if (!file) return "";
+    const base64 = fs.readFileSync(path.join(dir, file)).toString("base64");
+    return `@font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: block;
+    src: url(data:font/woff2;base64,${base64}) format("woff2");
+  }`;
+  } catch {
+    return "";
+  }
+}
+
 function iconSvg() {
   // Vector replica of the app icon (scripts/make-icon.mjs art): indigo
   // gradient square, white coin, ascending bars. Keep in sync manually.
@@ -38,7 +67,8 @@ function createSplashScreen({ appName, version }) {
 <meta charset="utf-8">
 <style>
   html, body { margin: 0; height: 100%; background: #0d0f14; overflow: hidden; }
-  body { user-select: none; -webkit-app-region: drag; font-family: "Segoe UI", system-ui, sans-serif; }
+  ${interFontFace()}
+  body { user-select: none; -webkit-app-region: drag; font-family: "Inter", "Segoe UI", system-ui, sans-serif; }
   .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
   .app { color: #e8eaf6; font-size: 20px; font-weight: 600; letter-spacing: 0.2px; }
   .ver { color: #8b93c9; font-size: 12px; }

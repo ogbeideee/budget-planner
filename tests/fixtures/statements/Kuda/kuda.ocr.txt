@@ -1,0 +1,45 @@
+Account Number Date
+Cea) ee, eines) Pee 2003640955 01/07/2026 - 14/08/2026
+2 OLABISI STREET, . .
+Opening Balance Closing Balance
+IKOSI KETU, KOSOFE, LAGOS, 105102,
+NIGERIA IKOSI KETU, KOSOFE, LAGOS 44.33 69.33
+Summary
+Type Opening Balance Closing Balance
+Spend Account 14.33 29.33
+Spend + Save (1 Pocket) #30.00 840.00
+Spend Account
+Money In Money Out Opening Balance Closing Balance
+2,925.00 2,910.00 14.33 29.33
+Date/Time Money In Money Out Category To/From Description Balance
+01/08/26 2,925.00 local funds Sporty Internet Ltd - from 2,939.33
+13:05:08 transfer Disbursment/3000127755/Kuda sportybet
+02/08/26 2,800.00 outward David Osahon mine 139.33
+21:39:58 transfer Ogbeide/0242986234/Wema
+Bank
+04/08/26 #100.00 outward David Osahon nnn 839.33
+16:53:03 transfer Ogbeide/8082389369/Opay
+Digital Services Limited
+04/08/26 #10.00 spend and spend and 29.33
+16:53:03 save save
+Spend + Save
+Money In Money Out Opening Balance Closing Balance
+10.00 830.00 640.00
+Date/Time Money In Money Out To Description Balance
+04/08/26 #10.00 Spend + Save ogbeide david- spend 840.00
+16:53:03 and save
+cea
+LN
+_ Sn
+Nai s
+i Re
+Page 1 of 2
+
+NOES,
+ge
+gi ‘3
+A BM
+4)
+pe
+Page 2 of 2
+

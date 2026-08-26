@@ -13,6 +13,7 @@ import {
 } from "@/lib/money";
 import type { CategoryKind, RecurrenceFrequency, RecurrenceRule } from "@/lib/types";
 import { MAX_NOTE_LENGTH } from "@/lib/validate";
+import { categoryLabel } from "@/lib/categoryDisplay";
 import { useAppStore } from "@/store/useAppStore";
 
 const FREQUENCY_OPTIONS: { value: RecurrenceFrequency; label: string }[] = [
@@ -53,7 +54,7 @@ export function RecurrenceForm({ open, onClose, rule }: RecurrenceFormProps) {
     () =>
       categories
         .filter((category) => category.kind === type)
-        .map((category) => ({ value: category.id, label: category.name })),
+        .map((category) => ({ value: category.id, label: categoryLabel(category.name) })),
     [categories, type],
   );
 

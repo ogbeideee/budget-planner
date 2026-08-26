@@ -65,7 +65,7 @@ describe("CategoryModal (edit)", () => {
     await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
     const dialogs = screen.getAllByRole("dialog");
     const picker = dialogs[dialogs.length - 1];
-    await user.click(within(picker).getByRole("option", { name: "Apple" }));
+    await user.click(within(picker).getByRole("option", { name: "Fruit" }));
 
     expect(useAppStore.getState().state.categories[0]).toMatchObject({
       name: "Groceries",
@@ -130,7 +130,7 @@ describe("CategoryModal (edit)", () => {
     await user.type(nameInput, "Supermarket");
     await user.click(screen.getByRole("button", { name: /Open the icon picker/ }));
     const picker = screen.getAllByRole("dialog")[1];
-    await user.click(within(picker).getByRole("option", { name: "Apple" }));
+    await user.click(within(picker).getByRole("option", { name: "Fruit" }));
     await user.click(screen.getByRole("radio", { name: "Red" }));
     await user.click(screen.getByRole("button", { name: /Save changes/ }));
 

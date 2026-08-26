@@ -5,6 +5,7 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { Select } from "@/components/ui/Select";
 import type { SortDirection, TransactionSort, TransactionSortKey } from "@/lib/selectors";
 import type { CategoryKind } from "@/lib/types";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
 
 export interface TransactionFiltersState {
@@ -86,7 +87,7 @@ export function TransactionFilters({
           { value: "all", label: "All categories" },
           ...categories.map((category) => ({
             value: category.id,
-            label: `${category.icon} ${category.name}`,
+            label: `${categoryDisplay(category).icon} ${categoryDisplay(category).name}`,
           })),
         ]}
         value={filters.categoryId}

@@ -17,9 +17,5 @@ const VARIANTS: Record<Priority, BadgeVariant> = {
 };
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
-  return (
-    <Badge variant={VARIANTS[priority]} title={`Priority: ${LABELS[priority]}`}>
-      {LABELS[priority]}
-    </Badge>
-  );
+  return <Badge variant={VARIANTS[priority]}>{LABELS[priority]}</Badge>;
 }

@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExpenseBreakdown } from "@/components/planner/ExpenseBreakdown";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { MonthPicker } from "@/components/ui/MonthPicker";
@@ -19,15 +18,14 @@ import { MINOR_UNITS_PER_UNIT } from "@/lib/money";
 import { financeSeries } from "@/lib/finance";
 import { monthsWithTransactions, reportTrends } from "@/lib/reportTrends";
 import { windowMonths } from "@/lib/selectors";
+import { categoryLabelOr } from "@/lib/categoryDisplay";
 import { useAppStore } from "@/store/useAppStore";
 import { CashFlowChart } from "./CashFlowChart";
 import { CategoryAnalysisChart } from "./CategoryAnalysisChart";
-import { ChartCard } from "./ChartCard";
-import { ExpectedVsActualChart } from "./ExpectedVsActualChart";
 import { FinancialInsights } from "./FinancialInsights";
 import { ForecastCard } from "./ForecastCard";
+import { IncomeComparisonChart } from "./IncomeComparisonChart";
 import { IncomeSourceChart } from "./IncomeSourceChart";
-import { IncomeTrendChart } from "./IncomeTrendChart";
 import { MonthlyOverview } from "./MonthlyOverview";
 import { Recommendations } from "./Recommendations";
 
@@ -51,10 +49,6 @@ const BudgetUtilizationChart = dynamic(
   { ssr: false, loading: () => <ChartSkeleton height={240} /> },
 );
 
-const TopCategoriesChart = dynamic(
-  () => import("./TopCategoriesChart").then((m) => m.TopCategoriesChart),
-  { ssr: false, loading: () => <ChartSkeleton height={240} /> },
-);
 
 function ChartSkeleton({ height }: { height: number }) {
   return (
@@ -81,11 +75,19 @@ function exportCsv(rows: string[][], filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Months of recorded history a trend chart needs before it says anything. Below
+ * this the "one month so far" banner shows instead, and charts that would
+ * degenerate to a single point are omitted entirely.
+ */
+const MIN_TREND_MONTHS = 2;
+
 export function ReportsView() {
   const { month, setMonth } = useMonth();
   const months = useMemo(() => windowMonths(month), [month]);
   const transactions = useAppStore((s) => s.state.transactions);
   const budgets = useAppStore((s) => s.state.budgets);
+  const rollovers = useAppStore((s) => s.state.rollovers);
   const categories = useAppStore((s) => s.state.categories);
   const incomePlans = useAppStore((s) => s.state.incomePlans);
   const futureExpenses = useAppStore((s) => s.state.futureExpenses);
@@ -145,7 +147,7 @@ export function ReportsView() {
       const category = categoryById.get(transaction.categoryId);
       rows.push([
         transaction.date,
-        category?.name ?? "Uncategorized",
+        categoryLabelOr(category?.name, "Uncategorized"),
         transaction.type,
         (transaction.amount / MINOR_UNITS_PER_UNIT).toFixed(2),
         currency,
@@ -157,7 +159,37 @@ export function ReportsView() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="relative">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+      >
+        <div className="absolute -right-24 top-14 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(14,165,164,0.06),transparent_65%)]" />
+        <div className="absolute -left-24 top-24 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.05),transparent_65%)]" />
+        <svg
+          className="absolute right-8 top-24 hidden select-none md:block"
+          width="280"
+          height="160"
+          viewBox="0 0 280 160"
+          fill="none"
+        >
+          <circle cx="224" cy="34" r="48" stroke="rgba(14,165,164,0.12)" strokeWidth="2" />
+          <circle cx="224" cy="34" r="28" stroke="rgba(14,165,164,0.14)" strokeWidth="2" />
+          <path
+            d="M32 138 C 90 132, 114 90, 166 86 C 208 82, 232 48, 270 40"
+            stroke="rgba(14,165,164,0.2)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+          <path
+            d="M32 152 C 102 146, 132 110, 192 106"
+            stroke="rgba(37,99,235,0.13)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="relative z-10 flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title="Reports"
@@ -168,7 +200,7 @@ export function ReportsView() {
             type="button"
             aria-pressed={compareOpen}
             onClick={() => setCompareOpen((open) => !open)}
-            className={`no-print flex h-10 items-center gap-2 rounded-lg border px-3.5 text-sm font-semibold transition-colors duration-150 ease-premium focus-visible:ring-2 focus-visible:ring-brand-500/50 focus:outline-none ${
+            className={`no-print flex min-h-10 items-center gap-2 rounded-md border px-4 text-base font-semibold transition-colors duration-150 ease-premium focus-visible:ring-2 focus-visible:ring-brand-500/50 focus:outline-none ${
               compareOpen
                 ? "border-brand-500/60 bg-brand-500/10 text-brand-600 dark:text-brand-400"
                 : "border-border/80 bg-surface text-ink hover:border-border hover:bg-canvas"
@@ -183,7 +215,7 @@ export function ReportsView() {
               aria-haspopup="menu"
               aria-expanded={exportOpen}
               onClick={() => setExportOpen((open) => !open)}
-              className="no-print flex h-10 items-center gap-2 rounded-lg border border-border/80 bg-surface px-3.5 text-sm font-semibold text-ink transition-colors hover:border-border hover:bg-canvas focus-visible:ring-2 focus-visible:ring-brand-500/50 focus:outline-none"
+              className="no-print flex min-h-10 items-center gap-2 rounded-md border border-border/80 bg-surface px-4 text-base font-semibold text-ink transition-colors hover:border-border hover:bg-canvas focus-visible:ring-2 focus-visible:ring-brand-500/50 focus:outline-none"
             >
               <DownloadIcon className="h-4 w-4" />
               Export
@@ -262,10 +294,33 @@ export function ReportsView() {
             month={month}
             trends={trends}
             budgets={budgets}
+            rollovers={rollovers}
             categories={categories}
             transactions={transactions}
             currency={currency}
           />
+        </section>
+
+        <section
+          aria-labelledby="reports-spending-heading"
+          className="flex flex-col gap-6"
+        >
+          <SectionHeading>Spending breakdown</SectionHeading>
+          <IncomeExpenseChart months={months} />
+          {/* The one category breakdown left on this page. It moved up into
+              this section, where the removed "Spending by category" card used
+              to sit, but stays FULL WIDTH: its donut centre label needs the
+              room, and halving it to sit beside Income vs expenses made the
+              amount overlap the ring. */}
+          <CategoryAnalysisChart month={month} />
+        </section>
+
+        <section
+          aria-labelledby="reports-savings-trend-heading"
+          className="flex flex-col gap-6"
+        >
+          <SectionHeading>Savings trend</SectionHeading>
+          <SavingsChart months={months} />
         </section>
 
         <section
@@ -276,21 +331,6 @@ export function ReportsView() {
           <SpendingTrendChart months={months} />
         </section>
 
-        <section
-          aria-labelledby="reports-category-heading"
-          className="flex flex-col gap-6"
-        >
-          <SectionHeading>Category analysis</SectionHeading>
-          <CategoryAnalysisChart month={month} />
-        </section>
-
-        <section
-          aria-labelledby="reports-income-expense-heading"
-          className="flex flex-col gap-6"
-        >
-          <SectionHeading>Income vs expenses</SectionHeading>
-          <IncomeExpenseChart months={months} />
-        </section>
 
         <section
           aria-labelledby="reports-cashflow-heading"
@@ -323,6 +363,7 @@ export function ReportsView() {
           <Recommendations
             month={month}
             budgets={budgets}
+            rollovers={rollovers}
             categories={categories}
             transactions={transactions}
             futureExpenses={futureExpenses}
@@ -336,29 +377,37 @@ export function ReportsView() {
           className="flex flex-col gap-6"
         >
           <SectionHeading>Detailed breakdowns</SectionHeading>
-          {historyDepth < 2 && (
+          {historyDepth < MIN_TREND_MONTHS && (
             <Card variant="quiet" className="print-block">
               <p className="text-sm leading-relaxed text-muted">
                 You&apos;re looking at data from just one month so far. Add{" "}
-                {2 - historyDepth} more month{2 - historyDepth === 1 ? "" : "s"} to
+                {MIN_TREND_MONTHS - historyDepth} more month
+                {MIN_TREND_MONTHS - historyDepth === 1 ? "" : "s"} to
                 unlock trend comparisons.
               </p>
             </Card>
           )}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ExpectedVsActualChart month={month} />
+            {/* Merged card: keeps the slot "Expected vs actual" held, and the
+                "Income trend" row below is gone — it was the same comparison
+                on a different axis and is now this card's "Over time" view. */}
+            <IncomeComparisonChart month={month} months={months} />
             <IncomeSourceChart month={month} />
           </div>
-          <IncomeTrendChart months={months} />
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <SavingsChart months={months} />
+          {/* Gated on the SAME `historyDepth` that drives the banner above, so
+              the two can never disagree about what "enough history" means.
+              Budget utilization is the one chart here that DROPS months without
+              budgets (`budgetUtilizationSeries` flatMaps and returns [] for
+              them) instead of zero-filling, so a single month renders as one
+              bar spanning the card — a broken-looking block, not a trend. Every
+              other months-based chart on this page zero-fills, which reads
+              correctly as "nothing yet". Hidden outright rather than shown with
+              a placeholder. */}
+          {historyDepth >= MIN_TREND_MONTHS && (
             <BudgetUtilizationChart months={months} />
-          </div>
-          <TopCategoriesChart months={months} />
-          <ChartCard title="Spending this month" subtitle="By category">
-            <ExpenseBreakdown month={month} bare />
-          </ChartCard>
+          )}
         </section>
+      </div>
       </div>
     </div>
   );

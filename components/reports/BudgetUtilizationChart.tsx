@@ -24,17 +24,18 @@ import { axisTickStyle, tooltipContentStyle } from "./chartStyles";
 export function BudgetUtilizationChart({ months }: { months: Month[] }) {
   const transactions = useAppStore((s) => s.state.transactions);
   const budgets = useAppStore((s) => s.state.budgets);
+  const rollovers = useAppStore((s) => s.state.rollovers);
   const currency = useAppStore((s) => s.state.settings.currency);
   const reduced = useReducedMotion();
   const colors = useChartColors();
 
   const data = useMemo(
     () =>
-      budgetUtilizationSeries(budgets, transactions, months).map((point) => ({
+      budgetUtilizationSeries(budgets, transactions, months, rollovers).map((point) => ({
         ...point,
         barPct: Math.min(100, point.pct),
       })),
-    [budgets, transactions, months],
+    [budgets, transactions, months, rollovers],
   );
 
   if (data.length === 0) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export interface SliderProps {
   label?: string;
@@ -11,6 +11,7 @@ export interface SliderProps {
   step: number;
   onChange: (value: number) => void;
   displayValue?: string;
+  trailing?: ReactNode;
 }
 
 export function Slider({
@@ -21,6 +22,7 @@ export function Slider({
   step,
   onChange,
   displayValue,
+  trailing,
 }: SliderProps) {
   const inputId = useId();
   const fill = max > min ? ((value - min) / (max - min)) * 100 : 0;
@@ -38,18 +40,21 @@ export function Slider({
           )}
         </div>
       )}
-      <input
-        id={inputId}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        aria-valuetext={displayValue}
-        style={{ "--slider-fill": `${fill}%` } as CSSProperties}
-        className="slider-premium h-2 w-full cursor-pointer"
-      />
+      <div className="flex items-center gap-3">
+        <input
+          id={inputId}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          aria-valuetext={displayValue}
+          style={{ "--slider-fill": `${fill}%` } as CSSProperties}
+          className="slider-premium h-2 w-full min-w-0 cursor-pointer"
+        />
+        {trailing}
+      </div>
     </div>
   );
 }

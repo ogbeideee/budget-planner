@@ -122,7 +122,7 @@ export function IncomeSourcesPanel() {
                 </div>
 
                 <dl className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg bg-canvas/60 px-3 py-2">
+                  <div className="rounded-xl bg-canvas/50 px-4 py-3.5">
                     <dt className="text-micro font-bold uppercase tracking-[0.08em] text-muted">
                       Expected
                     </dt>
@@ -130,7 +130,7 @@ export function IncomeSourcesPanel() {
                       {formatMoney(plan.expectedAmount, state.settings.currency)}
                     </dd>
                   </div>
-                  <div className="rounded-lg bg-canvas/60 px-3 py-2">
+                  <div className="rounded-xl bg-canvas/50 px-4 py-3.5">
                     <dt className="text-micro font-bold uppercase tracking-[0.08em] text-muted">
                       Received
                     </dt>
@@ -150,7 +150,7 @@ export function IncomeSourcesPanel() {
                         ? "text-ink"
                         : pending
                           ? "text-warn"
-                          : "text-emerald-600 dark:text-emerald-400"
+                          : "text-success-text"
                     }`}
                   >
                     {formatMoney(diff, state.settings.currency)}

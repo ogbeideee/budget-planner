@@ -1,10 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import { ArrowRightIcon } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { budgetSuggestions } from "@/lib/recommendations";
 import type { Budget, Month } from "@/lib/types";
+import { categoryLabelOr } from "@/lib/categoryDisplay";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
 
 export interface BudgetSuggestionsProps {
@@ -27,59 +30,52 @@ export function BudgetSuggestions({ month, onAdjust }: BudgetSuggestionsProps) {
   if (suggestions.length === 0) return null;
 
   const fmt = (value: number) => formatMoney(value, currency);
-  const remainingIncome = suggestions[0]?.remainingIncome ?? 0;
-  const totalOverage = suggestions.reduce((sum, s) => sum + s.overspent, 0);
-  const allCovered = totalOverage <= remainingIncome;
-  const coveredCount = suggestions.filter((s) => s.coveredByRemaining).length;
 
   return (
-    <div className="mb-4 rounded-lg border border-warn/15 bg-warn/[0.04] px-4 py-3">
-      <p className="text-sm font-semibold text-ink">
+    <div className="rounded-xl border border-warn/15 bg-warn/[0.06] px-5 py-4">
+      <p className="text-sm font-semibold tracking-tight text-ink">
         A few budgets are over their limits
       </p>
-      <ul className="mt-2 flex flex-col gap-2 text-sm text-muted">
-        {suggestions.map((suggestion) => (
-          <li
-            key={suggestion.budget.id}
-            className="flex flex-wrap items-center justify-between gap-2"
-          >
-            <div className="min-w-0 flex-1">
-              <p>
-                <span aria-hidden="true">{suggestion.category?.icon ?? ""}</span>{" "}
-                <span className="font-medium text-ink">
-                  {suggestion.category?.name ?? "Category"}
-                </span>{" "}
-                — raise the limit to {fmt(suggestion.suggestedLimit)} to cover
-                what you&apos;ve spent.
-              </p>
-              {suggestion.trim && (
-                <p className="mt-0.5 text-xs">
-                  Trim{" "}
-                  <span className="font-medium text-ink">
-                    {suggestion.trim.category?.name ?? "a category"}
-                  </span>{" "}
-                  — it still has {fmt(suggestion.trim.remaining)} left.
-                </p>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              onClick={() => onAdjust(suggestion.budget)}
-            >
-              Adjust
-            </Button>
-          </li>
-        ))}
+      <ul className="mt-2 flex flex-col gap-0.5">
+        {suggestions.map((suggestion) => {
+          const name = categoryLabelOr(suggestion.category?.name, "Category");
+          return (
+            <li key={suggestion.budget.id}>
+              <button
+                type="button"
+                onClick={() => onAdjust(suggestion.budget)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 ease-premium hover:bg-surface focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs ${
+                    suggestion.category
+                      ? categoryDisplay(suggestion.category).chip
+                      : "bg-canvas text-muted"
+                  }`}
+                >
+                  {categoryDisplay(suggestion.category).icon}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-muted">
+                  <span className="font-semibold text-ink">{name}</span> →{" "}
+                  {suggestion.coveredByRemaining
+                    ? `increase limit by ${fmt(suggestion.overspent)} or reduce spending`
+                    : `reduce spending by ${fmt(suggestion.overspent)} to stay within limit`}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
-      <p className="mt-2 text-xs text-muted">
-        {allCovered
-          ? "Your remaining income covers these overages."
-          : coveredCount === 0
-            ? "Your remaining income won't cover these overages yet."
-            : "Your remaining income covers some of these overages."}
-      </p>
+      <div className="mt-2 border-t border-warn/10 pt-2.5">
+        <Link
+          href="/reports"
+          className="inline-flex items-center gap-1 text-caption font-semibold text-brand-600 transition-colors duration-150 ease-premium hover:text-brand-700"
+        >
+          View recommendations
+          <ArrowRightIcon className="h-3.5 w-3.5" />
+        </Link>
+      </div>
     </div>
   );
 }

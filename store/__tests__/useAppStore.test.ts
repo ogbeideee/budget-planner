@@ -78,7 +78,7 @@ describe("persistence (AC-08)", () => {
     const income = first
       .getState()
       .state.categories.find((c) => c.kind === "income")!;
-    const legacy: Omit<AppState, "version" | "incomePlans"> & { version: 1 } = {
+    const legacy: Omit<AppState, "version" | "incomePlans" | "learnedRules" | "rollovers" | "debts" | "badges"> & { version: 1 } = {
       version: 1,
       categories: first.getState().state.categories,
       budgets: [],
@@ -129,7 +129,7 @@ describe("persistence (AC-08)", () => {
         }),
       ]);
       expect(state.categories.filter((c) => c.kind === "income")).toHaveLength(6);
-      expect(state.version).toBe(3);
+      expect(state.version).toBe(9);
     });
   });
 
@@ -339,6 +339,150 @@ describe("updateBudget / moveTransactionToNextMonth (AC-17)", () => {
         (t) => t.date.startsWith("2026-08") && t.recurringRuleId === rule.id,
       ),
     ).toHaveLength(4);
+  });
+});
+
+describe("addTransaction transfer flag", () => {
+  it("stores a deferred expense when the transfer flag is set", () => {
+    const store = createAppStore();
+    store.getState().addTransaction({
+      categoryId: store.getState().state.categories[0].id,
+      amount: 700,
+      type: "expense",
+      date: "2026-08-10",
+      deferred: true,
+    });
+    const transaction = store.getState().state.transactions[0];
+    expect(transaction.type).toBe("expense");
+    expect(transaction.deferred).toBe(true);
+  });
+
+  it("leaves ordinary transactions unflagged when the flag is absent", () => {
+    const store = createAppStore();
+    store.getState().addTransaction({
+      categoryId: store.getState().state.categories[0].id,
+      amount: 700,
+      type: "expense",
+      date: "2026-08-10",
+    });
+    expect(store.getState().state.transactions[0].deferred).toBeUndefined();
+  });
+});
+
+describe("addTransactions (statement import bulk write)", () => {
+  it("adds many transactions in a single write, prepended in order", () => {
+    const store = createAppStore();
+    const before = store.getState().state.transactions;
+    store.getState().addTransactions([
+      {
+        categoryId: store.getState().state.categories[0].id,
+        amount: 50000000,
+        type: "expense",
+        date: "2026-08-01",
+        note: "RENT PAYMENT",
+      },
+      {
+        categoryId: store.getState().state.categories[1].id,
+        amount: 250000,
+        type: "income",
+        date: "2026-08-02",
+        note: "SALARY PAYMENT",
+      },
+    ]);
+    const { transactions } = store.getState().state;
+    expect(transactions).toHaveLength(before.length + 2);
+    expect(transactions[0]).toMatchObject({
+      categoryId: store.getState().state.categories[0].id,
+      amount: 50000000,
+      type: "expense",
+      date: "2026-08-01",
+      note: "RENT PAYMENT",
+    });
+    expect(transactions[1]).toMatchObject({
+      categoryId: store.getState().state.categories[1].id,
+      amount: 250000,
+      type: "income",
+      date: "2026-08-02",
+      note: "SALARY PAYMENT",
+    });
+    expect(transactions[0].id).not.toBe(transactions[1].id);
+    expect(transactions[0].createdAt).toBeTruthy();
+  });
+
+  it("adds nothing when given an empty list", () => {
+    const store = createAppStore();
+    const before = store.getState().state.transactions;
+    store.getState().addTransactions([]);
+    expect(store.getState().state.transactions).toEqual(before);
+  });
+
+  it("preserves statement-import provenance on the stored transactions", () => {
+    const store = createAppStore();
+    store.getState().addTransactions([
+      {
+        categoryId: store.getState().state.categories[0].id,
+        amount: 50000000,
+        type: "expense",
+        date: "2026-08-01",
+        note: "RENT PAYMENT",
+        importSource: {
+          source: "statement-import",
+          bank: "opay",
+          reference: "OP-001",
+          originalDescription: "RENT FOR AUGUST-2026",
+        },
+      },
+    ]);
+    expect(store.getState().state.transactions[0].importSource).toEqual({
+      source: "statement-import",
+      bank: "opay",
+      reference: "OP-001",
+      originalDescription: "RENT FOR AUGUST-2026",
+    });
+  });
+});
+
+describe("learned classification rules (Prompt 6A)", () => {
+  it("learns from repeated corrections and activates the rule", () => {
+    const store = createAppStore();
+    const categoryId = store.getState().state.categories[3].id;
+    store.getState().learnFromCorrections([
+      { provider: "MTN", description: "Mobile Data", categoryId },
+    ]);
+    expect(store.getState().state.learnedRules).toHaveLength(1);
+    expect(store.getState().state.learnedRules[0].enabled).toBe(false);
+    store.getState().learnFromCorrections([
+      { provider: "MTN", description: "Airtime", categoryId },
+    ]);
+    expect(store.getState().state.learnedRules[0].strength).toBe(2);
+    expect(store.getState().state.learnedRules[0].enabled).toBe(true);
+  });
+
+  it("updateLearnedRule can disable, re-enable and re-target a rule", () => {
+    const store = createAppStore();
+    const categoryId = store.getState().state.categories[3].id;
+    store.getState().learnFromCorrections([
+      { provider: "MTN", description: "A", categoryId },
+      { provider: "MTN", description: "B", categoryId },
+    ]);
+    const ruleId = store.getState().state.learnedRules[0].id;
+    store.getState().updateLearnedRule(ruleId, { enabled: false });
+    expect(store.getState().state.learnedRules[0].enabled).toBe(false);
+    const other = store.getState().state.categories[4].id;
+    store.getState().updateLearnedRule(ruleId, { categoryId: other });
+    expect(store.getState().state.learnedRules[0].categoryId).toBe(other);
+  });
+
+  it("deleteLearnedRule removes the rule", () => {
+    const store = createAppStore();
+    const categoryId = store.getState().state.categories[3].id;
+    store.getState().learnFromCorrections([
+      { provider: "MTN", description: "A", categoryId },
+      { provider: "MTN", description: "B", categoryId },
+    ]);
+    const ruleId = store.getState().state.learnedRules[0].id;
+    store.getState().deleteLearnedRule(ruleId);
+    expect(store.getState().state.learnedRules).toHaveLength(0);
   });
 });
 

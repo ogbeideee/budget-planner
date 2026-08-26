@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useOverridableValue } from "@/hooks/useOverridableValue";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -17,7 +18,8 @@ import {
 import { monthKeyFromIso } from "@/lib/date";
 import { monthFinance } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
-import { spendingByCategory } from "@/lib/selectors";
+import { effectiveLimit, spendingByCategory } from "@/lib/selectors";
+import { categoryLabelOr } from "@/lib/categoryDisplay";
 import type {
   Budget,
   Category,
@@ -25,6 +27,7 @@ import type {
   FutureExpense,
   IncomePlan,
   Month,
+  RolloverRecord,
   Transaction,
 } from "@/lib/types";
 
@@ -37,6 +40,29 @@ interface RecommendationItem {
   title: string;
   description: string;
   action?: ReactNode;
+  /** Money at stake, for ranking urgency. Absent when not comparable. */
+  impact?: number;
+}
+
+/** Higher wins. Only a warning can open by default. */
+const SEVERITY: Record<RecoType, number> = {
+  warning: 2,
+  information: 1,
+  success: 0,
+};
+
+/**
+ * Which card starts expanded. Previously this was `items[0]` — pure list
+ * position, so whichever budget happened to be iterated first got opened for no
+ * stated reason. Now: the most severe recommendation, ties broken by the
+ * largest amount of money at stake. Nothing opens unless something actually
+ * needs attention (a warning), so a clean month starts fully collapsed.
+ */
+function mostUrgentKey(items: RecommendationItem[]): string | null {
+  const ranked = items
+    .filter((item) => SEVERITY[item.type] === SEVERITY.warning)
+    .sort((a, b) => (b.impact ?? 0) - (a.impact ?? 0));
+  return ranked[0]?.key ?? null;
 }
 
 const STYLES: Record<RecoType, string> = {
@@ -54,6 +80,7 @@ const ICON_STYLES: Record<RecoType, string> = {
 interface RecommendationsProps {
   month: Month;
   budgets: Budget[];
+  rollovers: RolloverRecord[];
   categories: Category[];
   transactions: Transaction[];
   futureExpenses: FutureExpense[];
@@ -64,6 +91,7 @@ interface RecommendationsProps {
 export function Recommendations({
   month,
   budgets,
+  rollovers,
   categories,
   transactions,
   futureExpenses,
@@ -87,15 +115,19 @@ export function Recommendations({
 
     for (const budget of budgets) {
       if (budget.month !== month || budget.limit <= 0) continue;
+      // Judged against the spendable limit — a category still inside its
+      // carried-over funds is not over budget and must not be flagged.
+      const limit = effectiveLimit(budget, rollovers);
       const spent = spentByCategory.get(budget.categoryId) ?? 0;
-      if (spent <= budget.limit) continue;
+      if (spent <= limit) continue;
       const category = categories.find((c) => c.id === budget.categoryId);
       list.push({
         key: `over-${budget.id}`,
         type: "warning",
         icon: <AlertTriangleIcon className="h-5 w-5" />,
-        title: `"${category?.name ?? "Budget"}" is over budget`,
-        description: `You've spent ${fmt(spent)} of ${fmt(budget.limit)} — ${fmt(spent - budget.limit)} over.`,
+        title: `"${categoryLabelOr(category?.name, "Budget")}" is over budget`,
+        description: `You've spent ${fmt(spent)} of ${fmt(limit)} — ${fmt(spent - limit)} over.`,
+        impact: spent - limit,
         action: (
           <Button variant="secondary" size="sm" onClick={() => router.push("/")}>
             Review budget
@@ -166,10 +198,15 @@ export function Recommendations({
     }
 
     return list;
-  }, [month, budgets, categories, transactions, futureExpenses, incomePlans, fmt, router]);
+  }, [month, budgets, rollovers, categories, transactions, futureExpenses, incomePlans, fmt, router]);
 
-  const [openKey, setOpenKey] = useState<string | null>(
-    () => items[0]?.key ?? null,
+  // Derived, not frozen at mount. `items` changes whenever the month or the
+  // underlying data does, so a lazy `useState` initializer would pin the
+  // default-open card to whatever was most urgent on first render and never
+  // re-derive. Once the user clicks anything their choice takes over and
+  // stays — including collapsing everything (`null`).
+  const [openKey, setOpenKey] = useOverridableValue<string | null>(
+    mostUrgentKey(items),
   );
 
   if (
@@ -206,7 +243,7 @@ export function Recommendations({
             >
               <span
                 aria-hidden="true"
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${ICON_STYLES[item.type]}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${ICON_STYLES[item.type]}`}
               >
                 {item.icon}
               </span>

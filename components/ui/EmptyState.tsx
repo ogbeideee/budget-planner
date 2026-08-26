@@ -90,25 +90,46 @@ export function EmptyState({
   illustrationClass = "bg-sidebar-hover text-muted",
   tip,
 }: EmptyStateProps) {
+  const boxClass = illustration ? illustrationClass : iconClass;
+  const body = illustration ? (
+    <Illustration name={illustration} />
+  ) : (
+    icon
+  );
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-center">
       <span
         aria-hidden="true"
-        className="flex h-20 w-20 animate-[overlay-in_180ms_var(--ease-premium)] items-center justify-center rounded-2xl"
+        className={`relative flex h-20 w-20 animate-[overlay-in_180ms_var(--ease-premium)] items-center justify-center overflow-hidden rounded-2xl ${boxClass}`}
       >
-        {illustration ? (
-          <span
-            className={`flex h-20 w-20 items-center justify-center rounded-2xl ${illustrationClass}`}
+        <span className="pointer-events-none absolute inset-0 select-none">
+          <span className="absolute -right-7 -top-7 h-14 w-14 rounded-full bg-[radial-gradient(circle,rgba(14,165,164,0.18),transparent_70%)]" />
+          <span className="absolute -bottom-7 -left-7 h-14 w-14 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.16),transparent_70%)]" />
+          <svg
+            className="absolute bottom-1.5 right-1.5"
+            width="34"
+            height="34"
+            viewBox="0 0 34 34"
+            fill="none"
           >
-            <Illustration name={illustration} />
-          </span>
-        ) : (
-          <span
-            className={`flex h-20 w-20 items-center justify-center rounded-2xl ${iconClass}`}
-          >
-            {icon}
-          </span>
-        )}
+            <circle
+              cx="27"
+              cy="7"
+              r="5"
+              stroke="rgba(14,165,164,0.3)"
+              strokeWidth="2"
+            />
+            <path
+              d="M3 28 C 10 26, 15 21, 20 20"
+              stroke="rgba(37,99,235,0.24)"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </span>
+        <span className="relative z-10 flex h-10 w-10 items-center justify-center">
+          {body}
+        </span>
       </span>
       <div className="flex animate-[list-in_220ms_var(--ease-premium)_both] flex-col gap-2">
         <p className="text-empty-title font-bold tracking-tight text-ink">

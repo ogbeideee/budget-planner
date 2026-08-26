@@ -63,6 +63,9 @@ function installBridge(
     menu: {
       on: () => () => {},
     },
+    window: {
+      setTitleBarOverlay: () => {},
+    },
   };
 }
 

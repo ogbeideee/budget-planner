@@ -9,11 +9,12 @@ import {
   PencilIcon,
   TrashIcon,
 } from "@/components/ui/icons";
-import { categoryAccent } from "@/lib/accents";
 import { formatDateShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import type { Category, Currency, Transaction } from "@/lib/types";
+import { categoryLabel, categoryLabelOr } from "@/lib/categoryDisplay";
 
+import { categoryDisplay } from "@/lib/categoryRegistry";
 export interface TransactionCardProps {
   transaction: Transaction;
   category?: Category;
@@ -22,9 +23,11 @@ export interface TransactionCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onMoveNextMonth: () => void;
+  /** Expense rows navigate to the Expense Details screen when provided. */
+  onViewDetails?: () => void;
 }
 
-const ICON_BUTTON = "h-10 w-10 px-0";
+const ICON_BUTTON = "h-9 w-9 px-0";
 
 export const TransactionCard = memo(function TransactionCard({
   transaction,
@@ -34,35 +37,44 @@ export const TransactionCard = memo(function TransactionCard({
   onEdit,
   onDelete,
   onMoveNextMonth,
+  onViewDetails,
 }: TransactionCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isIncome = transaction.type === "income";
-  const accent = category ? categoryAccent(category.name) : null;
-  const title = transaction.note ?? category?.name ?? "Transaction";
+  const accent = category ? categoryDisplay(category) : null;
+  const title = transaction.note ?? categoryLabelOr(category?.name, "Transaction");
   const amount = `${isIncome ? "+" : "-"}${formatMoney(transaction.amount, currency)}`;
+  const opensDetails = !isIncome && onViewDetails !== undefined;
 
   return (
     <div
       role="listitem"
-      className="group flex flex-col rounded-lg border border-border/70 bg-surface p-5 shadow-card transition-all duration-150 ease-premium hover:-translate-y-0.5 hover:bg-canvas/60 hover:shadow-card-hover motion-reduce:transform-none"
+      className="group flex flex-col rounded-xl border border-border/70 bg-surface p-5 shadow-card transition-all duration-150 ease-premium hover:-translate-y-0.5 hover:shadow-card-hover motion-reduce:transform-none"
     >
       <div className="flex items-center gap-2 sm:gap-3">
         <button
           type="button"
-          aria-expanded={expanded}
+          aria-expanded={opensDetails ? undefined : expanded}
           aria-label={
-            expanded ? "Collapse transaction details" : "Expand transaction details"
+            opensDetails
+              ? "View expense details"
+              : expanded
+                ? "Collapse transaction details"
+                : "Expand transaction details"
           }
-          onClick={() => setExpanded((open) => !open)}
+          onClick={() => {
+            if (opensDetails) onViewDetails();
+            else setExpanded((open) => !open);
+          }}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none sm:gap-4"
         >
           <span
             aria-hidden="true"
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] text-base ${
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-base ${
               accent ? accent.chip : "bg-sidebar-hover text-muted"
             }`}
           >
-            {category?.icon}
+            {categoryDisplay(category).icon}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="flex flex-wrap items-center gap-2">
@@ -77,9 +89,9 @@ export const TransactionCard = memo(function TransactionCard({
             <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               {category && (
                 <span
-                  className={`rounded-full px-2 py-0.5 text-micro font-bold ${accent?.chip ?? "bg-sidebar-hover text-muted"}`}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${accent?.chip ?? "bg-sidebar-hover text-muted"}`}
                 >
-                  {category.name}
+                  {categoryLabel(category.name)}
                 </span>
               )}
               {transaction.note && (
@@ -92,7 +104,7 @@ export const TransactionCard = memo(function TransactionCard({
           <span className="shrink-0 text-right">
             <span
               className={`block text-amount font-bold tabular-nums ${
-                isIncome ? "text-income" : "text-ink"
+                isIncome ? "text-income" : "text-expense"
               }`}
             >
               {amount}
@@ -113,7 +125,7 @@ export const TransactionCard = memo(function TransactionCard({
             onClick={onEdit}
           />
           {isIncome ? (
-            <span aria-hidden="true" className="inline-block h-10 w-10" />
+            <span aria-hidden="true" className="inline-block h-9 w-9" />
           ) : (
             <Button
               variant="ghost"
@@ -140,7 +152,7 @@ export const TransactionCard = memo(function TransactionCard({
           aria-label={expanded ? "Hide transaction details" : "Show transaction details"}
           aria-expanded={expanded}
           onClick={() => setExpanded((open) => !open)}
-          className="shrink-0 rounded-md p-1.5 text-muted transition-colors duration-150 ease-premium hover:bg-sidebar-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500 focus:outline-none"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 ease-premium hover:bg-sidebar-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500 focus:outline-none"
         >
           <ChevronDownIcon
             className={`h-4 w-4 transition-transform duration-default ease-premium ${
@@ -156,7 +168,7 @@ export const TransactionCard = memo(function TransactionCard({
             <div>
               <dt className="text-caption font-medium text-muted">Category</dt>
               <dd className="mt-0.5 flex items-center gap-1.5 font-semibold text-ink">
-                {category?.icon} {category?.name ?? "Uncategorized"}
+                {categoryDisplay(category).icon} {categoryDisplay(category).name}
               </dd>
             </div>
             <div>

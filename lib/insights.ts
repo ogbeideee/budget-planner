@@ -15,6 +15,7 @@ import type {
   ID,
   IncomePlan,
   Month,
+  RolloverRecord,
   Transaction,
 } from "./types";
 
@@ -34,6 +35,9 @@ export interface InsightsInput {
   categories: Category[];
   futureExpenses?: FutureExpense[];
   incomePlans?: IncomePlan[];
+  /** Optional and empty by default, so a caller that never opted any category
+   *  into rollover gets byte-identical insights to before the feature. */
+  rollovers?: RolloverRecord[];
   month: Month;
   currency: Currency;
 }
@@ -55,6 +59,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
     currency,
     futureExpenses = [],
     incomePlans = [],
+    rollovers = [],
   } = input;
   const monthBudgets = budgets.filter((budget) => budget.month === month);
   const monthTransactions = transactions.filter((transaction) =>
@@ -75,33 +80,35 @@ export function insightsFor(input: InsightsInput): Insight[] {
     ];
   }
 
+  // All of these compare against the SPENDABLE limit via `progress.limit`,
+  // so a category still inside its carried-over funds is never reported over.
   const highOver = monthBudgets.find(
     (budget) =>
       budget.priority === "high" &&
-      budgetProgress(budget, transactions).spent > budget.limit,
+      budgetProgress(budget, transactions, rollovers).over,
   );
   if (highOver) {
-    const { spent } = budgetProgress(highOver, transactions);
+    const { spent, limit } = budgetProgress(highOver, transactions, rollovers);
     list.push({
       id: "high-over",
       tone: "danger",
       title: "High-priority budget over",
-      detail: `${categoryName(categories, highOver.categoryId)} is over by ${fmt(spent - highOver.limit)} this month.`,
-      action: { label: "Review budgets", href: "/" },
+      detail: `${categoryName(categories, highOver.categoryId)} is over by ${fmt(spent - limit)} this month.`,
+      action: { label: "Review budgets", href: "/?focus=over" },
     });
   }
 
   const over120 = monthBudgets.find((budget) =>
-    isDeeplyOverBudget(budgetProgress(budget, transactions)),
+    isDeeplyOverBudget(budgetProgress(budget, transactions, rollovers)),
   );
   if (over120) {
-    const { spent } = budgetProgress(over120, transactions);
+    const { spent, limit } = budgetProgress(over120, transactions, rollovers);
     list.push({
       id: "over-120",
       tone: "danger",
       title: "Budget far over limit",
-      detail: `${categoryName(categories, over120.categoryId)} is at ${fmt(spent)} against a limit of ${fmt(over120.limit)}.`,
-      action: { label: "Review budgets", href: "/" },
+      detail: `${categoryName(categories, over120.categoryId)} is at ${fmt(spent)} against a limit of ${fmt(limit)}.`,
+      action: { label: "Review budgets", href: "/?focus=over" },
     });
   }
 
@@ -120,7 +127,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
       tone: "neutral",
       title: "Unallocated funds",
       detail: `${fmt(received)} is unallocated this month — create a budget.`,
-      action: { label: "Create a budget", href: "/" },
+      action: { label: "Create a budget", href: "/?focus=create" },
     });
   }
 
@@ -133,7 +140,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
       tone: "neutral",
       title: "No budget for a spending category",
       detail: `${categoryName(categories, unbudgeted.categoryId)} spent ${fmt(unbudgeted.amount)} with no budget this month.`,
-      action: { label: "Add a budget", href: "/" },
+      action: { label: "Add a budget", href: "/?focus=create" },
     });
   }
 
@@ -148,7 +155,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
       tone: "warn",
       title: "Budget almost exhausted",
       detail: `${categoryName(categories, almostExhausted.categoryId)} is at ${Math.floor(progress * 100)}% of its limit — nearly gone.`,
-      action: { label: "Review budgets", href: "/" },
+      action: { label: "Review budgets", href: "/?focus=over" },
     });
   }
 
@@ -202,6 +209,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
     categories,
     futureExpenses ?? [],
     month,
+    rollovers,
   );
   if (unfunded.length >= 3) {
     list.push({
@@ -212,7 +220,7 @@ export function insightsFor(input: InsightsInput): Insight[] {
         .slice(0, 3)
         .map((need) => need.category.name)
         .join(", ")}${unfunded.length > 3 ? " and more" : ""} have no budget yet this month.`,
-      action: { label: "Fund them", href: "/" },
+      action: { label: "Fund them", href: "/?focus=create" },
     });
   }
 

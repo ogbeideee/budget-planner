@@ -19,8 +19,8 @@
 
 ### Planner
 - [x] Budget create/edit/delete — BudgetForm tests + store tests (addBudget/updateBudget/deleteBudget)
-- [x] Allocate income — AllocationPanel tests (44 planner tests total)
-- [x] Funding recommendations — NeedsFundingSection unified selector + lib/funding (gap ordering, categories + obligations)
+- [x] Allocate income — AllocationDrawer tests (on-demand drawer: clamping, apply, dismissal)
+- [x] Funding recommendations — BudgetStatusBand flags + lib/funding (gap ordering, categories + obligations)
 - [x] Budget health — lib/selectors budgetHealth (scores 75/100/85/55 scenarios)
 - [x] Budget allocation accordion — **new `Disclosure.test.tsx` regression suite (3 tests)** added this campaign: expand/collapse shows/hides body, collapsed panel contributes zero layout height (grid-template-rows 0fr), open state persists across remounts via storage seam
 
@@ -32,7 +32,7 @@
 
 ### Categories
 - [x] Create/edit/delete — CategoryModal + CategoryManager tests
-- [x] Immediate propagation — exercised by NeedsFundingSection/BudgetList suites (new categories appear in selectors/funding list without refresh)
+- [x] Immediate propagation — exercised by BudgetStatusBand/BudgetList suites (new categories appear in selectors/funding list without refresh)
 
 ### Timeline
 - [x] Filters, search, sorting, editing, deleting — HistoryView/TransactionList/TransactionCard tests + selectors (73 income+expense+timeline tests total)

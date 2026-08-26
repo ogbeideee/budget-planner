@@ -14,8 +14,9 @@ import {
 } from "@/components/ui/icons";
 import { formatMoney } from "@/lib/money";
 import { formatMonthLabel } from "@/lib/date";
-import { categoryColor } from "@/lib/accents";
 import type { RecurrenceRule } from "@/lib/types";
+import { categoryLabelOr } from "@/lib/categoryDisplay";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
 import { useToast } from "@/hooks/useToast";
 import { RecurrenceForm } from "../txn/RecurrenceForm";
@@ -28,6 +29,7 @@ import { AppearancePanel } from "./AppearancePanel";
 import { BudgetPreferencesPanel } from "./BudgetPreferencesPanel";
 import { CategoryManager } from "./CategoryManager";
 import { IncomeSourcesPanel } from "./IncomeSourcesPanel";
+import { LearnedRulesPanel } from "./LearnedRulesPanel";
 import { DataBackupsPanel } from "./DataBackupsPanel";
 import { AboutPanel } from "./AboutPanel";
 
@@ -106,7 +108,7 @@ function RecurringPanel() {
                 >
                   <input
                     type="checkbox"
-                    aria-label={`Toggle rule for ${category?.name ?? "Unknown"}`}
+                    aria-label={`Toggle rule for ${categoryLabelOr(category?.name, "Unknown")}`}
                     checked={rule.enabled}
                     onChange={(event) =>
                       updateRecurrenceRule(rule.id, {
@@ -119,15 +121,15 @@ function RecurringPanel() {
                     aria-hidden="true"
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
                     style={{
-                      backgroundColor: `${categoryColor(category)}1f`,
-                      color: categoryColor(category),
+                      backgroundColor: `${categoryDisplay(category).color}1f`,
+                      color: categoryDisplay(category).color,
                     }}
                   >
-                    {category?.icon ?? "•"}
+                    {categoryDisplay(category).icon}
                   </span>
                   <div className="min-w-0 flex-1 leading-tight">
                     <p className="truncate text-sm font-semibold tracking-tight text-ink">
-                      {category?.name ?? "Unknown category"}
+                      {categoryLabelOr(category?.name, "Unknown category")}
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
                       {FREQUENCY_LABELS[rule.frequency]} · since{" "}
@@ -141,13 +143,13 @@ function RecurringPanel() {
                     <Button
                       variant="ghost"
                       icon={<PencilIcon className="h-4 w-4" />}
-                      aria-label={`Edit recurring rule for ${category?.name ?? "Unknown"}`}
+                      aria-label={`Edit recurring rule for ${categoryLabelOr(category?.name, "Unknown")}`}
                       onClick={() => openForm(rule)}
                     />
                     <Button
                       variant="ghost"
                       icon={<TrashIcon className="h-4 w-4" />}
-                      aria-label={`Delete recurring rule for ${category?.name ?? "Unknown"}`}
+                      aria-label={`Delete recurring rule for ${categoryLabelOr(category?.name, "Unknown")}`}
                       onClick={() => setPendingRuleDelete(rule)}
                     />
                   </div>
@@ -263,6 +265,7 @@ export function SettingsView() {
           )}
           {active === "recurring" && <RecurringPanel />}
           {active === "income" && <IncomeSourcesPanel />}
+          {active === "learning" && <LearnedRulesPanel />}
           {active === "data" && <DataBackupsPanel autoImport={autoImport} />}
           {active === "about" && <AboutPanel />}
         </div>

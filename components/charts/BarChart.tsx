@@ -21,6 +21,8 @@ export interface BarChartItem {
   /** Optional leading icon tile rendered before the label. */
   icon?: ReactNode;
   iconClass?: string;
+  /** When set, the row renders as a clickable button. */
+  onClick?: () => void;
 }
 
 export interface BarChartProps {
@@ -38,17 +40,46 @@ interface BarRowProps {
 const BarRow = memo(function BarRow({ item, animate }: BarRowProps) {
   const width =
     item.max > 0 ? Math.round((item.value / item.max) * MAX_BAR_SPAN) : 0;
-  return (
+  const tooltip = (
     <div
-      aria-hidden="true"
-      className={`group relative flex items-center gap-4 ${
-        animate ? "animate-[list-in_220ms_var(--ease-premium)]" : ""
-      }`}
+      role="tooltip"
+      className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-max whitespace-nowrap rounded-lg border border-border/40 bg-ink px-3 py-2 text-left text-canvas opacity-0 shadow-pop transition-opacity duration-100 group-hover:opacity-100 motion-reduce:transition-none"
     >
+      <p className="text-sm font-semibold">{item.label}</p>
+      <dl className="mt-1.5 space-y-0.5 text-xs">
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-canvas/60">Amount</dt>
+          <dd className="tabular-nums">{item.valueLabel}</dd>
+        </div>
+        {item.pct && (
+          <div className="flex items-baseline justify-between gap-4">
+            <dt className="text-canvas/60">Percentage</dt>
+            <dd className="tabular-nums">{item.pct}</dd>
+          </div>
+        )}
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-canvas/60">Budget limit</dt>
+          <dd className="tabular-nums">{item.budget ?? "Not budgeted"}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-canvas/60">Spent</dt>
+          <dd
+            className={`tabular-nums ${
+              item.overBudget ? "font-semibold text-danger" : ""
+            }`}
+          >
+            {item.spent ?? item.valueLabel}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+  const inner = (
+    <>
       {item.icon && (
         <span
           aria-hidden="true"
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-base ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-base ${
             item.iconClass ?? "bg-sidebar-hover text-muted"
           }`}
         >
@@ -56,7 +87,7 @@ const BarRow = memo(function BarRow({ item, animate }: BarRowProps) {
         </span>
       )}
       <span className="w-28 truncate text-sm text-ink">{item.label}</span>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink/[0.06] dark:bg-white/[0.08]">
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-track">
         <div
           className="h-full rounded-full transition-[width] duration-300 ease-premium motion-reduce:transition-none"
           style={{
@@ -73,45 +104,43 @@ const BarRow = memo(function BarRow({ item, animate }: BarRowProps) {
           <p className="text-xs tabular-nums text-muted">{item.pct}</p>
         )}
       </div>
-      <div
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-max whitespace-nowrap rounded-lg border border-border/40 bg-ink px-3 py-2 text-left text-canvas opacity-0 shadow-pop transition-opacity duration-100 group-hover:opacity-100 motion-reduce:transition-none"
+      {tooltip}
+    </>
+  );
+  if (item.onClick) {
+    return (
+      <button
+        type="button"
+        aria-label={`${item.label} ${item.valueLabel}`}
+        onClick={item.onClick}
+        className={`group relative flex w-full cursor-pointer items-center gap-4 rounded-lg text-left transition-colors duration-150 ease-premium hover:bg-sidebar-hover focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none ${
+          animate ? "animate-[list-in_220ms_var(--ease-premium)]" : ""
+        }`}
       >
-        <p className="text-sm font-semibold">{item.label}</p>
-        <dl className="mt-1.5 space-y-0.5 text-xs">
-          <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-canvas/60">Amount</dt>
-            <dd className="tabular-nums">{item.valueLabel}</dd>
-          </div>
-          {item.pct && (
-            <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-canvas/60">Percentage</dt>
-              <dd className="tabular-nums">{item.pct}</dd>
-            </div>
-          )}
-          <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-canvas/60">Budget limit</dt>
-            <dd className="tabular-nums">{item.budget ?? "Not budgeted"}</dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-canvas/60">Spent</dt>
-            <dd
-              className={`tabular-nums ${
-                item.overBudget ? "font-semibold text-danger" : ""
-              }`}
-            >
-              {item.spent ?? item.valueLabel}
-            </dd>
-          </div>
-        </dl>
-      </div>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div
+      aria-hidden="true"
+      className={`group relative flex items-center gap-4 ${
+        animate ? "animate-[list-in_220ms_var(--ease-premium)]" : ""
+      }`}
+    >
+      {inner}
     </div>
   );
 });
 
 export function BarChart({ items, ariaLabel, animateFrom }: BarChartProps) {
+  const interactive = items.some((item) => item.onClick !== undefined);
   return (
-    <div role="img" aria-label={ariaLabel} className="flex flex-col gap-4">
+    <div
+      role={interactive ? "list" : "img"}
+      aria-label={interactive ? undefined : ariaLabel}
+      className="flex flex-col gap-4"
+    >
       {items.map((item, index) => (
         <BarRow
           key={item.label}

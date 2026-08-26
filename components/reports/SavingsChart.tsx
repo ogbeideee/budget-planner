@@ -40,7 +40,7 @@ export function SavingsChart({ months }: { months: Month[] }) {
       <ChartCard title="Savings over time" subtitle="Last 6 months">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-income/[0.08] text-income"
+          illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
           title="No savings to track yet"
           description="Add income or expenses to start tracking your savings trend."
         />

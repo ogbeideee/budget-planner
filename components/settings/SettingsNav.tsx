@@ -8,6 +8,7 @@ import {
   PaletteIcon,
   RepeatIcon,
   SlidersIcon,
+  SparklesIcon,
   UserIcon,
   WalletIcon,
 } from "@/components/ui/icons";
@@ -19,6 +20,7 @@ export type SettingsSection =
   | "categories"
   | "recurring"
   | "income"
+  | "learning"
   | "data"
   | "about";
 
@@ -52,6 +54,11 @@ export const SETTINGS_SECTIONS: ReadonlyArray<{
     id: "income",
     label: "Income Sources",
     icon: <WalletIcon className="h-5 w-5" />,
+  },
+  {
+    id: "learning",
+    label: "Learned rules",
+    icon: <SparklesIcon className="h-5 w-5" />,
   },
   {
     id: "data",

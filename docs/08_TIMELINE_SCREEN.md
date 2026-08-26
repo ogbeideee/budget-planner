@@ -355,49 +355,73 @@ Pastel backgrounds
 ROW INTERACTION
 --------------------------------------------------
 
+Expense rows
+
 Hover
-
 Lift
-
 Shadow increases
-
 Background tint
-
 Cursor pointer
 
 Click
+Open the Expense Details screen
+(/history/expense?id=) — no inline expansion.
 
+The iOS-style disclosure chevron at the row's far
+right expands details in place: full note, category,
+date, time, budget association, actions (Edit,
+Move to next month, Delete).
+
+Income rows
+
+Hover
+Lift
+Shadow increases
+Background tint
+Cursor pointer
+
+Click
 Expand details
-
 No navigation required.
 
 --------------------------------------------------
-EXPANDED DETAILS
+EXPENSE DETAILS SCREEN
 --------------------------------------------------
 
-Smooth accordion.
+Full-screen details for one expense
+(route /history/expense?id=, spec UI_UX_SPEC § 3.3a).
 
-Shows
+Header
+Back navigation
+Edit action
 
-Full note
+Hero card
+Large category icon
+Expense name
+Category pill
+Amount (prominent)
+Date, time chips
+Recurring / Deferred badges
 
+Note
+Full note text when present
+
+Detail rows
 Category
-
-Date
-
-Time
-
+Budget
 Payment method
-
-Budget association
+Receipt
+Created
+Updated
 
 Actions
+Edit Expense
+Delete Expense
 
-Edit
-
-Duplicate
-
-Delete
+Backdrop
+Subtle teal/blue gradient tint
+Curved-line + concentric-circle decoration
+in the large unused areas.
 
 --------------------------------------------------
 ANIMATIONS

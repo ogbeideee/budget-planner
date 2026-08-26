@@ -11,6 +11,14 @@ import { useToast } from "@/hooks/useToast";
 import { useAppStore } from "@/store/useAppStore";
 import { MAX_CATEGORY_NAME } from "@/lib/validate";
 import { CATEGORY_COLORS } from "./categoryColors";
+import { isMinorUnitsValid, minorToInput, toMinorUnits } from "@/lib/money";
+import {
+  DebtFields,
+  EMPTY_DEBT_DRAFT,
+  bpsToPercentInput,
+  percentToBps,
+  type DebtDraft,
+} from "./DebtFields";
 import type { Category, CategoryKind } from "@/lib/types";
 
 interface CategoryDraft {
@@ -35,9 +43,34 @@ export function CategoryModal({
   onRequestDelete,
 }: CategoryModalProps) {
   const categories = useAppStore((s) => s.state.categories);
+  const debts = useAppStore((s) => s.state.debts);
+  const currency = useAppStore((s) => s.state.settings.currency);
   const addCategory = useAppStore((s) => s.addCategory);
   const updateCategory = useAppStore((s) => s.updateCategory);
+  const setCategoryDebt = useAppStore((s) => s.setCategoryDebt);
   const { success, error } = useToast();
+
+  const existingDebt = category
+    ? (debts.find((debt) => debt.categoryId === category.id) ?? null)
+    : null;
+  // Seeded once at mount, like the category draft above it.
+  const [debtDraft, setDebtDraft] = useState<DebtDraft>(() =>
+    existingDebt
+      ? {
+          tracked: true,
+          balance: minorToInput(existingDebt.balance),
+          aprPercent: bpsToPercentInput(existingDebt.aprBps),
+          minimumPayment: minorToInput(existingDebt.minimumPayment),
+        }
+      : EMPTY_DEBT_DRAFT,
+  );
+  const [debtError, setDebtError] = useState<string | null>(null);
+
+  const debtPreview = {
+    balance: Math.max(0, toMinorUnits(debtDraft.balance)),
+    aprBps: percentToBps(debtDraft.aprPercent),
+    minimumPayment: Math.max(0, toMinorUnits(debtDraft.minimumPayment)),
+  };
 
   // Draft is seeded exactly once at mount (the parent mounts this modal
   // per edit session). It is never synced with store state while editing.
@@ -90,6 +123,27 @@ export function CategoryModal({
       error(`A category named "${name}" already exists`);
       return;
     }
+    // Debt fields are validated before anything is written, so a bad amount
+    // cannot leave the category saved and the debt silently dropped.
+    if (debtDraft.tracked) {
+      if (
+        !isMinorUnitsValid(toMinorUnits(debtDraft.balance)) ||
+        debtPreview.balance <= 0
+      ) {
+        setDebtError("Enter the current balance owed.");
+        error("Enter the current balance owed.");
+        return;
+      }
+      if (
+        debtDraft.minimumPayment.trim() !== "" &&
+        !isMinorUnitsValid(toMinorUnits(debtDraft.minimumPayment))
+      ) {
+        setDebtError("Enter a valid minimum payment, or leave it blank.");
+        error("Enter a valid minimum payment, or leave it blank.");
+        return;
+      }
+    }
+
     if (isEdit && category) {
       const saved = updateCategory(category.id, {
         name,
@@ -101,6 +155,16 @@ export function CategoryModal({
         error("Could not save changes.");
         return;
       }
+      setCategoryDebt(
+        category.id,
+        debtDraft.tracked
+          ? {
+              balance: debtPreview.balance,
+              aprBps: debtPreview.aprBps,
+              minimumPayment: debtPreview.minimumPayment,
+            }
+          : null,
+      );
       success("Category updated.");
     } else {
       const added = addCategory({
@@ -113,6 +177,22 @@ export function CategoryModal({
         setErrorMessage("Could not add this category.");
         error("Could not add this category.");
         return;
+      }
+      if (debtDraft.tracked) {
+        // addCategory generates the id, so the new record is found by name —
+        // uniqueness is already enforced above.
+        const created = useAppStore
+          .getState()
+          .state.categories.find(
+            (item) => item.name.toLowerCase() === name.toLowerCase(),
+          );
+        if (created) {
+          setCategoryDebt(created.id, {
+            balance: debtPreview.balance,
+            aprBps: debtPreview.aprBps,
+            minimumPayment: debtPreview.minimumPayment,
+          });
+        }
       }
       success("Category added.");
     }
@@ -222,6 +302,17 @@ export function CategoryModal({
           onChange={(color) =>
             setDraft((current) => ({ ...current, color }))
           }
+        />
+
+        <DebtFields
+          draft={debtDraft}
+          onChange={(next) => {
+            setDebtDraft(next);
+            if (debtError) setDebtError(null);
+          }}
+          currency={currency}
+          preview={debtPreview}
+          error={debtError}
         />
 
         <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-4">

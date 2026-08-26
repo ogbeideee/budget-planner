@@ -48,6 +48,13 @@ export interface DesktopDialogOptions {
   properties?: string[];
 }
 
+export interface DesktopWindowBridge {
+  setTitleBarOverlay(payload: {
+    color: string;
+    symbolColor: string;
+  }): void;
+}
+
 export interface DesktopBridge {
   platform: string;
   getAppInfo(): Promise<AppInfo>;
@@ -89,6 +96,7 @@ export interface DesktopBridge {
   menu: {
     on(callback: (action: DesktopMenuAction) => void): () => void;
   };
+  window: DesktopWindowBridge;
 }
 
 declare global {

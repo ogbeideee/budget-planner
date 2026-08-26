@@ -13,6 +13,7 @@ import { todayIso } from "@/lib/date";
 import { formatMoney, isMinorUnitsValid, minorToInput, toMinorUnits } from "@/lib/money";
 import type { FutureExpense, Priority } from "@/lib/types";
 import { MAX_NOTE_LENGTH, MAX_TITLE_LENGTH } from "@/lib/validate";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
 
 export interface FutureExpenseFormProps {
@@ -178,7 +179,7 @@ export function FutureExpenseForm({
             value={categoryId}
             options={expenseCategories.map((category) => ({
               value: category.id,
-              label: `${category.icon} ${category.name}`,
+              label: `${categoryDisplay(category).icon} ${categoryDisplay(category).name}`,
             }))}
             onChange={(event) => setCategoryId(event.target.value)}
             error={error?.startsWith("Choose") ? error : undefined}

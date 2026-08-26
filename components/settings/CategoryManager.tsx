@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/useToast";
 import { useAppStore } from "@/store/useAppStore";
 import { CategoryModal } from "./CategoryModal";
 import type { Category, CategoryKind } from "@/lib/types";
+import { categoryLabel } from "@/lib/categoryDisplay";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 
 function CategoryList({
   title,
@@ -82,11 +84,11 @@ function CategoryList({
                     color: category.color,
                   }}
                 >
-                  <IconValue value={category.icon} className="h-5 w-5 text-lg" />
+                  <IconValue value={categoryDisplay(category).icon} className="h-5 w-5 text-lg" />
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-ink">
-                    {category.name}
+                    {categoryLabel(category.name)}
                   </p>
                   <p className="text-xs text-muted">
                     {count === 0
@@ -98,7 +100,7 @@ function CategoryList({
               <div className="flex shrink-0 items-center gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                 <button
                   type="button"
-                  aria-label={`Edit ${category.name}`}
+                  aria-label={`Edit ${categoryLabel(category.name)}`}
                   onClick={() => onEdit(category)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-canvas hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500"
                 >
@@ -106,7 +108,7 @@ function CategoryList({
                 </button>
                 <button
                   type="button"
-                  aria-label={`Delete ${category.name}`}
+                  aria-label={`Delete ${categoryLabel(category.name)}`}
                   onClick={() => onDelete(category)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:ring-2 focus-visible:ring-danger"
                 >

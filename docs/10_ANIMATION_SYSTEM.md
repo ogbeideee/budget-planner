@@ -473,19 +473,31 @@ Never shake the whole dialog.
 THEME CHANGE
 --------------------------------------------------
 
-Theme transitions
+No transitions
 
-Background
+Switch instantly
 
-Text
+Every container at once
+
+Sidebar
+
+Title bar
+
+Header
 
 Cards
 
-Animate over
+Page canvas
 
-250ms
+Never flash white
 
-Never flash white.
+Never flash black
+
+No lagging strip at surface boundaries
+
+(Historically body transitioned its background 250ms while surfaces switched
+instantly — the canvas gutter at the sidebar/content boundary kept the old
+theme for a beat. Removed: everything switches in the same frame.)
 
 --------------------------------------------------
 MICRO INTERACTIONS

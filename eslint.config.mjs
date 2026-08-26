@@ -22,6 +22,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Electron packaging glue (plain Node CJS, not app code):
     "electron/**",
+    // Vendored OCR assets (minified third-party tesseract.js build + WASM core):
+    "public/vendor/**",
   ]),
 ]);
 

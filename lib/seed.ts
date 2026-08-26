@@ -23,18 +23,25 @@ export function createInitialState(): AppState {
     createdAt: now,
   }));
   return {
-    version: 3,
+    version: 9,
     categories,
     budgets: [],
     transactions: [],
     futureExpenses: [],
     recurrenceRules: [],
     incomePlans: [],
+    learnedRules: [],
+    rollovers: [],
+    debts: [],
+    badges: [],
     settings: {
       currency: "USD",
       recurringEnabled: true,
-      firstRunDone: true,
+      // False on a NEW install so the first-run onboarding shows. Existing
+      // stored states already carry true and are never re-onboarded.
+      firstRunDone: false,
       theme: "system",
+      debtStrategy: "avalanche",
     },
   };
 }

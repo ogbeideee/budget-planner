@@ -65,6 +65,13 @@ const menu = {
   },
 };
 
+// Custom title bar: keep the native overlay controls in sync with the app's
+// theme (colors come from the renderer's design tokens, hex only).
+const windowControls = {
+  setTitleBarOverlay: (payload) =>
+    ipcRenderer.send("desktop:window:setTitleBarOverlay", payload),
+};
+
 function migrateBrowserData() {
   try {
     const needsMigration = ipcRenderer.sendSync("desktop:storage:needs-migration");
@@ -105,4 +112,5 @@ contextBridge.exposeInMainWorld("budgetPlannerDesktop", {
   paths: () => ipcRenderer.invoke("desktop:paths"),
   backups,
   menu,
+  window: windowControls,
 });

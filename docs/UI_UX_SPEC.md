@@ -50,8 +50,8 @@ Notion, Raycast, Cron). The rules that govern every screen:
   --color-overlay: #141417;
 
   /* typography */
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  --font-sans: var(--font-inter), system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;                  /* 13 px — app-wide caption/table size */
   --text-base: 0.9375rem;                /* 15 px — body */
@@ -87,32 +87,80 @@ Spacing scale: 4 px grid (`space-y-4` etc.). Focus ring:
   text-muted/80` (SectionHeading component).
 - **Row actions**: hidden on `sm+`, revealed on row hover/focus (`opacity-0
   group-hover:opacity-100`), always visible on mobile (`max-sm:opacity-100`).
+  **Exception — Budgets rows** (`BudgetRow`): edit / allocate / delete are the
+  only route to those actions, so they are always visible at every width; hover
+  and focus add emphasis rather than revealing. Icon-only row buttons are plain
+  `<button>`s with an explicit square (`h-8 w-8`) and `shrink-0` glyphs — do NOT
+  use `Button` for them: its size presets hard-code `px-3`/`px-4`, which a
+  `px-0` in `className` cannot override (equal specificity), collapsing the
+  content box to 0 and the icon with it.
 
 ## 2. Layout shell
 
-- `≥ 1024px`: fixed left sidebar (240 px) with logo, nav links, and app version; content
-  area max-width 1152 px centered, padded 24 px.
-- `< 1024px`: top header (logo + title) and bottom tab bar with 5 tabs: Planner, To-Do,
-  History, Reports, Settings. Icons with text labels; `aria-current="page"` on active.
+- Desktop (Electron): a 44 px custom title bar (`components/shell/TitleBar.tsx`)
+  spans the window top — `--color-surface` background, hairline bottom border,
+  compact logo + app name on the left, native window controls overlaid top-right;
+  the whole strip is a drag region (`-webkit-app-region: drag`).
+- `≥ 1024px`: fixed left sidebar (240 px) with nav links and app version (branding
+  lives in the title bar); content area max-width 1152 px centered, padded 24 px.
+- `< 1024px`: slim top header (planner status + theme toggle; branding lives in the
+  title bar) and bottom tab bar with 5 tabs: Planner, To-Do, History, Reports,
+  Settings. Icons with text labels; `aria-current="page"` on active.
 - Active nav item: brand background tint + brand text; inactive: `text-muted hover:bg-canvas`.
 - The **Planner** is the landing page (`/`) and the primary experience; every other page
   exists to support it.
 - Sticky month selector: on Planner/History/Reports, a `MonthPicker` sits in the header row
   with a ← / → chevron and "This month" shortcut. Shared state via `useMonth` hook (URL
   param `?month=YYYY-MM`, default current month).
+- **First-run name setup**: until a display name is saved, a small non-dismissable
+  `NameSetupModal` overlays the shell once per launch — heading "What should we call you?",
+  muted supporting copy, a single text input (placeholder "Enter your name", teal focus
+  ring) and a teal **Continue** button that stays disabled until the trimmed input is
+  non-empty (Enter submits). Saving writes the trimmed name to the shared storage seam
+  (`settings:display-name`) and the modal never appears again. The name is only used for
+  personalization — the Planner hero greeting renders "Good morning/afternoon/evening,
+  {name} 👋" (or without a name when none is saved); no profile/account model involved.
 
 ## 3. Page specifications
+
+### 3.0 First-run onboarding (precedes every route)
+
+Full-window, shown INSTEAD of the shell while `settings.firstRunDone` is false. No
+sidebar, header or bottom nav; `TitleBar` and `ToastHost` stay mounted and the flow
+container is `fixed inset-0 z-30 pt-11` so nothing sits under the 44px title bar.
+
+- **Pitch (3 screens)** — icon tile (`h-16 w-16`, `bg-brand-500/10`), `text-page-title`
+  headline, one `text-description` paragraph, step indicator, buttons, skip link.
+  Copy covers category limits, per-category spend visibility, month-over-month
+  comparison. Controls: `Next` (screen 1), `Back`+`Next` (2), `Back`+`Get started` (3),
+  with "Skip introduction" on all three jumping to guided setup.
+- **Step indicator** — `<ol>` of pills, active `w-6 bg-brand-500`, rest `w-1.5 bg-border`,
+  `aria-current="step"`, `aria-label` "Step N of 3". No stepper primitive exists in §4
+  yet; adopt one here and in `SetupFrame` if it is ever added.
+- **Guided setup (2 steps, required, no skip)** — shared `SetupFrame` chrome
+  ("Step N of 2" + the same indicator). Income: icon/name/amount rows via the shared
+  `IconPicker`, `Continue` gated on ≥1 source above zero. Budgets: one-tap suggestion
+  chips, inline amount field per row, "Add a different category" expanding an inline
+  custom row (`IconPicker` with `vectors={false}`), `Finish setup` gated on ≥2 funded
+  rows, and a running "{allocated} of {income} allocated" line (context only, not
+  enforced).
+- **Validation** — inline `role="alert"` line under the blocked button, never a dialog
+  or native alert.
+- Uses only existing type and colour tokens; introduces no onboarding-specific values.
+
+Full specification: `13_ONBOARDING_FLOW.md`.
 
 ### 3.1 Planner `/` (primary screen)
 
 The Planner is the month's workspace, not a dashboard: it moves the user from "what still
 needs money" → "what is allocated" → "how the month is going".
 
-Layout (desktop): header row (title + month picker) → 4 summary cards in a row →
-over-budget alert → workspace grid: **Needs Funding** checklist (2/3 width) + budget
-health card (1/3 width) → **Allocated** budget table (full width, with funding bar) →
-"Allocate remaining" sliders panel → grid: Quick Add Expense (1/2 width) + Deferred
-expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 width).
+Layout (desktop): header row (title + month picker) → page hero → 4 summary cards in a row
+→ **Budget status band** (one card: health ring, status flags incl. the FR-21 streak,
+"Review budgets") →
+**Budgets** section (fixed-width donut card + flexible category list) → Recent Activity.
+Allocation has no permanent section — it opens as a right-edge drawer on demand. See
+`06_PLANNER_SCREEN.md` for the authoritative order.
 
 - Summary cards: **Expected income** (label "Set expected income" until planned, then
   "Expected income"; value = planned total; hint shows `Received X · +Y to collect` (or
@@ -143,6 +191,14 @@ expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 wid
   chip with the count ("5 categories needing funding"). Empty state: "Everything is
   funded" — "Every expense category has a budget this month." Income categories never
   appear. Rows are rounded, `hover:bg-canvas/60`.
+- **Streak & badges** (FR-21): the Budget status band carries a "{n}-month streak" flag
+  (sparkle icon, whole row is a button) that opens a right-edge **Streak & badges**
+  drawer. The drawer lists every badge — earned in the brand tint, locked greyed
+  (`grayscale opacity-50`) with its requirement and a progress bar. Locked badges are
+  shown, never hidden, so there is something to work toward. Rows are generated from the
+  `BADGES` data list; no per-badge markup exists. The flag is hidden at a streak of 0
+  unless badges are held, in which case it reads "{n} badges earned" so the drawer stays
+  reachable. Badges are cosmetic and the drawer says so.
 - Budget health card: score `N/100`, tier label (Healthy `≥ 80` green / Watch `50–79`
   amber / At risk `< 50` red), tier-colored gauge bar, and an over-count line ("N budgets
   over limit").
@@ -158,15 +214,47 @@ expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 wid
   "Limits exceed the allocatable income" hint — 100 % is never faked). Empty state: "No
   budgets this month. Create your first budget to start tracking spending." (or fund one
   from Needs Funding).
-- **Allocate remaining** panel (below the table): shown when the selected month has ≥ 1
-  budget and `net > 0`; otherwise hidden, or disabled state "Nothing left to allocate —
-  expenses equal or exceed income this month." Panel header: "Allocate remaining — $X
-  left". One `Slider` per budget row: category icon + name, slider `0 … remaining` (step
-  100 minor units), allocated value (money), share of remaining (%). Footer: "Unallocated:
-  $X" + "Apply allocations" (primary, disabled when total = 0) + "Reset" (ghost, disabled
-  when total = 0). Apply → toast "Allocated $X across N budgets".
+- **Over-budget suggestions** (inside the Budget Allocation disclosure, above the
+  table/funding bar): compact warn banner when ≥ 1 budget is over its limit — one header
+  line with the count ("N budgets over their limits") and a short coverage status
+  ("Covered / Partly covered / Not covered by remaining income"), then one line per
+  budget: icon, name, overage amount, suggested limit, an inline trim hint when a
+  trimmable category exists, and an "Adjust" button that opens that budget's edit form.
+- **Budget edit form** (`BudgetForm`, the pencil action on a budget row): category, month
+  (read-only), limit, priority, then a bordered **"Roll over unused funds"** row — a
+  `Switch` plus a short caption ("Anything left at month end is added to next month's
+  limit, up to one extra month's worth. Going over rolls nothing forward — next month
+  still starts at its full limit."). The switch is OFF for every category that has not
+  explicitly opted in, including brand-new ones; it is per category, never global and
+  never bulk-applied. It writes to the CATEGORY (`setCategoryRollover`), not to the
+  month's budget, so the preference survives into months whose budget does not exist yet,
+  and it follows the category select while the form is open. Turning it off clears the
+  flag rather than storing `false`.
+- **Allocation drawer** (`AllocationDrawer`, on demand — there is NO permanent allocation
+  panel on the page). Triggers: a budget row's arrows/exchange action
+  (`ArrowsExchangeIcon`, `aria-label` "Allocate funds to {category}" — distinct from the
+  pencil beside it, which opens the budget edit form and is labelled "Edit {category}
+  budget"; both are `h-6 w-6` ghost buttons, pencil first, then exchange, then trash), or
+  the "Remaining" summary card's
+  "Allocate remaining" drawer, which lists the month's budgets (name, and "$X over" in
+  danger or "$X left" in muted) and hands the chosen one to the same shared drawer. Right-
+  edge `Drawer` (~400px, full height, dimmed scrim). Header: "Add funds to {category}" + X.
+  Body, in order: the over-budget hint ("{category} is $X over its $Y limit this month.
+  Move money from a category with room to spare, or raise the limit.") or, when not over,
+  "Choose how much to allocate to {category} from this month's unallocated funds."; a
+  "Move funds from" section with one bordered row per other budget that has
+  `available = limit − spent > 0` — icon, name, "$X available", and a `Slider` `0 …
+  available` (step 100 minor units) starting at 0 — omitted entirely when no category has
+  room; and a dashed-border "Or raise the limit" row with a `Slider` from the current limit
+  to `limit + overage` (or `limit + max(unallocated, 1 unit)` when not over). When the
+  target is over budget the section header shows "$moved of $overage" and the combined
+  moves clamp to the overage. Footer: "Cancel" (secondary) + "Apply" (primary, disabled
+  until something changes). Escape and scrim click behave as Cancel. Apply → toast
+  "Moved $X to {category}" (or "{category} limit set to $X").
 - **Quick Add Expense** card: category select (expense categories), amount input with
-  live `formatMoney` preview (AC-14), date input (defaults today), note (optional, max 200
+  live `formatMoney` preview (AC-14), date input (defaults inside the viewed planner
+  month: today when today falls in that month, else the 1st — a record's calendar date,
+  never the current date, decides which month it belongs to), note (optional, max 200
   chars), "Add expense" primary button. Success → toast; amount/note clear, category and
   date retained. Validation errors inline (amount parseable and > 0, category required).
 - **Deferred expenses** card: one row per deferred expense — category icon, note or
@@ -183,21 +271,35 @@ expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 wid
   longest bar spans 80% of the track and shorter bars keep the same ratios. Hovering a row
   reveals a tooltip with Category, Amount, Percentage, Budget limit (or "Not budgeted"), and
   Spent — categories with a budget show a "X of Y" readout and turn red when over budget.
-  More than five categories collapse to five behind a "Show N more categories" button that
-  reveals the rest with an animated entrance; in the Planner's collapsed preview the button
-  expands the panel. `role="img"` with values in the aria-label (AC-22).
+  Every category row is a clickable button (hover tint, focus ring): it navigates to the
+  timeline filtered to that category (`/history?month=YYYY-MM&category=ID`, the History
+  page's existing category filter; same from the Reports breakdown). The chart visuals and
+  the totals footer are unchanged. When rows are interactive the chart container drops
+  `role="img"` (each row carries its own `aria-label`); the plain chart keeps `role="img"`
+  with values in the aria-label (AC-22). More than five categories collapse to five behind a
+  "Show N more categories" button that reveals the rest with an animated entrance; in the
+  Planner's collapsed preview the button expands the panel.
 
 ### 3.2 To-Do `/todo`
 
-- Header row: month picker.
-- Single card "To do" listing the month's actionable items in deterministic order
-  (danger → warn → neutral → success): over-budget categories, spending exceeding income,
-  unallocated funds, spending category without a budget, deferred expenses waiting in the
-  month. Each row: tone icon, bold title, muted detail, link button to the resolving page
-  (Planner `/` or History `/history`).
-- Empty state: "Nothing to do — you're all set for this month."
-- Items derive from `todoFor(state, month)` (FR-17); tone + styling reuse the insight card
-  pattern.
+- Header row: page title + description, month picker (unchanged). Compact
+  muted summary line beneath: "N item(s) needs attention · 0 completed · N
+  high priority" (attention = danger/warn items; high priority = danger
+  items; the app has no task completion state, so the completed count is 0).
+- Task section "To-do · <month>" with a compact dot-separated filter control
+  (All • Needs attention • Completed; All active; client-side only —
+  Completed always shows "Nothing completed yet.").
+- Tasks render as compact horizontal rows: tinted tone icon tile, title +
+  priority/status chip, muted detail, subtle teal ghost "Resolve" link to
+  the resolving page (Planner `/` or History `/history`). Tone treatments:
+  danger = soft red/pink tint + red icon + "High priority", warn = soft
+  amber tint + "Medium priority", success = soft green tint + "On track",
+  neutral = neutral surface + "Normal".
+- Below the list: subtle dashed "You're all caught up." / "Nothing else
+  needs your attention this month." section with a small teal "View
+  Planner" action, shown whenever no additional unresolved tasks exist.
+- Items derive from `todoFor(state, month)` (FR-17); tone + styling reuse
+  the insight card palette.
 
 ### 3.3 History `/history`
 
@@ -218,20 +320,53 @@ expenses (1/2 width) → grid: Insights (1/2 width) + expense breakdown (1/2 wid
   (expense transactions only; income rows render an invisible fixed-width placeholder in the
   same slot so the delete icon stays perfectly aligned across every row), delete. Move →
   toast "Moved to MMMM YYYY".
-- Transaction form (modal): type toggle (Income/Expense), amount, category (filtered by
-  type), date (default today), note (optional, max 200 chars). Validation: amount > 0 and
-  parseable, category required.
+- **Expense rows open the Expense Details screen** (`/history/expense?id=`): clicking the
+  row body navigates (chevron still expands inline); income rows expand in place as before.
+- Transaction form (modal): white surface, subtle full-opacity 1px cool-gray border
+  + soft `shadow-card` (no heavy shadow); heading is the per-kind action (**Add Expense** /
+  **Add Transfer** / **Add Income**, "Edit transaction" when editing) with a subtle close
+  icon top-right; tabs are **Expense / Transfer / Income** with a teal 2px underline on the
+  active tab, muted blue-gray inactive tabs and a very subtle divider underneath. Body is a
+  two-column layout — Amount (currency symbol prefix) + Category (category options filtered
+  by tab; Transfer shows expense categories) and Date + amount Preview — with a full-width
+  Note textarea below ("Add a note...", `0/200` subtle bottom-right counter, max 200).
+  The modal body carries the subtle teal/blue radial-gradient + curved-line motif used
+  across the Planner. **Transfer** records the expense with the deferred flag (it appears
+  under "Transfers" on the Timeline for the chosen month and rolls into next month when
+  moved); switching tabs resets the category. Actions: Cancel + **Add Expense / Add
+  Transfer / Add Income** ("Save changes" when editing). Date defaults inside the viewed
+  planner month (today when today falls in that month, else the 1st); note optional, max
+  200 chars. Validation unchanged: amount > 0 and parseable, category required.
 - Delete: `ConfirmDialog`; if transaction is a generated recurring instance, text explains
   "This deletes this month's copy only. The recurring rule stays."
 - Empty states: no records at all → CTA "Add first record"; no matches for filters →
   "No transactions match your filters" + "Clear filters".
 
+### 3.3a Expense Details `/history/expense?id=`
+
+- Dedicated details screen for a single expense; reached from a Timeline row tap, with
+  **Back** (returns to the previous page, or to `/history?month=` of the expense on direct
+  entry) and an **Edit** action in the header.
+- Hero card (branded teal/blue radial tint + curved-line / concentric-circle motif, matching
+  the Planner's decorative language): large category icon (96 px rounded square, accent chip),
+  expense title (note or category name), category pill, amount in large tabular type,
+  Deferred/Recurring badges when set, and date (`weekday, month day, year`) + time chips.
+- Note card below the hero when a note exists.
+- Details card with labeled rows: Category (icon + name), Budget (`limit · spent` for the
+  expense's month, or "No budget set"), Payment method ("Not recorded" — not part of the
+  stored model), Receipt ("Not attached" — not part of the stored model), Created
+  (`formatDateTime`), Updated ("Edited" when flagged, else "—").
+- Actions: **Edit Expense** (primary, opens the standard `TransactionForm` in edit mode)
+  and **Delete Expense** (danger, standard `ConfirmDialog`, recurring-aware copy, navigates
+  back after deletion).
+- Unknown/income ids render a "Expense not found" empty state with a back-to-Timeline CTA.
+
 ### 3.4 Reports `/reports`
 
 Analytical-only page: no forms, no mutations, no Quick Add — just charts and numbers.
 Composed to `docs/07_REPORTS_SCREEN.md` v2.0, in section order: **Monthly overview →
-Financial insights → Spending trend → Category analysis → Income vs expenses →
-Cash flow → Forecast → Recommendations → Detailed breakdowns**. Month picker in the
+Financial insights → Spending breakdown → Savings trend → Spending trend → Cash
+flow → Forecast → Recommendations → Detailed breakdowns**. Month picker in the
 header defaults to the current month; the header also carries a **Compare month** toggle
 (per-section current-vs-previous deltas) and an **Export** menu (CSV via `exportCsv`,
 PDF via the print dialog, Print). Sections render with the small-caps `SectionHeading`;
@@ -246,16 +381,37 @@ off under `prefers-reduced-motion: reduce`. Category-colored charts use the shar
 `categoryColor()` helper so they always match the Planner's category colors.
 
 - **Monthly overview**: four KPI tiles — **Total income**, **Total expenses**,
-  **Net savings**, **Savings rate** — each with a trend chip (green ▲ / red ▼ vs the
-  previous month, from `monthFinance`); with Compare month on, a four-row compare strip
-  (current vs previous, per metric).
-- **Financial insights**: an editorial card — a large headline (savings delta, biggest
-  spending move, or top category), a supporting paragraph (top category's share of
-  spending, over-budget count), and up to 3 observation tiles (largest increase /
-  decrease, top category, over-budget categories); `EmptyState` when there's no data.
+  **Net savings**, **Savings rate** — a coherent 4-column group (soft white surface,
+  hairline border, no card shadow), each with a trend chip (green ▲ / red ▼ vs the
+  previous month, from `monthFinance`) and — where previous-month data exists — the
+  change directly beneath the primary value: "↑/↓ ₦X from last month" (money cards)
+  or "↑/↓ N% from last month" (rate card), green for positive movement and restrained
+  red for negative (expenses falling is green). Fallbacks are "No prior month to
+  compare yet" / "Record income to start comparing" / "Spending more than you earn".
+  With Compare month on, a four-row compare strip (current vs previous, per metric).
+- **Financial insights**: a deliberate editorial card on a very subtle teal-white tint
+  (`bg-brand-500/[0.03]`, `border-brand-500/20`, no shadow) — icon tile left, large
+  headline (savings delta, biggest spending move, or top category), supporting
+  paragraph (top category's share of spending, over-budget count), and up to 3
+  supporting observations as compact bordered surface cards (contextual icon with
+  red/amber/green semantic tint, concise text: largest increase / decrease and
+  over-budget categories). There is deliberately NO "biggest cost" chip — the headline
+  card directly above already states it; the over-budget chips stay because the headline
+  only summarises those as a count, never the per-category figures. `EmptyState` when
+  there's no data.
+- **Spending breakdown**: two full-width cards stacked — "Income vs expenses"
+  (6-month bar + net-line chart), then **Category analysis**, the page's ONE category
+  breakdown (see below). It is full width rather than beside the income chart because
+  its donut centre label needs the room. The former "Spending by category" card
+  (`ExpenseBreakdown`) was removed here — the page carried five overlapping
+  category views and now carries two: this one and Recommendations.
+- **Savings trend**: the quiet thin-line net-savings chart over the 6-month window
+  (thin stroke, subtle grid, zero reference line) — surfaced here and no longer
+  repeated under Detailed breakdowns.
 - **Spending trend**: the dominant chart — tall (380 px) smooth brand area of total
   expenses per month, thick rounded stroke, soft gradient, minimal gridlines.
-- **Category analysis**: top-6 donut (active segment full opacity, others dimmed on
+- **Category analysis** (the single category-breakdown visualization; lives inside
+  Spending breakdown, not its own section): top-6 donut (active segment full opacity, others dimmed on
   hover) with a center total + trend pill vs the previous month, beside a ranking list —
   per row: icon chip, name, amount, share %, animated progress bar; hovering a row
   highlights the segment.
@@ -271,8 +427,14 @@ off under `prefers-reduced-motion: reduce`. Category-colored charts use the shar
 - **Recommendations**: expandable rows (warnings / info / success), first one open by
   default, actions jump to the relevant screen (e.g. "View budget").
 - **Detailed breakdowns**: only when the selected month has ≥ 2 months of history (else
-  a hint card) — grid of Expected vs actual, Income sources, Income trend, Savings over
-  time, Budget utilization, Top 5 categories, and the "Spending this month" breakdown.
+  a hint card) — **Income: expected vs received** beside Income sources, then Budget
+  utilization. The income card is ONE card with a two-option view toggle ("By source" /
+  "Over time", pill buttons with `aria-pressed`, defaulting to By source): it merges the
+  former "Expected vs actual" (per-source bars for the month) and "Income trend"
+  (six-month expected-vs-received lines), which showed the same comparison on two axes.
+  Legend keys (Expected on the border token, Received on the income colour) are shared,
+  so switching views never reads as a different component. The "Top categories" chart was
+  also removed here (a sixth restatement of the same category data).
 - Empty states: a chart with no data in the window shows `EmptyState` instead of an
   empty axis. All charts `role="img"` with `aria-label`s containing exact values
   (AC-22). Mobile: sections and charts stack vertically; no chart is wider than the
@@ -330,14 +492,14 @@ Import still honors `?action=import` (used by `app/error.tsx`).
 | `ConfirmDialog` | **open**, **title**, **message**, **confirmLabel**, **onConfirm**, **onClose**, `danger?` | Renders via `Modal`; confirm button autofocus when `danger` |
 | `Disclosure` | **id**, **title**, **children**, `variant?`, `badge?`, `action?`, `preview?`, `defaultOpen?` | Panel: hairline `rounded-xl`; header `px-5 py-3.5` `hover:bg-canvas/50`, chevron rotates 180°; body `list-in` entrance; state persisted via storage adapter |
 | `ProgressBar` | **value** (0–1), `tone` (`brand`\|`warn`\|`danger`) | `h-1.5` rounded track `bg-ink/[0.06]`; `<div role="progressbar" aria-valuenow>` |
-| `IconPicker` | **value**, **onChange**, `label?`, `className?`, `vectors?` (default `true`) | Combobox + modal grid picker: searchable, categorised, recents + favourites (localStorage `settings:recent-icons` / `settings:favourite-icons`), emoji + "Line icons" (vector) set, full grid/arrow-key/Enter navigation, live preview tile. `vectors={false}` restricts to emoji (used for categories). |
+| `IconPicker` | **value**, **onChange**, `label?`, `className?`, `vectors?` (default `true`) | Combobox + modal grid picker: searchable, categorised, recents + favourites (localStorage `settings:recent-icons` / `settings:favourite-icons`), emoji + "Line icons" (vector) set, full grid/arrow-key/Enter navigation, live preview tile. `vectors={false}` restricts to emoji — required for categories, whose icon is printed as raw text in chart axes and `<option>`s (see `05_COMPONENT_LIBRARY.md` → Category icon library). |
 | `IconValue` | **value**, `className?` | Renders an icon string: emoji text or the matching vector component (see `iconLibrary`); falls back to `DEFAULT_ICON` for blank values. |
 | `Badge` | **children**, `tone` | Income/expense/neutral |
 | `EmptyState` | **title**, **description**, `action?`, `icon?`, `illustration?` | Icon tile `12×12` `rounded-2xl` `/0.08` tint (no shadow); centered, muted |
 | `Toast` | **message**, `tone` (`success`\|`error`), `onDismiss` | `rounded-lg` + `shadow-pop`, `toast-in` 150 ms; auto-dismiss 3 s, `role="status"` |
 | `MonthPicker` | **value**, **onChange** | `h-10` `rounded-lg` select with chevrons; "This month" shortcut |
 | `Table` | **columns**, **rows**, `emptyText?` | `<table>` with `scope="col"` headers |
-| `Slider` | **label**, **value**, **min**, **max**, **step**, **onChange**, `displayValue?` | Native `<input type="range">` with `slider-premium` styling (6 px filled track, 18 px bordered thumb); `aria-valuetext` = money value |
+| `Slider` | **label**, **value**, **min**, **max**, **step**, **onChange**, `displayValue?`, `trailing?` | Native `<input type="range">` with `slider-premium` styling (6 px filled track, 18 px bordered thumb); `aria-valuetext` = money value; optional `trailing` node rendered beside the track |
 | `ToastHost` | — | Fixed bottom-right toast stack from `useToastStore`; `aria-live="polite"` |
 | `BarChart` | **items** (`{label, value, max, color, valueLabel, pct?}`), `ariaLabel?` | Pure CSS horizontal bars (`h-2`), animated width (FR-15), `role="img"` |
 | `SectionHeading` | **children**, `action?` | Small-caps label: `text-xs font-semibold uppercase tracking-[0.08em] text-muted/80` |
@@ -347,7 +509,7 @@ Import still honors `?action=import` (used by `app/error.tsx`).
 Planner/history/to-do/txn modules live under `components/planner/`,
 `components/history/`, `components/todo/`, `components/txn/` — see `ARCHITECTURE.md` §2
 for the full tree. Page-specific components: `PlannerView`, `QuickAddExpense`,
-`DeferredSection`, `BudgetHealthCard` (planner); `HistoryView` (history); `TodoView`
+`DeferredSection`, `BudgetStatusBand` (planner); `HistoryView` (history); `TodoView`
 (todo).
 
 All `on*` handlers use `aria` labels on icon-only buttons (e.g. `aria-label="Delete

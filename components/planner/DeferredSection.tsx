@@ -2,12 +2,13 @@
 
 import { useMemo } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { categoryAccent } from "@/lib/accents";
 import { formatDateShort } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import { deferredExpenses } from "@/lib/selectors";
 import type { Month } from "@/lib/types";
+import { categoryLabelOr } from "@/lib/categoryDisplay";
 import { useAppStore } from "@/store/useAppStore";
+import { categoryDisplay } from "@/lib/categoryRegistry";
 
 export function DeferredSection({ month }: { month: Month }) {
   const transactions = useAppStore((s) => s.state.transactions);
@@ -27,7 +28,7 @@ export function DeferredSection({ month }: { month: Month }) {
     return (
       <EmptyState
         illustration="wallet"
-        illustrationClass="bg-canvas text-muted"
+        illustrationClass="bg-warn/[0.08] text-warn"
         title="Nothing has been pushed into this month"
         description="Expenses you moved forward from an earlier month will show up here."
       />
@@ -50,15 +51,15 @@ export function DeferredSection({ month }: { month: Month }) {
                 aria-hidden="true"
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${
                   category
-                    ? categoryAccent(category.name).chip
+                    ? categoryDisplay(category).chip
                     : "bg-canvas text-muted"
                 }`}
               >
-                {category?.icon}
+                {categoryDisplay(category).icon}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-ink">
-                  {transaction.note ?? category?.name ?? "Expense"}
+                  {transaction.note ?? categoryLabelOr(category?.name, "Expense")}
                 </p>
                 <p className="text-xs text-muted">
                   {formatDateShort(transaction.date)}

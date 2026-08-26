@@ -88,3 +88,45 @@ export function categoryAccent(name: string): CategoryAccent {
   }
   return NEUTRAL;
 }
+
+export interface BudgetRowTreatment {
+  /** Extremely subtle pastel row background (rgba). */
+  tint: string;
+  /** Stronger accent hex used for the progress bar and percentage. */
+  strong: string;
+}
+
+/** Reference palette for the Planner's seven budget categories. */
+const BUDGET_ROW_TINTS: Record<string, string> = {
+  transport: "rgba(251, 191, 36, 0.09)", // very light warm cream/yellow
+  loan: "rgba(216, 180, 254, 0.10)", // very light pink/lilac
+  edi: "rgba(252, 165, 165, 0.10)", // very light red/pink
+  misc: "rgba(148, 163, 184, 0.10)", // very light cool gray/blue
+  essentials: "rgba(251, 113, 133, 0.08)", // very light pink/red
+  internet: "rgba(251, 146, 60, 0.10)", // very light warm peach/orange
+  palmpay: "rgba(125, 211, 252, 0.10)", // very light blue
+};
+
+const BUDGET_ROW_STRONG: Record<string, string> = {
+  transport: "#14b8a6", // teal
+  loan: "#14b8a6", // teal
+  edi: "#ef4444", // red
+  misc: "#6b7280", // muted gray
+  essentials: "#ef4444", // red
+  internet: "#f97316", // orange
+  palmpay: "#0ea5e9", // teal/blue
+};
+
+export function budgetRowTreatment(
+  category?: { name?: string; color?: string } | null,
+): BudgetRowTreatment {
+  const name = (category?.name ?? "").toLowerCase();
+  const tint = BUDGET_ROW_TINTS[name];
+  if (tint) {
+    return { tint, strong: BUDGET_ROW_STRONG[name] };
+  }
+  return {
+    tint: `${categoryColor(category)}12`,
+    strong: "var(--color-brand-500)",
+  };
+}

@@ -6,7 +6,7 @@ export const STORAGE_KEY = "budget-planner:state";
 export const CATEGORIZATION_KEY = "budget-planner:categorization";
 export const BACKUP_PREFIX = "budget-planner:backup:";
 
-export const CURRENT_STORAGE_VERSION = 3;
+export const CURRENT_STORAGE_VERSION = 9;
 
 export class CorruptedStateError extends Error {
   constructor(message: string) {

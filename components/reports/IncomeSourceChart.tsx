@@ -49,7 +49,7 @@ export function IncomeSourceChart({ month }: { month: Month }) {
       <ChartCard title="Income sources" subtitle="This month">
         <EmptyState
           illustration="chart"
-          illustrationClass="bg-income/[0.08] text-income"
+          illustrationClass="bg-brand-500/[0.08] text-brand-600 dark:text-brand-400"
           title="No income received yet"
           description="Plan your income sources on the planner and they'll be ranked here by amount received."
         />

@@ -40,6 +40,19 @@ export function todayIso(): string {
   return dateToIso(new Date());
 }
 
+/**
+ * Default date for a new transaction while a screen is viewing `month`.
+ * Today when today falls inside the month (so new records default to "now"),
+ * otherwise the first of the viewed month. A transaction's calendar date —
+ * never the current date — decides which planner month it belongs to, so the
+ * default stays inside `month`'s start/end boundaries even when the user is
+ * working in a past or future month.
+ */
+export function defaultDateForMonth(month: Month): string {
+  const today = todayIso();
+  return monthKeyFromIso(today) === month ? today : `${month}-01`;
+}
+
 export function dateToIso(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -111,6 +124,43 @@ export function formatDateShort(iso: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+export function formatDateLong(iso: string): string {
+  return isoToDate(iso).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * Local "9:14 AM" time for a full ISO datetime (e.g. a record's createdAt).
+ * Returns "" for an empty/missing/invalid value so callers can fall back to "—".
+ */
+export function formatTime(value: string): string {
+  if (value === "") return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** "Aug 15, 2026 · 9:14 AM" for a full ISO datetime; "" when missing/invalid. */
+export function formatDateTime(value: string): string {
+  if (value === "") return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const datePart = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const timePart = formatTime(value);
+  return timePart === "" ? datePart : `${datePart} · ${timePart}`;
 }
 
 export function daysBetween(isoA: string, isoB: string): number {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AppShell } from "@/components/shell/AppShell";
+import { InlineScript } from "@/components/ui/InlineScript";
 import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -30,9 +31,11 @@ export default function RootLayout({
       className={`${inter.variable} h-full antialiased`}
     >
       <head>
-        <script
-          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }}
-        />
+        {/* Runs synchronously while the browser parses the HTML (before first
+            paint), so the saved theme/accent is applied with no flash. The
+            type switch keeps React from treating it as an executable script in
+            the client tree (see components/ui/InlineScript.tsx). */}
+        <InlineScript html={THEME_BOOTSTRAP_SCRIPT} />
       </head>
       <body className="min-h-full">
         <AppShell>{children}</AppShell>

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 import { lockBodyScroll, unlockBodyScroll } from "@/lib/scrollLock";
+import { XIcon } from "./icons";
 
 export interface ModalProps {
   open: boolean;
@@ -12,6 +13,10 @@ export interface ModalProps {
   footer?: ReactNode;
   describedBy?: string;
   size?: "sm" | "md" | "lg";
+  /** Renders a close icon at the top-right of the dialog header. */
+  closeButton?: boolean;
+  /** Extra classes for the dialog panel; replaces the default border/shadow pair. */
+  panelClassName?: string;
 }
 
 const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
@@ -31,6 +36,8 @@ export function Modal({
   footer,
   describedBy,
   size = "md",
+  closeButton = false,
+  panelClassName,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<Element | null>(null);
@@ -99,14 +106,26 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={describedBy}
         tabIndex={-1}
-        className={`flex max-h-[90vh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-[24px] border border-border/60 bg-surface shadow-pop animate-[dialog-in_180ms_var(--ease-premium)] focus:outline-none`}
+        className={`relative flex max-h-[90vh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-2xl bg-surface ${
+          panelClassName ?? "border border-border/60 shadow-pop"
+        } animate-[dialog-in_180ms_var(--ease-premium)] focus:outline-none`}
       >
         <h2
           id={titleId}
-          className="flex shrink-0 items-center gap-2 px-8 pb-0 pt-8 text-dialog-title font-bold tracking-tight"
+          className="flex shrink-0 items-center gap-2 px-8 pb-0 pt-8 pr-20 text-dialog-title font-bold tracking-tight"
         >
           {title}
         </h2>
+        {closeButton && (
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="absolute right-5 top-5 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors duration-150 ease-premium hover:bg-sidebar-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none"
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        )}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 pb-2 pt-4">
           {children}
         </div>

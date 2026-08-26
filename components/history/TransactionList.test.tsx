@@ -12,11 +12,12 @@ import { TransactionList } from "./TransactionList";
 
 const params = vi.hoisted(() => new URLSearchParams());
 const replaceMock = vi.hoisted(() => vi.fn());
+const pushMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/history",
   useSearchParams: () => params,
-  useRouter: () => ({ replace: replaceMock, push: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({ replace: replaceMock, push: pushMock, prefetch: vi.fn() }),
 }));
 
 afterEach(cleanup);
@@ -27,6 +28,7 @@ beforeEach(() => {
   params.delete("month");
   params.set("month", monthKeyFromIso(todayIso()));
   replaceMock.mockClear();
+  pushMock.mockClear();
 });
 
 function isoDaysFromNow(days: number): string {
@@ -76,8 +78,8 @@ describe("TransactionList timeline polish", () => {
     render(<TransactionList />);
 
     const todayHeader = screen.getByText("Today").closest("h2")!;
-    expect(todayHeader.className).toContain("sticky top-16");
-    expect(todayHeader.className).toContain("lg:top-0");
+    expect(todayHeader.className).toContain("sticky top-[100px]");
+    expect(todayHeader.className).toContain("lg:top-11");
     expect(todayHeader.className).toContain("text-brand-600");
     expect(
       todayHeader.querySelector('span[aria-hidden="true"]'),
@@ -101,7 +103,7 @@ describe("TransactionList timeline polish", () => {
     const cards = screen.getAllByRole("listitem");
     expect(cards).toHaveLength(2);
     for (const card of cards) {
-      expect(card.className).toContain("rounded-lg");
+      expect(card.className).toContain("rounded-xl");
       expect(card.className).toContain("shadow-card");
       expect(card.className).toContain("hover:shadow-card-hover");
       expect(card.className).toContain("hover:-translate-y-0.5");
@@ -116,8 +118,8 @@ describe("TransactionList timeline polish", () => {
     expect(bar.className).not.toContain("sticky");
 
     const heading = screen.getByText("Today").closest("h2")!;
-    expect(heading.className).toContain("sticky top-16");
-    expect(heading.className).toContain("lg:top-0");
+    expect(heading.className).toContain("sticky top-[100px]");
+    expect(heading.className).toContain("lg:top-11");
   });
 
   it("wraps long unbroken notes instead of widening the feed", () => {
@@ -158,7 +160,7 @@ describe("TransactionList timeline polish", () => {
 
     await user.click(
       screen.getAllByRole("button", {
-        name: "Expand transaction details",
+        name: "Show transaction details",
       })[0],
     );
 
@@ -177,5 +179,20 @@ describe("TransactionList timeline polish", () => {
     expect(
       screen.getByRole("button", { name: "Add your first transaction" }),
     ).toBeInTheDocument();
+  });
+
+  it("navigates to the expense details screen when a row is clicked", async () => {
+    seedTwoGroups();
+    const user = userEvent.setup();
+    render(<TransactionList />);
+
+    const rentRow = screen
+      .getAllByText("Rent today")[0]
+      .closest<HTMLElement>('[role="listitem"]')!;
+    await user.click(
+      within(rentRow).getByRole("button", { name: "View expense details" }),
+    );
+
+    expect(pushMock).toHaveBeenCalledWith("/history/expense?id=t0");
   });
 });

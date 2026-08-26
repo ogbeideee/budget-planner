@@ -76,7 +76,7 @@ describe("TransactionCard presentation", () => {
 
     const placeholder = group.querySelector('span[aria-hidden="true"]');
     expect(placeholder).not.toBeNull();
-    expect(placeholder!.className).toContain("w-10");
+    expect(placeholder!.className).toContain("w-9");
 
     const children = Array.from(group.children);
     expect(children).toHaveLength(3);
@@ -130,5 +130,52 @@ describe("TransactionCard presentation", () => {
       screen.getAllByText("A very long explanation").length,
     ).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("No budget set")).toBeInTheDocument();
+  });
+});
+
+describe("TransactionCard details navigation", () => {
+  it("expense rows navigate to the details screen instead of expanding", async () => {
+    const user = userEvent.setup();
+    const onViewDetails = vi.fn();
+    render(
+      <TransactionCard
+        transaction={makeTransaction()}
+        category={category}
+        currency="USD"
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onMoveNextMonth={vi.fn()}
+        onViewDetails={onViewDetails}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "View expense details" }),
+    );
+
+    expect(onViewDetails).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
+  it("expense rows without a details handler keep expanding in place", async () => {
+    const user = userEvent.setup();
+    renderCard(makeTransaction());
+
+    await user.click(
+      screen.getByRole("button", { name: "Expand transaction details" }),
+    );
+
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+  });
+
+  it("income rows keep the expand affordance and never offer details navigation", () => {
+    renderCard(makeTransaction({ type: "income", amount: 9000 }));
+
+    expect(
+      screen.getByRole("button", { name: "Expand transaction details" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View expense details" }),
+    ).not.toBeInTheDocument();
   });
 });
