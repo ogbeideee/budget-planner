@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## Verification gates (must all pass before finishing a task)
 - Typecheck: `npx tsc --noEmit`
 - Lint: `npm run lint`
-- Tests: `npm run test` (vitest; currently 1443 tests across 98 files, 1 env-gated skip)
+- Tests: `npm run test` (vitest; currently 1525 tests across 102 files, 1 env-gated skip)
 - Build: `npm run build`
 
 On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside commands.
@@ -164,6 +164,35 @@ On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside
   number primitives — `AnimatedNumber`, `AnimatedMoney`, and `MetricCard`'s value
   and support slots — so prefer rendering through those over adding the class by
   hand. Running prose containing an amount is deliberately left proportional.
+
+## Email alerts (FR-24) — SECURITY-SENSITIVE
+- **Never add a "read secret" IPC channel.** The vault exposes available/set/status/
+  clear only; `reveal()` is main-process-only and its return value must never cross
+  IPC, be logged, or be written anywhere. See ARCHITECTURE §3.3b.
+- **No plaintext fallback, ever.** If `safeStorage.isEncryptionAvailable()` is false,
+  `set()` writes nothing and returns `encryption-unavailable`. Do not add base64
+  "obfuscation" or a localStorage path — the feature is desktop-only precisely because
+  a web page has no OS-backed secret store.
+- **Sender matching is exact-host-or-subdomain, never substring.** A substring match
+  accepts `gtbank.com.attacker.example`; a test asserts it must not.
+- **Allowlist entries are VERIFIED SENDING DOMAINS, never brand-derived guesses.**
+  Quick Microfinance Bank sends from `quickmart.com`. Never add a brand-name fallback —
+  it would be an allowlist bypass.
+- **Templates are tiered.** GTBank / Wema / Quick MFB are corrected against real mail;
+  the other seven are representative guesses and are banner-marked in the registry.
+  Do not assume a Tier 2 template works.
+- **One money parser** (`parseMoneyToken` + the `MONEY` fragment) handles code-prefix,
+  code-suffix, symbol-prefix, glued and decimal-less amounts. Do not add a second.
+- **Balances are never amounts:** negatives are rejected outright and balance lines are
+  stripped before amount extraction. GTBank really sends `Available Balance : NGN -28.48`.
+- **Per-institution parsing is DATA** (`ALERT_TEMPLATES` in lib/emailAlerts.ts), read by
+  one shared evaluator. Add a bank by adding a template + tests, never a new function.
+  A guard test fails if a sender is added without a matching template.
+- **A parse failure must surface**, never vanish: return `needs-review` with the fields
+  that were read, the ones missing, and a capped snippet.
+- `lib/emailPipeline.ts` must own NO categorization and NO duplicate logic — it calls
+  `suggestCategory` and `findDuplicateCandidates` so both paths stay consistent.
+- Docs: `docs/15_EMAIL_PARSING.md`.
 
 ## Learned categorization (FR-22)
 - **`suggestCategory` in lib/learnedRules.ts is THE categorization entry point.** It takes

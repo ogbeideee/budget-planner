@@ -17,6 +17,12 @@ function installBridge(
   }>,
 ) {
   window.budgetPlannerDesktop = {
+    credentials: {
+      isAvailable: async () => true,
+      set: async () => ({ ok: true }) as const,
+      status: async () => ({ connected: false, savedAt: null }),
+      clear: async () => ({ ok: true, removed: false }),
+    },
     platform: "win32",
     getAppInfo: async () => ({
       name: "Budget Planner",

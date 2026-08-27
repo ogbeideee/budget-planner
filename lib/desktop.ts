@@ -93,6 +93,33 @@ export interface DesktopBridge {
       | { status: "error"; error: string }
     >;
   };
+  /**
+   * OS-backed credential vault (FR-24). Note what is ABSENT: there is no way
+   * to read a stored secret back. Decryption happens only in the main
+   * process, at connection time, so renderer code cannot obtain the password.
+   */
+  credentials: {
+    /** False when the OS keychain is unavailable — the UI must not collect a
+     *  password in that case, because it could not be stored safely. */
+    isAvailable(): Promise<boolean>;
+    set(
+      account: string,
+      secret: string,
+    ): Promise<
+      | { ok: true }
+      | {
+          ok: false;
+          reason:
+            | "invalid-account"
+            | "empty-secret"
+            | "encryption-unavailable"
+            | "encrypt-failed"
+            | "write-failed";
+        }
+    >;
+    status(account: string): Promise<{ connected: boolean; savedAt: string | null }>;
+    clear(account: string): Promise<{ ok: boolean; removed: boolean }>;
+  };
   menu: {
     on(callback: (action: DesktopMenuAction) => void): () => void;
   };

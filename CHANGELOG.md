@@ -4,6 +4,13 @@
 
 ### Added
 
+- **Groundwork for reading bank alert emails** — the parsing engine, the list of
+  bank senders it will ever look at, and secure password storage are in place.
+  Your email password is kept in the operating system’s own keychain; if that
+  isn’t available the app refuses to store it rather than putting it somewhere
+  readable. Only alerts from your bank are ever read, nothing is sent anywhere,
+  and every detected transaction would be a draft you confirm. Not switched on
+  yet — the mailbox connection and its screens are still to come.
 - **Import Statement remembers your corrections better.** Fixed a bug where only the
   first merchant you taught it was ever recognised — every learned merchant now
   matches. Close spellings of the same merchant are recognised too, and a row filled

@@ -101,6 +101,18 @@ function migrateBrowserData() {
 
 migrateBrowserData();
 
+// Credential vault (FR-24). Deliberately WRITE-AND-FORGET: there is no
+// `reveal`/`get` here and there must never be one. The main process decrypts
+// only when it opens a connection, so the renderer — the part of the app that
+// runs web content — can never read the stored email password.
+const credentials = {
+  isAvailable: () => ipcRenderer.invoke("desktop:credentials:available"),
+  set: (account, secret) =>
+    ipcRenderer.invoke("desktop:credentials:set", { account, secret }),
+  status: (account) => ipcRenderer.invoke("desktop:credentials:status", account),
+  clear: (account) => ipcRenderer.invoke("desktop:credentials:clear", account),
+};
+
 contextBridge.exposeInMainWorld("budgetPlannerDesktop", {
   platform: process.platform,
   getAppInfo: () => ipcRenderer.invoke("desktop:app-info"),
@@ -111,6 +123,7 @@ contextBridge.exposeInMainWorld("budgetPlannerDesktop", {
   notify: (payload) => ipcRenderer.invoke("desktop:notify", payload),
   paths: () => ipcRenderer.invoke("desktop:paths"),
   backups,
+  credentials,
   menu,
   window: windowControls,
 });

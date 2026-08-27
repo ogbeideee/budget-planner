@@ -484,6 +484,35 @@ Extends the existing learned-rules system (Prompt 6A) rather than replacing it.
 - Manual (non-import) transaction entry is unchanged; this affects the import review
   flow and the Settings panel only.
 
+### FR-24 — Email alert parsing (partial: parsing + vault landed, transport pending)
+
+Full detail in `15_EMAIL_PARSING.md`. Summary:
+
+- **Desktop only, and refuses elsewhere.** Credentials go through Electron
+  `safeStorage` (OS keychain). In the browser build no OS-backed secret store is
+  available to a page, so the feature reports unavailable rather than degrading to
+  localStorage. Inside Electron, an unavailable keychain also blocks connection —
+  there is NO plaintext fallback anywhere.
+- **The renderer can never read the stored secret.** The IPC surface exposes
+  available / set / status / clear and deliberately no "get"; decryption happens only
+  in the main process at connection time.
+- **Allowlist, not inbox.** Only mail from `ALERT_SENDERS` domains is parsed, matched
+  exact-host-or-subdomain (never substring — `gtbank.com.attacker.example` must fail,
+  and a test asserts it). Everything else is discarded at the sender check.
+- **Nothing leaves the machine.** Parsing is local string work; no network, no AI. Only
+  a 400-character snippet is retained, and only for an alert that failed to parse.
+- **Read-only and draft-only.** It cannot send mail, move money or write to the ledger.
+- **Per-institution templates are DATA** (`ALERT_TEMPLATES`), interpreted by one shared
+  evaluator. Adding a bank is a new entry plus tests — never a new parsing function.
+- **Parse failures surface, never vanish**: `needs-review` keeps whatever was read,
+  names the missing fields, and carries the body snippet.
+- **Reuses the existing engines directly** — `suggestCategory` for categories and
+  `findDuplicateCandidates` for overlaps — then emits `ImportRow`s into the same
+  `planImport` confirm step as statement import.
+- **IMAP with an app-specific password**, not OAuth: the codebase had no OAuth pattern
+  to build from, and shipping a client secret inside a desktop binary is worse than one
+  revocable app password in the OS keychain.
+
 ## 6. Data Model
 
 All values are plain JSON-serializable objects. Money is stored as integer minor units

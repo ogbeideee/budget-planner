@@ -654,6 +654,44 @@ Nothing in the current design needs revisiting to add it. Do NOT let a
 narration layer compute or override a figure: the number a user sees must
 always be the one the engine produced.
 
+### 3.3b Email alert ingestion (FR-24) — security boundary
+
+The one place in this app that holds a user credential for an external service,
+and the only feature that is deliberately unavailable in the browser build.
+
+```
+electron/credentials.cjs — createCredentialStore(userDataDir, safeStorage)
+  │  Encrypts with the OS keychain (DPAPI / Keychain / libsecret). Ciphertext at
+  │  <userData>/credentials.v1.json, mode 0600; the KEY never leaves the OS.
+  │  REFUSES to store when encryption is unavailable — no plaintext fallback,
+  │  no obfuscation. `reveal()` is main-process-only.
+  ▼
+main.cjs IPC — desktop:credentials:{available,set,status,clear}
+  │  NOTE THE ABSENCE of a read channel. It must never be added: decryption
+  │  happens only in main, at connection time, so a compromised renderer
+  │  cannot obtain the password.
+  ▼
+preload.cjs `credentials` → lib/desktop.ts (typed) → lib/emailCredentials.ts
+  │  Reports {available:false, reason:"not-desktop"} in the browser build and
+  │  refuses to proceed, because no OS-backed store exists for a web page.
+  ▼
+lib/emailAlerts.ts — ALLOWLIST + per-institution TEMPLATE REGISTRY (pure)
+  │  senderFor() matches exact host or subdomain, never substring.
+  │  parseAlert() is one shared evaluator over data templates; adding a bank is
+  │  a data entry, not a function. Returns parsed | needs-review | ignored and
+  │  never throws. No network imports, ever.
+  ▼
+lib/emailPipeline.ts — buildEmailDrafts()
+  │  Owns NO categorization and NO duplicate logic. Calls suggestCategory()
+  │  and findDuplicateCandidates() — the same modules statement import uses —
+  │  so a rule learned in one path applies to the other.
+  ▼
+ImportRow[] → planImport() (existing confirm step; nothing auto-saves)
+```
+
+Not yet built: the IMAP transport, the connect/disclosure UI, and sync
+scheduling. See `15_EMAIL_PARSING.md` § Remaining work.
+
 ### 3.4a Learned categorization — storage location, and why not a new key
 
 Learned mappings live in **`AppState.learnedRules`**, NOT under a separate

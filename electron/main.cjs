@@ -10,6 +10,7 @@ const {
   ipcMain,
   Menu,
   nativeTheme,
+  safeStorage,
   shell,
 } = require("electron");
 const path = require("path");
@@ -22,6 +23,7 @@ const { atomicWriteText } = require("./atomicWrite.cjs");
 const { createSplashScreen } = require("./splash.cjs");
 const { initAutoUpdates } = require("./updater.cjs");
 const { MENU_ACTIONS, buildApplicationMenu } = require("./menu.cjs");
+const { createCredentialStore } = require("./credentials.cjs");
 
 const APP_SCHEME = "app";
 const APP_HOST = "bundle";
@@ -315,6 +317,31 @@ function registerDesktopHandlers() {
 
   // Read-only paths for the About/Data UI.
   ipcMain.handle("desktop:paths", () => dataPaths());
+
+  // --- Credential vault (FR-24) ------------------------------------------
+  //
+  // NOTE THE SHAPE OF THIS SURFACE. The renderer can ask whether encryption
+  // is available, store a secret, ask whether one exists, and delete it.
+  // There is deliberately NO channel that returns a stored secret: decryption
+  // happens only inside this process, at connection time. A compromised
+  // renderer therefore cannot read the user's email password.
+  const credentials = createCredentialStore(app.getPath("userData"), safeStorage);
+
+  ipcMain.handle("desktop:credentials:available", () => credentials.isAvailable());
+
+  ipcMain.handle("desktop:credentials:set", (event, payload) => {
+    const account = payload && typeof payload.account === "string" ? payload.account : "";
+    const secret = payload && typeof payload.secret === "string" ? payload.secret : "";
+    return credentials.set(account, secret);
+  });
+
+  ipcMain.handle("desktop:credentials:status", (event, account) =>
+    credentials.status(typeof account === "string" ? account : ""),
+  );
+
+  ipcMain.handle("desktop:credentials:clear", (event, account) =>
+    credentials.clear(typeof account === "string" ? account : ""),
+  );
 
   // File-based backups. create is synchronous so the renderer can flush the
   // final backup during beforeunload (small state payloads, mirrors the
