@@ -145,6 +145,16 @@ const CURRENCY_CODE_SUFFIX = String.raw`[A-Z]{3}\b`;
  */
 export const MONEY = String.raw`((?:${CURRENCY_SYMBOL}|${CURRENCY_CODE_PREFIX})?\s*-?\s*\d[\d,]*(?:\.\d{1,2})?\s*(?:${CURRENCY_SYMBOL}|${CURRENCY_CODE_SUFFIX})?)`;
 
+/**
+ * Label→value separator, covering every real layout:
+ *   "Amount: NGN 26388"        inline colon        (after table flattening)
+ *   "Amount:: 800.00 NGN"      doubled colon       (WEMA cell ends in ':')
+ *   "Amount\n₦53.75"           value on NEXT line  (Quick Microfinance)
+ * At most ONE newline is crossed, so a pattern can never reach past a blank
+ * line into an unrelated field.
+ */
+const LV = String.raw`[ \t]*:*[ \t]*\r?\n?[ \t]*`;
+
 export interface MoneyToken {
   /** Absolute value in minor units. */
   minor: number;
@@ -185,94 +195,86 @@ export function parseMoneyToken(raw: string): MoneyToken | null {
 
 export const ALERT_TEMPLATES: readonly AlertTemplate[] = [
   {
-    // CORRECTED against real samples. Previously this template assumed a
-    // terse "Txn: Debit / Amt: NGN.. / Desc: .." layout that GTBank does not
-    // send. The real alert is prose: subject "Transaction Notification" for
-    // BOTH directions, body "a DEBIT transaction occurred", labels written
-    // "Label : Value" with a space before the colon, and amounts that are
-    // sometimes decimal ("NGN 3.51") and sometimes not ("NGN 26388").
+    // VERIFIED against real GTBank mail (2026-08-27).
+    //
+    // Structure: an HTML table flattened by `normalizeAlertBody` into
+    // "Label: Value" lines. Labels are "Description", "Amount", "Value Date",
+    // "Remarks" — NOT the "Desc:/Amt:" the first guess assumed.
+    // Amounts are code-prefixed and inconsistently decimal within one sender:
+    // "NGN 26388" and "NGN 3.51".
     institution: "gtbank",
-    // The old markers (/transaction\s+alert/, /\bTxn\b/, /\bAmt\b/) matched
-    // NOTHING in a real alert, so every GTBank message was discarded as
-    // "not-a-transaction-alert". This is the single worst bug the samples
-    // exposed.
     alertMarkers: [
       /transaction\s+notification/i,
       /\b(?:DEBIT|CREDIT)\s+transaction\s+occurred/i,
-      /transaction\s+alert/i,
+      /electronic\s+Notification\s+Service/i,
     ],
-    amount: [
-      new RegExp(String.raw`Amount\s*:\s*${MONEY}`, "i"),
-      new RegExp(String.raw`Amt\s*:\s*${MONEY}`, "i"),
-    ],
-    // Requirement 4: direction comes from the BODY, never the subject, which
-    // is identical for debits and credits.
-    debit: [/\bDEBIT\s+transaction\s+occurred/i, /has\s+been\s+debited/i],
-    credit: [/\bCREDIT\s+transaction\s+occurred/i, /has\s+been\s+credited/i],
-    // GTBank truncates this field mid-word; the evaluator treats whatever
-    // arrives as a valid-but-imperfect string rather than failing.
+    amount: [new RegExp(String.raw`\bAmount${LV}${MONEY}`, "i")],
+    // Requirement 4: the subject is "Transaction Notification" for BOTH
+    // directions, so this reads the body and only the body.
+    debit: [/\bDEBIT\s+transaction\s+occurred/i],
+    credit: [/\bCREDIT\s+transaction\s+occurred/i],
+    // GTBank truncates this mid-word ("...DAVID OSA") and prefixes a ~30-digit
+    // reference; `cleanNarration` strips the reference and keeps the rest.
     description: [
-      /Description\s*:\s*(.+)/i,
-      /Remarks?\s*:\s*(.+)/i,
-      /Narration\s*:\s*(.+)/i,
+      new RegExp(String.raw`\bDescription${LV}(.+)`, "i"),
+      new RegExp(String.raw`\bRemarks${LV}(.+)`, "i"),
     ],
+    // "Value Date: 2026-07-30". Loose between label and value because the
+    // label varies ("Value Date", "Transaction Date & Time:").
     date: [
-      /(?:Transaction\s+)?Date\s*:\s*([0-9]{1,2}[-/][A-Za-z]{3,}[-/][0-9]{2,4})/i,
-      /(?:Transaction\s+)?Date\s*:\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
-      /(?:Transaction\s+)?Date\s*:\s*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
+      /\bValue Date[^0-9]{0,12}([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+      /\bDate[^0-9]{0,24}([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+      /\bDate[^0-9]{0,24}([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
     ],
   },
   {
-    // NEW — Wema was not in the registry at all. Its distinguishing feature is
-    // a currency-code SUFFIX ("3,000.00 NGN"), which no previous pattern could
-    // capture because every one of them assumed a prefix.
+    // VERIFIED against real Wema mail (2026-08-27).
+    //
+    // Same flattened-table structure as GTBank, but the amount carries a
+    // currency-code SUFFIX ("3,000.00 NGN") and the label is "Transaction
+    // Amount". Dates are DD-MM-YYYY.
     institution: "wema",
+    // The first guess used /transaction\s+alert/, /\bwema\b/ and
+    // /has been (debited|credited)/ — NONE of which appear. Real mail says
+    // "a Debit transaction recently occurred" and "Transaction Details -
+    // Debit", and the only "wema" is inside "wemabank.com", where \b fails.
     alertMarkers: [
-      /transaction\s+(?:alert|notification)/i,
-      /\bwema\b/i,
-      /has\s+been\s+(?:debited|credited)/i,
+      /transaction\s+recently\s+occurred/i,
+      /Transaction\s+Details\s*-\s*(?:Debit|Credit)/i,
+      /wemabank/i,
     ],
     amount: [
-      new RegExp(String.raw`Amount\s*:?\s*${MONEY}`, "i"),
-      new RegExp(String.raw`(?:debited|credited)\s+with\s+${MONEY}`, "i"),
+      new RegExp(String.raw`Transaction Amount${LV}${MONEY}`, "i"),
+      new RegExp(String.raw`\bAmount${LV}${MONEY}`, "i"),
     ],
-    debit: [/\bdebit\b/i, /has\s+been\s+debited/i, /\bwithdrawal\b/i],
-    credit: [/\bcredit\b/i, /has\s+been\s+credited/i, /\bdeposit\b/i],
-    description: [
-      /(?:Narration|Description|Remarks?|Details)\s*:?\s*(.+)/i,
-    ],
+    debit: [/\bDebit\s+transaction\s+recently\s+occurred/i, /Transaction\s+Details\s*-\s*Debit/i],
+    credit: [/\bCredit\s+transaction\s+recently\s+occurred/i, /Transaction\s+Details\s*-\s*Credit/i],
+    description: [new RegExp(String.raw`\bDescription${LV}(.+)`, "i")],
     date: [
-      /(?:Transaction\s+)?Date\s*:?\s*([0-9]{1,2}[-/][A-Za-z]{3,}[-/][0-9]{2,4})/i,
-      /(?:Transaction\s+)?Date\s*:?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
-      /(?:Transaction\s+)?Date\s*:?\s*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
+      /\bValue Date[^0-9]{0,12}([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
+      /\bDate[^0-9]{0,24}([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
+      /\bDate[^0-9]{0,24}([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
     ],
   },
   {
-    // NEW — Quick Microfinance Bank was not in the registry. Amounts carry a
-    // ₦ symbol prefix. Its narration quality differs BY DIRECTION within the
-    // same sender: debits are an underscore composite
-    // ("FT_Out Fee:NAME_PHONE_MERCHANT_TYPE"), credits are clean prose
-    // ("July 2026 Bestaf Tech Staff Salary"). cleanNarration() handles both.
+    // VERIFIED against real Quick Microfinance mail (2026-08-27).
+    //
+    // NOT a table. Labels sit on their OWN line with the value on the next —
+    // "Amount\n₦53.75", "Narration\nFT_Out Fee:..." — which `LV` handles by
+    // allowing exactly one newline. Amounts are ₦-symbol prefixed.
     institution: "quickmfb",
     alertMarkers: [
-      /transaction\s+(?:alert|notification)/i,
       /\bquick\s*(?:microfinance|mfb)\b/i,
       /has\s+been\s+(?:debited|credited)/i,
-      /\bFT_Out\b/i,
+      /Money\s+(?:Debited|Received)/i,
     ],
-    amount: [
-      new RegExp(String.raw`Amount\s*:?\s*${MONEY}`, "i"),
-      new RegExp(String.raw`(?:debited|credited)\s+with\s+${MONEY}`, "i"),
-    ],
-    debit: [/\bdebit\b/i, /has\s+been\s+debited/i, /\bFT_Out\b/i],
-    credit: [/\bcredit\b/i, /has\s+been\s+credited/i],
-    description: [
-      /(?:Narration|Description|Remarks?|Details)\s*:?\s*(.+)/i,
-    ],
+    amount: [new RegExp(String.raw`\bAmount${LV}${MONEY}`, "i")],
+    debit: [/has\s+been\s+debited/i, /Money\s+Debited/i, /Transaction Type\s*\n?\s*Debit/i],
+    credit: [/has\s+been\s+credited/i, /Money\s+Received/i, /Transaction Type\s*\n?\s*Credit/i],
+    description: [new RegExp(String.raw`\bNarration${LV}(.+)`, "i")],
     date: [
-      /(?:Transaction\s+)?Date\s*:?\s*([0-9]{1,2}[-/][A-Za-z]{3,}[-/][0-9]{2,4})/i,
-      /(?:Transaction\s+)?Date\s*:?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
-      /(?:Transaction\s+)?Date\s*:?\s*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
+      /Transaction Date[^0-9]{0,20}([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
+      /\bon\s*\n?\s*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i,
     ],
   },
 
@@ -493,9 +495,51 @@ export function parseAlertAmount(raw: string): number | null {
 const BALANCE_LINE = /balance|bal\s*[:.]|avail\s*bal/i;
 
 function withoutBalanceLines(text: string): string {
-  return text
+  const lines = text.split(/\r?\n/);
+  const keep: string[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!BALANCE_LINE.test(lines[i])) {
+      keep.push(lines[i]);
+      continue;
+    }
+    // A balance LABEL with no figure on it means the value sits on the next
+    // line (Quick Microfinance: "Current Available Balance" / "₦250,765.10").
+    // Dropping only the label would leave the figure behind as an orphan.
+    if (!/\d/.test(lines[i])) i += 1;
+  }
+  return keep.join("\n");
+}
+
+
+/**
+ * Flattens the pipe-delimited tables GTBank and Wema send once their HTML is
+ * converted to text:
+ *
+ *   "| Description | : | ALAT NIP TRANSFER |"  →  "Description: ALAT NIP TRANSFER"
+ *
+ * Without this every label-anchored pattern fails, because the label and its
+ * value are separated by " | : | " rather than ": ". Non-table lines pass
+ * through untouched, so prose formats (Kuda, Quick Microfinance) are
+ * unaffected.
+ */
+export function normalizeAlertBody(body: string): string {
+  return String(body ?? "")
     .split(/\r?\n/)
-    .filter((line) => !BALANCE_LINE.test(line))
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("|")) return line;
+      const cells = trimmed
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter((cell) => cell.length > 0);
+      if (cells.length === 0) return "";
+      // "Label | : | Value" — the middle cell is just the separator.
+      if (cells.length >= 3 && cells[1] === ":") {
+        return `${cells[0]}: ${cells.slice(2).join(" ")}`;
+      }
+      if (cells.length === 2 && cells[1] === ":") return `${cells[0]}:`;
+      return cells.join(" ");
+    })
     .join("\n");
 }
 
@@ -516,29 +560,54 @@ const NARRATION_NOISE = /^(?:ft|out|in|fee|nip|trf|transfer|tp|web|pos|ussd|mob|
  * so clean prose (and GTBank's mid-word-truncated descriptions) are untouched.
  */
 export function cleanNarration(raw: string): string {
-  const text = String(raw ?? "").trim();
+  let text = String(raw ?? "").trim();
   if (text.length === 0) return "";
-  // No composite structure — leave human-readable text exactly alone.
-  if (!text.includes("_")) return text;
+
+  // A long digit run at the front is a bank reference, never a merchant.
+  // GTBank really sends
+  //   "100004260730180812166829083192-TRANSFER FROM ...".
+  // Left in place it makes every transaction's categorization key unique, so
+  // a learned rule could never match twice.
+  text = text.replace(/^\d{8,}[-_\s]+/, "").trim();
+  if (text.length === 0) return String(raw ?? "").trim();
+
+  // No composite structure — leave human-readable text exactly alone. This is
+  // what keeps clean prose and bank-truncated descriptions untouched.
+  if (!text.includes("_")) return text.slice(0, 200);
 
   const segments = text
     .split("_")
-    // "FT_Out Fee:NAME" — drop a leading label before a colon.
+    // "FT_Out Fee:DAVID ..." — drop a leading label before a colon.
     .map((part) => part.replace(/^[^:]*:\s*/, "").trim())
-    .filter((part) => part.length > 0)
-    // Phone numbers and reference digits identify nobody.
-    .filter((part) => !/^\+?\d[\d\s-]*$/.test(part))
-    .filter((part) => !NARRATION_NOISE.test(part));
+    .filter((part) => part.length > 0);
 
-  if (segments.length === 0) return text;
-  // The merchant is the longest remaining alphabetic segment: names and
-  // transaction-type codes are short, merchant names are not.
-  const best = segments
-    .filter((part) => /[A-Za-z]/.test(part))
-    .sort((a, b) => b.length - a.length)[0];
-  return (best ?? segments[0]).slice(0, 200);
+  const isDigits = (part: string) => /^\+?\d[\d\s-]*$/.test(part);
+
+  // PHONE-ANCHORED SELECTION. The confirmed shape is
+  //   FT _ Out Fee:ACCOUNT HOLDER _ PHONE _ MERCHANT _ TYPE
+  // so the segment immediately AFTER the phone number is the merchant.
+  //
+  // This replaced a "longest alphabetic segment" heuristic that looked
+  // reasonable but picks the ACCOUNT HOLDER on real data — their name is
+  // longer than the merchant's. The phone number is a reliable positional
+  // anchor; guessing by length is not.
+  const phoneAt = segments.findIndex(isDigits);
+  if (phoneAt !== -1) {
+    const merchant = segments.slice(phoneAt + 1).find(
+      (part) => /[A-Za-z]/.test(part) && !NARRATION_NOISE.test(part),
+    );
+    if (merchant) return merchant.slice(0, 200);
+  }
+
+  // No phone anchor: fall back to the longest alphabetic segment that is not
+  // obvious transfer noise.
+  const usable = segments
+    .filter((part) => !isDigits(part))
+    .filter((part) => !NARRATION_NOISE.test(part))
+    .filter((part) => /[A-Za-z]/.test(part));
+  if (usable.length === 0) return text.slice(0, 200);
+  return [...usable].sort((a, b) => b.length - a.length)[0].slice(0, 200);
 }
-
 function firstCapture(patterns: readonly RegExp[], text: string): string | null {
   for (const pattern of patterns) {
     const match = pattern.exec(text);
@@ -580,7 +649,9 @@ export function parseAlert(email: AlertEmail): AlertResult {
   if (!template) return { status: "ignored", reason: "sender-not-allowlisted" };
 
   const subject = String(email.subject ?? "");
-  const body = String(email.body ?? "");
+  // Pipe tables are flattened before anything is matched — see
+  // `normalizeAlertBody`. Prose bodies pass through unchanged.
+  const body = normalizeAlertBody(String(email.body ?? ""));
   const haystack = `${subject}\n${body}`;
 
   if (template.alertMarkers && !anyMatch(template.alertMarkers, haystack)) {

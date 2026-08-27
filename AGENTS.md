@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## Verification gates (must all pass before finishing a task)
 - Typecheck: `npx tsc --noEmit`
 - Lint: `npm run lint`
-- Tests: `npm run test` (vitest; currently 1525 tests across 102 files, 1 env-gated skip)
+- Tests: `npm run test` (vitest; currently 1534 tests across 102 files, 1 env-gated skip)
 - Build: `npm run build`
 
 On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside commands.
@@ -178,9 +178,17 @@ On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside
 - **Allowlist entries are VERIFIED SENDING DOMAINS, never brand-derived guesses.**
   Quick Microfinance Bank sends from `quickmart.com`. Never add a brand-name fallback —
   it would be an allowlist bypass.
-- **Templates are tiered.** GTBank / Wema / Quick MFB are corrected against real mail;
-  the other seven are representative guesses and are banner-marked in the registry.
-  Do not assume a Tier 2 template works.
+- **Templates are tiered.** GTBank / Wema / Quick MFB are VERIFIED against real mail
+  (fixtures in `emailAlertsReal.test.ts`); the other seven are representative guesses,
+  banner-marked in the registry. Every Tier 1 template was wrong before its samples
+  arrived — two were not recognised as alerts at all — so assume Tier 2 is wrong too.
+- **GTBank and Wema send HTML tables** (`| Label | : | Value |` after text conversion);
+  Quick MFB puts the value on the NEXT line. `normalizeAlertBody` flattens the former
+  and the shared `LV` separator crosses one newline for the latter. Never write a
+  template pattern that assumes `Label: Value` on one line.
+- **Merchant extraction is phone-anchored, not longest-segment.** In
+  `NAME_PHONE_MERCHANT_TYPE` the merchant follows the phone number; picking the longest
+  alphabetic segment returns the ACCOUNT HOLDER on real data.
 - **One money parser** (`parseMoneyToken` + the `MONEY` fragment) handles code-prefix,
   code-suffix, symbol-prefix, glued and decimal-less amounts. Do not add a second.
 - **Balances are never amounts:** negatives are rejected outright and balance lines are

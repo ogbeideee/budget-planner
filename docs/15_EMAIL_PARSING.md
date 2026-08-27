@@ -200,85 +200,107 @@ you add a sender without a template.
 
 ### Template confidence — READ THIS BEFORE TRUSTING A TEMPLATE
 
-The registry now holds **ten** institutions in two clearly separated tiers.
+**Tier 1 — verified against real mail (2026-08-27).** Six real redacted
+alerts (a debit/credit pair each) are pinned as fixtures in
+`lib/__tests__/emailAlertsReal.test.ts`.
 
-**Tier 1 — corrected against real samples (2026-08-27):**
+| Institution | Domain | Body layout | Amount format | Direction signal |
+|---|---|---|---|---|
+| GTBank | `gtbank.com` | flattened HTML **table** (`Label \| : \| Value`) | code prefix, decimals **optional**: `NGN 3.51` *and* `NGN 26388` | `a DEBIT/CREDIT transaction occurred` |
+| Wema Bank | `wemabank.com` | flattened HTML **table** | code **suffix**: `800.00 NGN`, `3,000.00 NGN` | `a Debit/Credit transaction recently occurred` |
+| Quick Microfinance | `quickmart.com` | **block** — label on one line, value on the NEXT | **symbol** prefix: `₦53.75`, `₦250,000.23` | `has been debited/credited`, `Money Debited/Received` |
 
-| Institution | Domain | Amount format | Direction signal |
-|---|---|---|---|
-| GTBank | `gtbank.com` | code prefix, decimals **optional**: `NGN 3.51` *and* `NGN 26388` | body: `a DEBIT/CREDIT transaction occurred` |
-| Wema Bank | `wemabank.com` | code **suffix**: `3,000.00 NGN` | `has been debited/credited` |
-| Quick Microfinance Bank | `quickmart.com` | **symbol** prefix: `₦250,000.23` | `has been debited/credited`, `FT_Out` |
-
-**Tier 2 — still only representative guesses** (Access, UBA, Zenith, Kuda,
-Moniepoint, PalmPay, OPay). Marked as such in the registry with a comment
-banner. Do not assume these work; they need the same correction pass.
+**Tier 2 — representative guesses, NOT verified** (Access, UBA, Zenith, Kuda,
+Moniepoint, PalmPay, OPay). Banner-marked in the registry. Assume they are
+wrong until real samples prove otherwise — every Tier 1 template was wrong
+before its samples arrived, two of them completely.
 
 ### What the real samples changed
 
-- **GTBank was completely broken.** Its `alertMarkers` were
-  `/transaction\s+alert/`, `/\bTxn\b/`, `/\bAmt\b/` — none of which appear in a
-  real alert, whose subject is "Transaction Notification" and whose body says
-  "a DEBIT transaction occurred". Every GTBank message was therefore discarded
-  as `not-a-transaction-alert`. Direction, amount label and description label
-  were all wrong too.
-- **Wema and Quick Microfinance did not exist** in the registry at all.
-- **The amount pattern could not express a currency-code suffix**, so Wema's
-  `3,000.00 NGN` captured nothing.
-- **The currency code could not be glued to the digits.** `\bNGN\b` fails on
-  `NGN7,450.00` because there is no word boundary between "N" and "7"; the
-  boundary is now asserted on the outer side only.
+Three layout facts invalidated the original guesses outright:
+
+1. **GTBank and Wema send HTML tables**, which arrive as
+   `| Label | : | Value |` once converted to text. Every label-anchored
+   pattern failed, because label and value are separated by ` | : | `, not
+   `: `. `normalizeAlertBody` now flattens those rows before any matching.
+2. **Quick Microfinance is not a table at all** — the label sits on its own
+   line with the value on the next (`Amount\n₦53.75`). The `LV` separator
+   crosses exactly one newline to handle this.
+3. **Field labels were all wrong**: real GTBank uses `Description`,
+   `Amount`, `Value Date` — not the `Desc:`/`Amt:` that was assumed.
+
+Plus two recognition failures that would have silently dropped whole
+institutions:
+
+- **GTBank** matched none of its `alertMarkers` (`transaction alert`,
+  `\bTxn\b`, `\bAmt\b`); its real subject is "Transaction Notification".
+- **Wema** matched none either — its real wording is "a Debit transaction
+  recently occurred", and the only "wema" in the body is inside
+  `wemabank.com`, where `\bwema\b` fails on the trailing "b".
 
 ### One money parser, not three
 
-`parseMoneyToken` (and the `MONEY` regex fragment templates embed) normalizes
-every confirmed shape, and is built to absorb a fourth:
+`parseMoneyToken` (and the `MONEY` fragment templates embed) normalizes every
+confirmed shape and is built to absorb a fourth:
 
 ```
-"NGN 3.51"      code prefix, decimals        GTBank
-"NGN 26388"     code prefix, NO decimals     GTBank — same sender
-"NGN7,450.00"   code prefix, glued           (no space)
-"3,000.00 NGN"  code SUFFIX                  Wema
-"₦250,000.23"   symbol prefix                Quick Microfinance
-"99.99 USD"     symbol/code either side      a future institution
+"NGN 3.51"       code prefix, decimals        GTBank
+"NGN 26388"      code prefix, NO decimals     GTBank — same sender
+"NGN7,450.00"    code prefix, glued           (no space)
+"800.00 NGN"     code SUFFIX                  Wema
+"₦250,000.23"    symbol prefix, comma groups  Quick Microfinance
+"99.99 USD"      either side, any code        a future institution
 ```
 
-It returns `{ minor, negative }` — keeping the sign **separate** rather than
-folding it into the value, which is what makes the balance rule below possible.
+It returns `{ minor, negative }` — sign kept **separate** rather than folded
+into the value, which is what makes the balance rule below possible.
 
 ### Balances are never amounts
 
-GTBank really does send `Available Balance : NGN -28.48` next to the
-transaction. Two independent guards:
+GTBank really sends `Available Balance : NGN -28.48` two rows below the
+amount. Three guards:
 
-1. `parseAlertAmount` rejects any negative token outright — a transaction
-   amount is never negative.
-2. The evaluator strips every line matching `/balance|bal\s*[:.]|avail\s*bal/i`
-   **before** running amount patterns, so even a positive balance cannot be
-   captured by a generic money pattern.
+1. `parseAlertAmount` rejects any negative token outright.
+2. The evaluator strips every line matching
+   `/balance|bal\s*[:.]|avail\s*bal/i` **before** amount extraction, so even
+   a positive balance cannot be captured.
+3. When a balance **label** carries no figure — Quick Microfinance's
+   `Current Available Balance` with `₦250,765.10` on the next line — the
+   following line is dropped too. Removing only the label would leave the
+   figure behind as an orphan for a later pattern to find.
 
-Guard 2 applies to every template, present and future: it is a property of
-bank alerts, not of one institution.
+All three apply to every template, present and future.
 
-### Narration quality varies *within* a sender
+### Narration: the merchant is anchored by the phone number
 
-Quick Microfinance sends a clean human string on credits
-(`July 2026 Bestaf Tech Staff Salary`) and an underscore composite on debits
-(`FT_Out Fee:NAME_PHONE_MERCHANT_TYPE`). Passing the composite through verbatim
-would hand the categorization engine a key that can never match anything.
+Quick Microfinance's real debit narration is:
 
-`cleanNarration` therefore:
-- returns any string **without** underscores completely unchanged — clean prose
-  and GTBank's mid-word-truncated descriptions are never touched;
-- for a composite, drops the leading `LABEL:` prefix, phone/reference digits and
-  transfer-type noise (`FT`, `Out`, `Fee`, `NIP`, `TRF`, `POS`, …), then keeps
-  the longest remaining alphabetic segment as the merchant.
+```
+FT_Out Fee:DAVID OSAHON OGBEIDE_8082389369_OPAY NIGERIA_Amount Transfer
+           ^ account holder     ^ phone     ^ MERCHANT   ^ type
+```
+
+An earlier "longest alphabetic segment" heuristic picked **the account
+holder** — their name is longer than the merchant's. The phone number is a
+reliable positional anchor, so `cleanNarration` takes the first usable
+segment **after** it, yielding `OPAY NIGERIA`. Length is a guess; position
+is not.
+
+GTBank prefixes a ~30-digit bank reference
+(`100004260730180812166829083192-TRANSFER FROM ...`). Left in, every
+transaction would have a unique categorization key and no learned rule could
+ever match twice, so a leading run of 8+ digits is stripped.
+
+`cleanNarration` returns any string **without underscores** unchanged, which
+is what keeps clean prose (`July 2026 Bestaf Tech Staff Salary`), Wema's
+`NIP:UFY X UNIVERSAL SERVICES LIMITED- Prime`, and GTBank's hyphen-containing
+`SMS ALERT CHARGE FOR 27-JUN-26 TO 28-JUL-26` intact.
 
 ### Truncated descriptions are valid, not errors
 
-GTBank truncates its own description mid-word (`...DAVID OSA`). The parser
-treats whatever arrives as a valid-but-imperfect string: no crash, no
-`needs-review`, and the categorization engine simply gets a slightly short key.
+Both GTBank (`...-DAVID OSA`) and Wema (`...OGBEIDE FROM DA`) truncate their
+own fields mid-word. Treated as valid-but-imperfect: no crash, no
+`needs-review`, kept verbatim.
 
 ### The allowlist is keyed to VERIFIED SENDING DOMAINS, never brand names
 

@@ -53,7 +53,7 @@ describe("mail from a non-allowlisted sender", () => {
     const result = parseAlert(
       email({
         from: "promo@shopping.example",
-        body: "a DEBIT transaction occurred. Amount : NGN5,000.00 Description : SHOPRITE",
+        body: "We wish to inform you that a DEBIT transaction occurred on your account with us. | Amount | : | NGN5,000.00 | Description | : | SHOPRITE",
       }),
     );
     // Even though the body looks exactly like an alert.
@@ -68,11 +68,11 @@ describe("GTBank alerts", () => {
   // test can pass against a format that does not exist.
   const BODY = [
     "Dear Customer,",
-    "This is to inform you that a DEBIT transaction occurred on your account.",
-    "Amount : NGN 5,000.00",
-    "Description : POS/SHOPRITE LEKKI/LAGOS",
+    "This is to inform you that We wish to inform you that a DEBIT transaction occurred on your account with us.",
+    "| Amount | : | NGN 5,000.00",
+    "| Description | : | POS/SHOPRITE LEKKI/LAGOS",
     "Available Balance : NGN 45,000.00",
-    "Date : 12-Aug-2026",
+    "| Value Date | : | 2026-08-12",
   ].join("\n");
 
   it("parses amount, direction, description and date", () => {
@@ -90,8 +90,8 @@ describe("GTBank alerts", () => {
 
   it("reads a credit as money in", () => {
     const credited = BODY.replace("a DEBIT transaction", "a CREDIT transaction").replace(
-      "Description : POS/SHOPRITE LEKKI/LAGOS",
-      "Description : SALARY AUGUST",
+      "| Description | : | POS/SHOPRITE LEKKI/LAGOS",
+      "| Description | : | SALARY AUGUST",
     );
     const result = parseAlert(email({ from: "GeNS@gtbank.com", body: credited }));
     expect(result).toMatchObject({ direction: "in", description: "SALARY AUGUST" });
@@ -173,10 +173,10 @@ describe("a malformed or partial alert", () => {
   it("lands in needs-review rather than being dropped", () => {
     // Right sender, recognisable as an alert, but the amount line is mangled.
     const body = [
-      "a DEBIT transaction occurred on your account.",
-      "Amount : NGN ****",
-      "Description : POS/SHOPRITE LEKKI",
-      "Date : 12-Aug-2026",
+      "We wish to inform you that a DEBIT transaction occurred on your account with us.",
+      "| Amount | : | NGN ****",
+      "| Description | : | POS/SHOPRITE LEKKI",
+      "| Value Date | : | 2026-08-12",
     ].join("\n");
     const result = parseAlert(email({ from: "GeNS@gtbank.com", body }));
 
@@ -193,13 +193,13 @@ describe("a malformed or partial alert", () => {
   });
 
   it("is never silently turned into a wrong transaction", () => {
-    const body = "a DEBIT transaction occurred.\nAmount : NGN ****\nDate : 12-Aug-2026";
+    const body = "We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN ****\n| Value Date | : | 2026-08-12";
     const result = parseAlert(email({ from: "GeNS@gtbank.com", body }));
     expect(result.status).not.toBe("parsed");
   });
 
   it("lists every missing field, not just the first", () => {
-    const body = "Transaction Notification\nAmount : NGN ****\nsomething unreadable";
+    const body = "Transaction Notification\n| Amount | : | NGN ****\nsomething unreadable";
     const result = parseAlert(email({ from: "GeNS@gtbank.com", body }));
     if (result.status !== "needs-review") throw new Error("expected needs-review");
     expect(result.missing).toEqual(
@@ -208,7 +208,7 @@ describe("a malformed or partial alert", () => {
   });
 
   it("caps the retained snippet", () => {
-    const body = `a DEBIT transaction occurred.\nAmount : NGN ****\n${"x".repeat(2000)}`;
+    const body = `We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN ****\n${"x".repeat(2000)}`;
     const result = parseAlert(email({ from: "GeNS@gtbank.com", body }));
     if (result.status !== "needs-review") throw new Error("expected needs-review");
     expect(result.snippet.length).toBeLessThanOrEqual(SNIPPET_MAX_CHARS);
@@ -230,7 +230,7 @@ describe("non-alert mail from an allowlisted sender", () => {
 
 describe("the mail header date fallback", () => {
   it("is used only when the body has no date, and is flagged", () => {
-    const body = "a DEBIT transaction occurred.\nAmount : NGN1,000.00\nDescription : TEST MERCHANT";
+    const body = "We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN1,000.00\n| Description | : | TEST MERCHANT";
     const result = parseAlert(
       email({ from: "GeNS@gtbank.com", body, receivedAt: "2026-08-14T09:00:00.000Z" }),
     );
@@ -274,8 +274,8 @@ describe("field helpers", () => {
 describe("batch parsing", () => {
   it("keeps parsed and needs-review rows, drops ignored ones", () => {
     const results = parseAlerts([
-      email({ id: "a", from: "GeNS@gtbank.com", body: "a DEBIT transaction occurred.\nAmount : NGN1,000.00\nDescription : A\nDate : 12-Aug-2026" }),
-      email({ id: "b", from: "GeNS@gtbank.com", body: "a DEBIT transaction occurred.\nAmount : NGN ****\nDescription : B\nDate : 12-Aug-2026" }),
+      email({ id: "a", from: "GeNS@gtbank.com", body: "We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN1,000.00\n| Description | : | A\n| Value Date | : | 2026-08-12" }),
+      email({ id: "b", from: "GeNS@gtbank.com", body: "We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN ****\n| Description | : | B\n| Value Date | : | 2026-08-12" }),
       email({ id: "c", from: "spam@elsewhere.example", body: "Amt: NGN1.00" }),
     ]);
     expect(results.map((r) => `${r.messageId}:${r.status}`)).toEqual([

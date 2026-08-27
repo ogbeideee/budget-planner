@@ -24,12 +24,12 @@ function learned(key: string, categoryId: string, strength = RULE_MIN_STRENGTH):
   };
 }
 
-const gtbankAlert = (id: string, desc: string, amount: string, date = "12-Aug-2026"): AlertEmail => ({
+const gtbankAlert = (id: string, desc: string, amount: string, date = "2026-08-12"): AlertEmail => ({
   id,
   from: "GeNS@gtbank.com",
   // Generic subject, direction in the body — the confirmed real shape.
   subject: "Transaction Notification",
-  body: `a DEBIT transaction occurred on your account.\nAmount : NGN${amount}\nDescription : ${desc}\nDate : ${date}`,
+  body: `We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN${amount}\n| Description | : | ${desc}\n| Value Date | : | ${date}`,
 });
 
 function build(emails: AlertEmail[], opts: {
@@ -117,7 +117,7 @@ describe("duplicate detection reuses the shared scorer", () => {
   it("does not attempt scoring for an alert missing its amount", () => {
     const broken: AlertEmail = {
       id: "m1", from: "GeNS@gtbank.com", subject: "Transaction Alert",
-      body: "a DEBIT transaction occurred.\nAmount : NGN ****\nDescription : SHOPRITE LEKKI\nDate : 12-Aug-2026",
+      body: "We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN ****\n| Description | : | SHOPRITE LEKKI\n| Value Date | : | 2026-08-12",
     };
     const [draft] = build([broken], { existing: manual });
     expect(draft.duplicates).toHaveLength(0);
@@ -127,7 +127,7 @@ describe("duplicate detection reuses the shared scorer", () => {
 describe("needs-review alerts", () => {
   const broken: AlertEmail = {
     id: "m-broken", from: "GeNS@gtbank.com", subject: "Transaction Alert",
-    body: "a DEBIT transaction occurred.\nAmount : NGN ****\nDescription : SHOPRITE LEKKI\nDate : 12-Aug-2026",
+    body: "We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN ****\n| Description | : | SHOPRITE LEKKI\n| Value Date | : | 2026-08-12",
   };
 
   it("still produce a draft rather than disappearing", () => {
@@ -211,8 +211,8 @@ describe("mixed batches", () => {
   it("handles parsed, needs-review and ignored together", () => {
     const drafts = build([
       gtbankAlert("m1", "SHOPRITE LEKKI", "5,000.00"),
-      { id: "m2", from: "GeNS@gtbank.com", subject: "Alert", body: "a DEBIT transaction occurred.\nAmount : NGN ****\nDescription : X\nDate : 12-Aug-2026" },
-      { id: "m3", from: "spam@elsewhere.example", subject: "Hi", body: "Amount : NGN9.99" },
+      { id: "m2", from: "GeNS@gtbank.com", subject: "Alert", body: "We wish to inform you that a DEBIT transaction occurred on your account with us.\n| Amount | : | NGN ****\n| Description | : | X\n| Value Date | : | 2026-08-12" },
+      { id: "m3", from: "spam@elsewhere.example", subject: "Hi", body: "| Amount | : | NGN9.99" },
     ]);
     // The non-allowlisted message never becomes a draft at all.
     expect(drafts.map((d) => d.messageId)).toEqual(["m1", "m2"]);
