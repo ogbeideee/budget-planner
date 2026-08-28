@@ -608,39 +608,37 @@ export function ImportStatementModal({ open, onClose }: ImportStatementModalProp
     }
   };
 
-  // FR-23: an unanswered duplicate blocks the import for the same reason a
-  // missing category does — the batch must not be finalized while the app
-  // would have to guess whether to double-count or discard something.
-  const importBlocked =
-    plan.missingCategory > 0 || plan.unresolvedDuplicates > 0;
+  // Uncategorized ledger rows are SKIPPED, not blocking: the user imports the
+  // rows that already have a category and can leave the rest (they're reported
+  // on the done screen). The only thing that still stops a finalize is an
+  // unanswered duplicate (FR-23: we must not guess double-count vs discard).
+  const importBlocked = plan.unresolvedDuplicates > 0;
 
-  const importTitle =
-    plan.unresolvedDuplicates > 0
-      ? `Decide what to do with ${plan.unresolvedDuplicates} possible duplicate${
-          plan.unresolvedDuplicates === 1 ? "" : "s"
-        } before importing`
-      : plan.missingCategory > 0
-        ? `Pick a category for ${plan.missingCategory} transaction${
-            plan.missingCategory === 1 ? "" : "s"
-          } before importing`
-        : "Nothing can be imported yet";
+  const importTitle = importBlocked
+    ? `Decide what to do with ${plan.unresolvedDuplicates} possible duplicate${
+        plan.unresolvedDuplicates === 1 ? "" : "s"
+      } before importing`
+    : undefined;
 
   const footer =
     stage === "preview" ? (
       <>
         <div className="flex min-w-0 flex-col gap-0.5 text-left">
           <p className="text-sm font-semibold text-ink">
-            {plan.missingCategory > 0
-              ? "Assign a category to the highlighted rows to import."
-              : plan.inputs.length > 0
-                ? `You're about to import ${plan.inputs.length} transaction${
-                    plan.inputs.length === 1 ? "" : "s"
-                  }.`
+            {plan.inputs.length > 0
+              ? `You're about to import ${plan.inputs.length} transaction${
+                  plan.inputs.length === 1 ? "" : "s"
+                }.`
+              : plan.missingCategory > 0
+                ? "Assign a category to import — uncategorized rows are skipped."
                 : "Nothing new will be imported."}
           </p>
           <p className="text-xs text-muted">
-            Review the rows above — nothing is added to your budget until you
-            import.
+            {plan.missingCategory > 0 && plan.inputs.length > 0
+              ? `${plan.missingCategory} uncategorized row${
+                  plan.missingCategory === 1 ? "" : "s"
+                } will be skipped — categorize them to include them.`
+              : "Review the rows above — nothing is added to your budget until you import."}
           </p>
         </div>
         <div className="flex-1" />
@@ -850,6 +848,7 @@ function DoneStage({ plan, reviewCount }: { plan: ImportPlan; reviewCount: numbe
       ["without a date", skipped.noDate],
       ["already existing", skipped.alreadyExisting],
       ["possible duplicate", skipped.possibleSkipped],
+      ["uncategorized row", plan.missingCategory],
       ["failed", skipped.failed],
     ] as const
   )

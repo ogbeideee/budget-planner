@@ -18,10 +18,18 @@ import {
   minorToInput,
   toMinorUnits,
 } from "@/lib/money";
-import type { CategoryKind, Month, Transaction, TransactionInput } from "@/lib/types";
+import type {
+  CategoryKind,
+  Month,
+  Transaction,
+  TransactionInput,
+  TransactionPrefill,
+} from "@/lib/types";
 import { MAX_NOTE_LENGTH } from "@/lib/validate";
 import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
+import { AnomalyNote } from "./AnomalyNote";
+import { RecurringQuickFill } from "./RecurringQuickFill";
 
 export interface TransactionFormProps {
   open: boolean;
@@ -30,6 +38,12 @@ export interface TransactionFormProps {
   initialType?: CategoryKind;
   /** Planner month the form is opened from; dates default inside its boundaries. */
   defaultMonth?: Month;
+  /**
+   * FR-25 draft seed for a NEW entry (a detected recurring pattern). Frozen
+   * into the draft at mount — callers restart with a keyed remount; the
+   * suggestion never auto-saves and every field stays editable.
+   */
+  initialDraft?: TransactionPrefill | null;
 }
 
 type FormKind = "expense" | "transfer" | "income";
@@ -46,12 +60,15 @@ export function TransactionForm({
   transaction,
   initialType = "expense",
   defaultMonth,
+  initialDraft,
 }: TransactionFormProps) {
   const categories = useAppStore((s) => s.state.categories);
   const addTransaction = useAppStore((s) => s.addTransaction);
   const updateTransaction = useAppStore((s) => s.updateTransaction);
   const currency = useAppStore((s) => s.state.settings.currency);
 
+  // Editing freezes the existing record; a new entry freezes `initialDraft`
+  // when present. Both are documented lazy-initializer cases.
   const [kind, setKind] = useState<FormKind>(() =>
     transaction
       ? transaction.type === "income"
@@ -63,16 +80,32 @@ export function TransactionForm({
         ? "income"
         : "expense",
   );
-  const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? "");
-  const [amountInput, setAmountInput] = useState(
-    transaction ? minorToInput(transaction.amount) : "",
+  const [categoryId, setCategoryId] = useState(
+    transaction?.categoryId ?? initialDraft?.categoryId ?? "",
+  );
+  const [amountInput, setAmountInput] = useState(() =>
+    transaction
+      ? minorToInput(transaction.amount)
+      : initialDraft?.amountMinor != null &&
+          Number.isInteger(initialDraft.amountMinor) &&
+          initialDraft.amountMinor > 0
+        ? minorToInput(initialDraft.amountMinor)
+        : "",
   );
   const [date, setDate] = useState(
     transaction?.date ??
-      (defaultMonth ? defaultDateForMonth(defaultMonth) : todayIso()),
+      (isIsoDate(initialDraft?.date ?? "")
+        ? (initialDraft?.date as string)
+        : defaultMonth
+          ? defaultDateForMonth(defaultMonth)
+          : todayIso()),
   );
-  const [note, setNote] = useState(transaction?.note ?? "");
+  const [note, setNote] = useState(
+    transaction?.note ?? initialDraft?.note ?? "",
+  );
   const [error, setError] = useState<string | null>(null);
+
+  const amountMinor = toMinorUnits(amountInput);
 
   const kindCategories = useMemo(
     () =>
@@ -82,9 +115,24 @@ export function TransactionForm({
       ),
     [categories, kind],
   );
-  const preview = isMinorUnitsValid(toMinorUnits(amountInput))
-    ? formatMoney(toMinorUnits(amountInput), currency)
+  const preview = isMinorUnitsValid(amountMinor)
+    ? formatMoney(amountMinor, currency)
     : null;
+
+  // FR-25 — a tapped suggestion pours its prefill into the existing draft;
+  // the user still confirms through the ordinary submit path.
+  const applyQuickFill = (draft: TransactionPrefill) => {
+    if (draft.categoryId !== undefined) setCategoryId(draft.categoryId);
+    if (
+      draft.amountMinor != null &&
+      Number.isInteger(draft.amountMinor) &&
+      draft.amountMinor > 0
+    ) {
+      setAmountInput(minorToInput(draft.amountMinor));
+    }
+    if (draft.note !== undefined && draft.note !== "") setNote(draft.note);
+    if (draft.date !== undefined) setDate(draft.date);
+  };
 
   const handleKindChange = (next: FormKind) => {
     setKind(next);
@@ -221,6 +269,12 @@ export function TransactionForm({
               under Transfers on the timeline until you move it.
             </p>
           )}
+          {!transaction && kind !== "transfer" && (
+            <RecurringQuickFill
+              kind={kind === "income" ? "income" : "expense"}
+              onApply={applyQuickFill}
+            />
+          )}
           <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
             <Input
               label="Amount"
@@ -251,6 +305,9 @@ export function TransactionForm({
             <div className="flex items-end pb-1 text-xs text-muted">
               {preview ? `Preview: ${preview}` : "\u00A0"}
             </div>
+            {!transaction && kind !== "transfer" && (
+              <AnomalyNote categoryId={categoryId} amountMinor={amountMinor} />
+            )}
             <div className="flex flex-col gap-2 sm:col-span-2">
               <label
                 htmlFor={noteId}

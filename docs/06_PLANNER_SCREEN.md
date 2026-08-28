@@ -56,6 +56,10 @@ Budget Status Band (single card; hidden when no categories exist)
 
 ↓
 
+Recurring payments (FR-25 quick-add suggestions; card exists only when a detected pattern projects into the viewed month — hidden otherwise)
+
+↓
+
 Budgets (donut + category list; the only category-progress section)
 
 ↓
@@ -90,7 +94,11 @@ Primary actions (right)
   Bank Statement modal: a 4-stage wizard (Upload → Processing → Review →
   Import). Drop or browse a CSV/Excel/PDF bank statement; transactions are
   detected client-side, categorized (editable per row), and only written to
-  the ledger after confirmation.
+  the ledger after confirmation. Import is ONE action for the whole
+  reviewed, non-excluded batch: per-row checkbox selection and the bulk
+  "Assign category…" bar are an optional convenience, never a gate, and a
+  row without any category is skipped — flagged inline, never imported
+  blank.
 
 Month Selector
 
@@ -436,6 +444,42 @@ helper `components/planner/reviewBudgets.ts`: `scrollIntoView` on
 for router-capable contexts, where the `focus=over` flow also highlights
 the over-limit rows. The hero's "Review Budget" button uses the SAME
 helper — both buttons on the page go to the identical destination.
+
+--------------------------------------------------
+RECURRING PAYMENTS (FR-25)
+--------------------------------------------------
+
+ONE optional card, full width, directly below the Budget Status Band
+and above Budgets — so "what is coming up" is answered before the
+allocation work starts.
+
+Rendered ONLY when at least one detected recurring pattern projects
+its next occurrence inside the VIEWED planner month. With nothing due
+the card does not exist at all — there is no empty state and no
+placeholder; all other sections keep their exact placement.
+
+Data comes from the pure detector (`lib/recurringPatterns.ts`):
+transactions grouped per category, 3+ occurrences, amounts within ±10%
+step-to-step, interval DETECTED (weekly / biweekly / monthly / yearly),
+expected amount recency-weighted toward recent actuals. Nothing about
+this card writes to state or stores anything.
+
+One row per due pattern, sorted by projected date:
+
+- Category icon + registry display name.
+- A small cadence chip ("monthly", "every week", "every 2 weeks",
+  "yearly").
+- Support line: "Usually {amount} · next expected {date}", where amount
+  goes through `formatMoney` with tabular figures. When the projected
+  date falls inside the due window relative to today the date gains a
+  teal "(Due soon)" emphasis.
+- A compact teal button "Add". Clicking it OPENS the ordinary Add
+  Expense form pre-filled with the pattern's category, expected amount,
+  latest note and projected date. It never saves anything by itself —
+  confirmation always happens through the form's normal submit path,
+  every field editable.
+
+No dialog, no toast, no auto-created transaction anywhere in this card.
 
 --------------------------------------------------
 BUDGETS

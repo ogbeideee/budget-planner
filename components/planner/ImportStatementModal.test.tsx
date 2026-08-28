@@ -596,13 +596,13 @@ describe("ImportStatementModal — excluding transactions", () => {
     expect(summaryText()).toContain("0expenses");
     expect(
       screen.getByRole("button", { name: "Import 1 transaction" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
 
     await user.click(within(row).getByRole("button", { name: "Include RENT PAYMENT" }));
     expect(within(row).queryByText("Excluded")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Import 2 transactions" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   });
 });
 
@@ -645,13 +645,13 @@ describe("ImportStatementModal — bulk actions", () => {
 
     expect(
       screen.getByRole("button", { name: "Nothing to import" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(summaryText()).toContain("2excluded");
 
     await user.click(within(bulk).getByRole("button", { name: /Include/ }));
     expect(
       screen.getByRole("button", { name: "Import 2 transactions" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(summaryText()).toContain("0excluded");
   });
 });
@@ -880,18 +880,24 @@ describe("ImportStatementModal — review counter", () => {
 });
 
 describe("ImportStatementModal — confirm & import", () => {
-  it("stays blocked until every ledger row has a category", async () => {
+  it("imports categorized rows and skips the uncategorized ones", async () => {
     const user = userEvent.setup();
     render(<ImportStatementModal open onClose={() => {}} />);
     await uploadStatement(user);
 
     await screen.findByRole("group", { name: "Statement summary" });
+    // MYSTERY CHARGE X7 has no category, but the two categorized rows import.
     const importButton = screen.getByRole("button", { name: "Import 2 transactions" });
-    expect(importButton).toBeDisabled();
-    expect(importButton).toHaveAttribute(
-      "title",
-      "Pick a category for 1 transaction before importing",
-    );
+    expect(importButton).toBeEnabled();
+    expect(
+      screen.getByText("1 uncategorized row will be skipped — categorize them to include them."),
+    ).toBeInTheDocument();
+
+    await user.click(importButton);
+    expect(
+      screen.getByText("2 transactions added to your budget"),
+    ).toBeInTheDocument();
+    expect(useAppStore.getState().state.transactions).toHaveLength(2);
   });
 
   it("imports the reviewed rows into the budget", async () => {
@@ -1068,6 +1074,116 @@ describe("ImportStatementModal — confirm & import", () => {
       screen.getByRole("dialog", { name: "Import Bank Statement" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Drag & drop your statement here/i)).toBeInTheDocument();
+  });
+});
+
+describe("ImportStatementModal — per-row categories are sufficient (no bulk gating)", () => {
+  it("imports a full batch using only individually-set row categories, never touching the bulk-assign control", async () => {
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user);
+    await screen.findByRole("group", { name: "Statement summary" });
+
+    // Nothing is selected, so the bulk bar's assign control does not even
+    // exist — and the import is NOT gated behind it.
+    expect(
+      screen.queryByLabelText("Assign category to selected"),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Import 2 transactions" })).toBeEnabled();
+
+    // The uncategorized row gets its category through ITS OWN dropdown.
+    await assignMysteryCategory(user);
+
+    // The button now counts the whole batch — no selection was made.
+    expect(
+      screen.queryByLabelText("Assign category to selected"),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Import 3 transactions" }));
+
+    expect(
+      screen.getByText("3 transactions added to your budget"),
+    ).toBeInTheDocument();
+    expect(useAppStore.getState().state.transactions).toHaveLength(3);
+  });
+
+  it("never lets checkbox selection scope the import — selection is only for bulk edits", async () => {
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user);
+    await assignMysteryCategory(user);
+    await screen.findByRole("group", { name: "Statement summary" });
+
+    // Select one row via its checkbox: the bulk bar appears as a convenience,
+    // but the Import count stays at the FULL batch.
+    await user.click(screen.getByRole("checkbox", { name: "Select RENT PAYMENT" }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getByLabelText("Assign category to selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import 3 transactions" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Import 3 transactions" }));
+    expect(
+      screen.getByText("3 transactions added to your budget"),
+    ).toBeInTheDocument();
+    expect(useAppStore.getState().state.transactions).toHaveLength(3);
+  });
+
+  it("leaves an excluded row out of the single-action import — exclusion is the only per-row reason", async () => {
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user);
+    const salaryRow = (await screen.findAllByTitle("SALARY PAYMENT"))[0].closest(
+      "li",
+    ) as HTMLElement;
+    await expandRow(user, "SALARY PAYMENT");
+    await user.click(
+      within(salaryRow).getByRole("button", { name: "Exclude SALARY PAYMENT" }),
+    );
+    await assignMysteryCategory(user);
+
+    // The count reflects the reviewed batch minus the exclusion — with no
+    // checkbox selection anywhere.
+    expect(
+      screen.queryByLabelText("Assign category to selected"),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Import 2 transactions" }));
+
+    expect(screen.getByText(/Skipped: 1 excluded/)).toBeInTheDocument();
+    const notes = useAppStore
+      .getState()
+      .state.transactions.map((transaction) => transaction.note);
+    expect(notes).not.toContain("SALARY PAYMENT");
+    expect(notes).toContain("RENT PAYMENT");
+    expect(notes).toContain("MYSTERY CHARGE X7");
+  });
+
+  it("blocks ONLY the uncategorized row — visible indicator, reported skip, never imported blank", async () => {
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user);
+    await screen.findByRole("group", { name: "Statement summary" });
+
+    // The row carries a clear inline needs-a-category indicator...
+    expect(
+      screen.getByRole("button", { name: "Assign category for MYSTERY CHARGE X7" }),
+    ).toBeInTheDocument();
+    // ...and the footer names exactly what will happen to it.
+    expect(
+      screen.getByText(
+        "1 uncategorized row will be skipped — categorize them to include them.",
+      ),
+    ).toBeInTheDocument();
+
+    // The rest of the batch imports without that row.
+    await user.click(screen.getByRole("button", { name: "Import 2 transactions" }));
+    expect(
+      screen.getByText("2 transactions added to your budget"),
+    ).toBeInTheDocument();
+    const notes = useAppStore
+      .getState()
+      .state.transactions.map((transaction) => transaction.note);
+    expect(notes).not.toContain("MYSTERY CHARGE X7");
+    expect(notes).toContain("RENT PAYMENT");
+    expect(notes).toContain("SALARY PAYMENT");
   });
 });
 
@@ -1309,7 +1425,7 @@ describe("ImportStatementModal — preview only", () => {
     expect(useAppStore.getState().state.transactions).toHaveLength(0);
     expect(
       screen.getByRole("button", { name: "Import 2 transactions" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(
       screen.getByText(/Your edits stay in this session — nothing has been added to your budget yet/i),
     ).toBeInTheDocument();
@@ -1910,18 +2026,18 @@ describe("ImportStatementModal — review & confirmation experience (8I)", () =>
     ).toBeEnabled();
   });
 
-  it("explains when nothing new can be imported yet", async () => {
+  it("lets you import categorized rows while skipping the uncategorized ones", async () => {
     const user = userEvent.setup();
     render(<ImportStatementModal open onClose={() => {}} />);
     await uploadStatement(user, richStatementCsv());
     await screen.findByText("RENT PAYMENT");
 
     expect(
-      screen.getByText("Assign a category to the highlighted rows to import."),
+      screen.getByText("1 uncategorized row will be skipped — categorize them to include them."),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Import 2 transactions" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   });
 
   it("reports imported, skipped-as-duplicates and requiring-review after import", async () => {

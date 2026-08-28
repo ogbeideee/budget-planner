@@ -494,58 +494,195 @@ function columnarHeaderVocabCount(cells: string[]): number {
  *  the anchor line) — PalmPay/Kuda and headerless documents keep the raw
  *  reading-order rows, so no existing parser changes shape. Returns null
  *  when the page has no columnar header. */
+/**
+ * Two header cells closer together than this are one logical column whose
+ * label the PDF split into fragments — "Debit" + "(₦)" at x 297.79 and
+ * 309.38, "Balance After" + "(" + "₦)" at 376.31 and 406.43. Bucketing
+ * against the fragments instead of the column would scatter one value across
+ * two cells, so fragments collapse onto their leftmost anchor.
+ */
+const MIN_ANCHOR_GAP = 20;
+
+/** Header lines can sit on more than one baseline ("Balance After" one line
+ *  above "Debit (₦) Credit (₦)"). Anything this close vertically is part of
+ *  the same header band. */
+const HEADER_BAND_HEIGHT = 16;
+
+function anchorXsFromBand(band: PdfTextItem[]): number[] {
+  const xs = band
+    .filter((item) => item.str.trim() !== "")
+    .map((item) => item.x)
+    .sort((a, b) => a - b);
+  const collapsed: number[] = [];
+  for (const x of xs) {
+    if (collapsed.length === 0 || x - collapsed[collapsed.length - 1] >= MIN_ANCHOR_GAP) {
+      collapsed.push(x);
+    }
+  }
+  return collapsed;
+}
+
+/** Index of every line that reads as a table header. A statement can carry
+ *  more than one — OPay prints a Wallet table and a Savings table in one
+ *  document, and the second header appears part-way down a page. */
+function headerLineIndexes(lines: PdfTextItem[][]): number[] {
+  const found: number[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const items = lines[i].filter((item) => item.str.trim() !== "");
+    if (items.length < 4) continue;
+    if (columnarHeaderVocabCount(items.map((item) => item.str)) >= 5) found.push(i);
+  }
+  return found;
+}
+
+/**
+ * The line indexes forming the header band around `index`.
+ *
+ * A header label can straddle baselines — OPay prints "Balance After" one
+ * line above "Debit (₦) Credit (₦)" and "₦)" one line below. All three are
+ * one header: taken separately, the Balance column has no anchor and no
+ * label, and its value collapses into the Credit cell.
+ */
+/** True when a line carries transaction DATA rather than header labels.
+ *  Proximity alone cannot define the band: GTCO prints its first data row
+ *  only ~10pt below its header, and absorbing it would delete a transaction. */
+function looksLikeDataLine(line: PdfTextItem[]): boolean {
+  return line.some((item) => {
+    const text = item.str.trim();
+    if (text === "") return false;
+    // A date, or a number with a decimal/thousands separator, is data.
+    return (
+      /\d{1,4}[-/][A-Za-z0-9]{2,}[-/]\d{2,4}/.test(text) ||
+      /^\(?[-+]?[\d,]+\.\d{1,2}\)?$/.test(text)
+    );
+  });
+}
+
+function headerBandIndexes(lines: PdfTextItem[][], index: number): number[] {
+  const headerY = lines[index][0].y;
+  const band: number[] = [index];
+  // Walk outward and STOP at the first data line in each direction. A band
+  // that skipped over a data row would swallow the wrapped narration beyond
+  // it, deleting a transaction.
+  for (const step of [-1, 1]) {
+    for (let i = index + step; i >= 0 && i < lines.length; i += step) {
+      if (Math.abs(lines[i][0].y - headerY) > HEADER_BAND_HEIGHT) break;
+      if (looksLikeDataLine(lines[i])) break;
+      band.push(i);
+    }
+  }
+  return band.sort((a, b) => a - b);
+}
+
+/** Column anchors for the header at `index`, widened to the whole band. */
+function anchorsForHeaderAt(lines: PdfTextItem[][], index: number): number[] {
+  const band = headerBandIndexes(lines, index).flatMap((i) => lines[i]);
+  return anchorXsFromBand(band.length > 0 ? band : lines[index]);
+}
+
+function bucketLine(line: PdfTextItem[], anchors: number[]): string[] {
+  const buckets: string[][] = anchors.map(() => []);
+  for (const item of line) {
+    if (item.str.trim() === "") continue;
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    for (let i = 0; i < anchors.length; i += 1) {
+      const distance = Math.abs(item.x - anchors[i]);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+      }
+    }
+    buckets[bestIndex].push(item.str);
+  }
+  return buckets.map((bucket) => bucket.join(" ").trim());
+}
+
+/**
+ * Aligns one page's lines to its table columns.
+ *
+ * `carriedAnchors` are the columns of the table still in progress from an
+ * earlier page — a continuation page prints no header of its own, and
+ * re-deriving columns from its data would drift. Returns the anchors in force
+ * at the end of the page so the caller can thread them onward.
+ *
+ * A page may contain MORE THAN ONE header: OPay ends its Wallet table and
+ * starts its Savings table on the same page, with the money columns ~38pt
+ * further left. Lines are therefore aligned to whichever header most recently
+ * preceded them, not to a single anchor chosen for the whole page.
+ */
+export function alignPdfLinesToColumnsCarried(
+  lines: PdfTextItem[][],
+  carriedAnchors: number[] | null,
+): { rows: PdfRow[]; anchors: number[] | null } | null {
+  const headers = headerLineIndexes(lines);
+  if (headers.length === 0 && carriedAnchors === null) return null;
+
+  // Lines ABOVE the first header (statement period, account block) still
+  // belong to the page and downstream code reads them, so they are bucketed
+  // against the first header's columns rather than dropped.
+  let anchors =
+    carriedAnchors ??
+    (headers.length > 0 ? anchorsForHeaderAt(lines, headers[0]) : null);
+  const rows: PdfRow[] = [];
+  let nextHeader = 0;
+
+  const consumed = new Set<number>();
+  for (let i = 0; i < lines.length; i += 1) {
+    while (nextHeader < headers.length && headers[nextHeader] === i) {
+      // A new table starts here; every following line uses ITS columns.
+      anchors = anchorsForHeaderAt(lines, i);
+      const band = headerBandIndexes(lines, i);
+      // Emit the whole band as ONE header row, so a label split across
+      // baselines still names its column, and the stray fragments do not
+      // surface as junk rows of their own.
+      const merged = bucketLine(band.flatMap((b) => lines[b]), anchors);
+      rows.push({ cells: merged, y: lines[i][0].y });
+      for (const b of band) consumed.add(b);
+      nextHeader += 1;
+    }
+    if (anchors === null || consumed.has(i)) continue;
+    const cells = bucketLine(lines[i], anchors);
+    if (cells.some((cell) => cell !== "")) rows.push({ cells, y: lines[i][0].y });
+  }
+
+  return { rows, anchors };
+}
+
+/** Single-page alignment, kept for callers with no cross-page context. */
 export function alignPdfLinesToColumns(
   lines: PdfTextItem[][],
 ): PdfRow[] | null {
-  let anchor: PdfTextItem[] | null = null;
-  let bestVocab = 0;
-  for (const line of lines) {
-    const items = line.filter((item) => item.str.trim() !== "");
-    if (items.length < 4) continue;
-    const vocab = columnarHeaderVocabCount(items.map((item) => item.str));
-    if (vocab > bestVocab) {
-      bestVocab = vocab;
-      anchor = items;
-    }
-  }
-  if (anchor === null || bestVocab < 5) return null;
-
-  const anchors = anchor;
-  const rows: PdfRow[] = [];
-  for (const line of lines) {
-    const buckets: string[][] = anchors.map(() => []);
-    for (const item of line) {
-      if (item.str.trim() === "") continue;
-      let bestIndex = 0;
-      let bestDistance = Infinity;
-      for (let i = 0; i < anchors.length; i += 1) {
-        const distance = Math.abs(item.x - anchors[i].x);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestIndex = i;
-        }
-      }
-      buckets[bestIndex].push(item.str);
-    }
-    const cells = buckets.map((bucket) => bucket.join(" ").trim());
-    if (cells.some((cell) => cell !== "")) rows.push({ cells, y: line[0].y });
-  }
-  return rows;
+  const result = alignPdfLinesToColumnsCarried(lines, null);
+  return result === null ? null : result.rows;
 }
 
-/** The rows the app reads from one page's text layer: the reading-order grid
- *  (groupPdfRows behavior) — OR, when the page carries a columnar table
- *  header, the header-anchored column grid with explicit empty cells (a PDF
- *  text layer never emits text for an empty column slot, so sparse rows would
- *  otherwise left-pack and misalign every amount). */
 export function rowsFromPdfItems(items: PdfTextItem[]): PdfRow[] {
+  return rowsFromPdfPage(items, null).rows;
+}
+
+/**
+ * One page's rows, threading table-column state across pages.
+ *
+ * `carriedAnchors` come from the previous page; the returned anchors go to
+ * the next one. Continuation pages of a long table print no header, so
+ * without this they fell back to gap-based splitting and their columns
+ * drifted — which is what silently mangled OPay's second table.
+ */
+export function rowsFromPdfPage(
+  items: PdfTextItem[],
+  carriedAnchors: number[] | null,
+): { rows: PdfRow[]; anchors: number[] | null } {
   const lines = clusterPdfLines(items);
-  const aligned = alignPdfLinesToColumns(lines);
+  const aligned = alignPdfLinesToColumnsCarried(lines, carriedAnchors);
   if (aligned !== null) return aligned;
   const smallestGap = smallestLineGap(lines);
-  if (smallestGap === Infinity) return [];
+  if (smallestGap === Infinity) return { rows: [], anchors: carriedAnchors };
   const threshold = Math.min(Math.max(16, smallestGap * 2.5), 40);
-  return lines.map((line) => ({ cells: cellsForLine(line, threshold), y: line[0].y }));
+  return {
+    rows: lines.map((line) => ({ cells: cellsForLine(line, threshold), y: line[0].y })),
+    anchors: carriedAnchors,
+  };
 }
 
 export async function rowsFromPdf(
@@ -584,6 +721,9 @@ export async function pdfRowsFromPdf(
   }
   try {
     const rows: PdfRow[] = [];
+    // Table columns carry from page to page: a continuation page has no
+    // header of its own.
+    let carriedAnchors: number[] | null = null;
     for (let pageNo = 1; pageNo <= doc.numPages; pageNo += 1) {
       const page = await doc.getPage(pageNo);
       try {
@@ -597,7 +737,9 @@ export async function pdfRowsFromPdf(
             x: item.transform[4],
             y: item.transform[5],
           }));
-        rows.push(...rowsFromPdfItems(items));
+        const page_ = rowsFromPdfPage(items, carriedAnchors);
+        carriedAnchors = page_.anchors;
+        rows.push(...page_.rows);
       } finally {
         page.cleanup();
       }

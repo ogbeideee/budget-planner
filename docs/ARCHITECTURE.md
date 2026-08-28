@@ -49,10 +49,10 @@ components/
            BudgetRow.tsx, PriorityBadge.tsx,
            AllocationDrawer.tsx, QuickAddExpense.tsx, DeferredSection.tsx,
            InsightsPanel.tsx, ExpenseBreakdown.tsx (Reports only — no longer
-           on the Planner), BudgetSuggestions.tsx, IncomeModal.tsx
+           on the Planner), BudgetSuggestions.tsx, IncomeModal.tsx, RecurringSuggestions.tsx
   history/ HistoryView.tsx, TransactionList.tsx
   txn/     TransactionForm.tsx, TransactionRow.tsx, TransactionFilters.tsx,
-           RecurrenceForm.tsx
+           RecurrenceForm.tsx, RecurringQuickFill.tsx, AnomalyNote.tsx
   upcoming/ UpcomingView.tsx, FutureExpenseForm.tsx
   reports/ ReportsView.tsx, ChartCard.tsx, chartStyles.ts, IncomeExpenseChart.tsx,
            SpendingTrendChart.tsx, SavingsChart.tsx, BudgetUtilizationChart.tsx,
@@ -101,6 +101,11 @@ lib/                          # pure TS, zero React imports — unit-tested (17 
   timeline.ts                 # timelineLabel(), groupTransactionsByTime() (history buckets)
   upcoming.ts                 # groupLabel(), groupFutureExpenses(), fundingUrgency()
   recurrence.ts               # generateInstances(rule, month), recordException(rule, month, id)
+  recurringPatterns.ts        # detectRecurringPatterns(), weightedExpectedAmount(),
+                              # isPatternDue(), patternsDueBetween() — FR-25 recurring
+                              # patterns (pure, derived from the ledger, never persisted)
+  anomalies.ts                # categoryRecentAverage(), checkAnomaly() — FR-25 soft
+                              # anomaly verdicts for a new entry (pure)
   categorize.ts               # suggestCategory(), rememberMapping() (keywords + learned)
   statementImport.ts          # statement file reading: CSV/Excel/PDF → cells (parseCsv,
                               # parseAmountCell, rowsFromPdf/rowsFromExcel,
@@ -767,6 +772,44 @@ a live subscription to catch. `newlyEarnedBadges` returns only ids not already
 held, and `grantBadges` filters again on write, so re-running every launch is
 free and can never duplicate or re-grant an achievement.
 
+### 3.6 Recurring-pattern detection and anomaly averages (FR-25) — pure, derived, advisory
+
+`lib/recurringPatterns.ts` and `lib/anomalies.ts` are pure engines in the same
+mould as `lib/debtPayoff.ts` (§3.4): no React, no store access, no I/O, no AI/LLM
+call and no network. Both work purely from the ledger the user already owns, are
+byte-deterministic for a given input, and take an explicit `today` where a due
+window exists so tests never depend on the clock.
+
+**Nothing here is persisted.** Patterns and averages are DERIVED from
+`transactions` on every read — the deliberate FR-21 asymmetry applied again: a
+detected pattern must follow edits to past months instead of freezing at what a
+one-time scan found, and because nothing is stored there is no schema bump, no
+migration, and nothing new to validate, export or back up. Deleting either
+module would leave no trace in stored state.
+
+Detection decides a pattern is established only after **3+ occurrences** at one
+*detected* cadence with amounts chaining within ±10% step-to-step. The chain —
+each occurrence compared against the *previous* one, not the first — is what
+lets the expected amount (a recency-weighted mean) follow slow price drift
+instead of pinning to the first-detected figure; when spending jumps beyond the
+tolerance, the newer run simply wins the (category, cadence) id. Never weaken
+these thresholds for quicker suggestions: a false "your recurring payment"
+nudge costs more trust than a missed one, and a low anomaly threshold files
+normal cheap weeks as typos.
+
+Both engines exist as shared inputs, not features: `checkAnomaly` /
+`categoryRecentAverage` (6-month trailing window, minimum 3 prior entries,
+strict >2× ratio) and `detectRecurringPatterns` / `patternsDueBetween` /
+`isPatternDue` are shaped so debt-payoff (§3.4) and rollover-budget (§3.2a)
+analysis can consume them later without any UI change.
+
+Everything user-facing built on them is additive and non-blocking:
+`RecurringSuggestions` renders only when a pattern projects into the viewed
+month; `RecurringQuickFill` hands a prefill (the form's `initialDraft`, frozen
+at mount per §3.3a) into the ordinary form rather than saving;
+`AnomalyNote` shows one dismissible sentence beside the amount. No dialog, no
+validation change, no auto-created transaction anywhere.
+
 ## 4. Data flow
 
 ```
@@ -806,6 +849,20 @@ BANK STATEMENT (CSV / Excel / PDF)
   │    into the anchor's columns by nearest x, making missing cells explicit
   │    empties; PalmPay/Kuda/mock headers stay below the trigger and keep raw
   │    reading-order cells (their parsers are untouched)
+  │    rowsFromPdfPage (OPay-real, 2026-08-27): the same alignment, but
+  │    THREADED ACROSS PAGES and re-anchored at every header. Anchors are
+  │    carried page to page because a continuation page reprints no header,
+  │    and re-deriving columns from its data drifts; and a page may hold
+  │    MORE THAN ONE header — OPay ends one account's table and starts the
+  │    next on the same page, with the money columns ~38pt further left, so
+  │    lines align to whichever header most recently preceded them rather
+  │    than to one set of anchors chosen per page. Header labels the PDF
+  │    splits across baselines ("Balance After" above "Debit (₦) Credit (₦)")
+  │    merge into ONE header row via a header BAND that stops at the first
+  │    data line in each direction, and fragments closer than 20pt collapse
+  │    onto their leftmost anchor so "Debit" + "(₦)" stay one column.
+  │    alignPdfLinesToColumns / rowsFromPdfItems remain as single-page
+  │    wrappers, so every pre-existing call site is unchanged
   │  lib/statementOcr.ts — extractStatementRowsWithOcr (8D + Phase D):
   │    PDFs are CLASSIFIED FIRST — classifyPdfDocument opens the doc with
   │    pdfjs (no rendering) and reports kind + password status:
@@ -859,6 +916,30 @@ lib/statementPipeline.ts — processStatement({ cells, context, categories, rowY
   │       (tie → next; no geometry → previous transaction, the historical
   │       behavior); trailing fragments after a boundary stop are dropped
   │       (they belong to the next account's label block)
+  │       (OPay-real) a fragment group now ENDS at a block boundary: one
+  │       transaction occupies a block of lines with the date/amount line in
+  │       the MIDDLE, so consecutive continuation lines more than 1.8 line
+  │       heights apart (medianRowGap over the statement's own baselines)
+  │       belong to different blocks and are weighed against the transactions
+  │       separately — grouping them merged one block's narration into its
+  │       neighbour's. Geometry-less input (CSV/Excel) keeps one group, i.e.
+  │       the previous behavior exactly
+  │       two OPT-IN spec fields, both off by default so no other bank moves:
+  │         emptyMoneyMarkers — placeholder text a bank prints in a money
+  │           column that holds no value (OPay writes "--"). An explicit
+  │           marker also PROVES the money columns did not shift, so the
+  │           left-shift guard stands down for that row
+  │         wrappedReference — the reference wraps across the block's lines
+  │           and its halves are rejoined in page order instead of being
+  │           folded into the narration. Off for banks whose reference fits
+  │           one line: there, a value in that column on a continuation line
+  │           is drifted narration, and appending it corrupts a good
+  │           reference (proven by the GTCO fixture)
+  │       headerToken also strips ORPHANED brackets and bare currency marks:
+  │       a PDF emits "(₦)" as separate positioned items, so a header cell
+  │       rebuilt from x-coordinates can arrive as "Balance After ₦)" and
+  │       "( Channel" — unstripped, neither column matched its role and every
+  │       OPay row came back with no balance and no channel
   │     lib/gtcoParser.ts — parseGtcoStatement(cells, context, rowYs?)
   │       header-vocabulary columns (Trans./Value Date, Reference, Debits/Credits,
   │       Balance, Branch, Remarks); positional fallback; malformed rows skipped
@@ -866,11 +947,19 @@ lib/statementPipeline.ts — processStatement({ cells, context, categories, rowY
   │       (8L) description composes the Originating Branch cell only when a
   │       Remarks column exists (hasColumn gate) — the real PDF prints long
   │       narrations inside the branch column; remarks-less exports unchanged
-  │     lib/opayParser.ts — parseOpayStatement(cells, context)
+  │     lib/opayParser.ts — parseOpayStatement(cells, context, rowYs?)
   │       header-vocabulary columns (Trans. Time, Value Date, Description,
   │       Debit/Credit(₦), Balance After(₦), Channel, Transaction Reference);
   │       full narration preserved, "|"-parts → merchant/provider facts only
-  │       (op- ids)
+  │       (op- ids); spec opts into emptyMoneyMarkers ["--", "—", "–"] and
+  │       wrappedReference, and the registry declares wrappedLines: true.
+  │       (2026-08-27) the parser FORWARDS rowYs — it used to discard them.
+  │       The real export wraps a transaction across a block of lines, and
+  │       the geometry is the only thing that says which block a stray line
+  │       belongs to; without it every wrapped line attached to the preceding
+  │       transaction, mixing two narrations and splitting the 24-digit
+  │       reference in half. CSV/Excel OPay exports pass no geometry and are
+  │       unaffected
   │     lib/kudaParser.ts — parseKudaStatement(cells, context) (8E)
   │       ONE parser for BOTH Kuda forms: text-layer cells AND OCR cells
   │       (one line per cell — kudaHeaderScore matches multi-word phrases
@@ -1021,17 +1110,35 @@ ImportStatementModal — preview + confirm + import (4A–4D, 5A, 5B, 6A): uploa
   │  checked BEFORE the category gate — a plain re-import needs no
   │  reassignment), possible duplicates are imported unless the user skipped
   │  them (counted as possibleSkipped in the done breakdown), and any kept
-  │  ledger row still missing a category keeps the button disabled ("Pick a
-  │  category for N transactions before importing"); label shows the honest
-  │  count ("Nothing to import" when zero — still enabled so a re-import
-  │  shows the summary); footer confirmation summary (8I): "You're about to
-  │  import N transactions." — or "Assign a category to the highlighted
-  │  rows to import." while blocked, "Nothing new will be imported." when
-  │  nothing is importable; the plan is SNAPSHOTTED at click time; done
+  │  ledger row still missing a category is SKIPPED, not blocking — the
+  │  categorized rows import and the uncategorized ones are counted
+  │  (plan.missingCategory) in the done summary; uncategorized rows are
+  │  deliberately SKIPPED rather than written into an "Uncategorized"
+  │  bucket, because Transaction.categoryId is REQUIRED everywhere else in
+  │  the app (manual entry validates "Choose a category."), so no such
+  │  bucket exists to write into — the row stays visible in review with an
+  │  inline warn "Assign" affordance and is reported in the skipped
+  │  breakdown; CHECKBOX SELECTION NEVER SCOPES THE IMPORT: the per-row
+  │  checkboxes + bulk bar (Select all, Assign category…, Exclude/Include)
+  │  exist ONLY as an optional convenience for applying one category to
+  │  many similar rows — `planImport` never reads `selected`, so the
+  │  Import count and the write are always the whole reviewed,
+  │  non-excluded batch and a user can complete an import using only the
+  │  per-row category dropdowns; the button label shows the
+  │  honest count of what will import ("Nothing to import" when zero — still
+  │  enabled so a re-import shows the summary); only an UNANSWERED possible
+  │  duplicate (FR-23) still disables the button ("Decide what to do with N
+  │  possible duplicates before importing"); footer confirmation summary (8I):
+  │  "You're about to import N transactions." plus "N uncategorized rows will
+  │  be skipped — categorize them to include them." when any lack a category,
+  │  "Assign a category to import — uncategorized rows are skipped." when none
+  │  are categorized yet, "Nothing new will be imported." when nothing is
+  │  importable; the plan is SNAPSHOTTED at click time; done
   │  stage (8I): "N imported · N skipped as duplicates · N requiring review"
   │  (requiring review = imported rows still flagged needsReview or low/
   │  uncertain confidence) + Skipped breakdown (movements/duplicates/
-  │  excluded/no-date/already-existing/possible-duplicates/failed), "Add
+  │  excluded/no-date/already-existing/possible-duplicates/uncategorized/
+  │  failed), "Add
   │  another file" / "Done"; any close discards the session; on write
   │  failure nothing is persisted (atomic) — error shown, session kept
   │  for retry
@@ -1239,6 +1346,46 @@ lib/storageAdapter.ts (the ONE persistence seam) → preload bridge → main
   (`components/planner/ImportStatementModal.test.tsx`), the fixture suites
   (`tests/fixtures/statements/` — real PDFs, OCR ground truth, real-engine
   integration), plus `npm run desktop:smoke` for the packaged shell.
+
+### 4.1a Statement format verification — READ THIS BEFORE TRUSTING A PARSER
+
+A bank statement parser is only as current as the last real file someone
+checked it against. OPay proved the failure mode: a real 11-page statement sat
+in `tests/fixtures/statements/Opay/` wired into **nothing** — its manifest
+entry did not even typecheck, so the repo's own fixture `id` union was missing
+it — while `lib/__tests__/opayParser.test.ts` passed against a tidy
+constructed header (`"Balance After(₦)"`, `"Channel"`) that the real export
+does not emit. Every test was green and the live app imported nothing.
+
+So statement fixtures carry the same **verified-vs-representative tiering** the
+email templates use (`docs/15_EMAIL_PARSING.md`), declared as data on each
+entry in `tests/fixtures/statements/manifest.ts` (`lastVerified`, `coverage`,
+`coverageNote`) rather than as prose that can drift:
+
+| Fixture | Real file | Coverage | Last verified | What is NOT covered |
+|---|---|---|---|---|
+| **opay** | 11-page text-layer PDF, two accounts | end-to-end | **2026-08-27** | — all 250 transactions reconcile against both printed summary blocks |
+| **gtco-real** | 5-page password-protected PDF, three accounts | end-to-end | 2026-08-26 | only the FIRST account is imported, by design; `lib/__tests__/gtcoParser.test.ts` itself is representative |
+| **palmpay** | 3-page text-layer PDF | end-to-end | 2026-08-26 | — reconciles against the printed Total Money In / Money Out |
+| **kuda** | 2-page scanned PDF + real OCR text | partial | 2026-08-26 | page 2 of the scan is too dark to read, so only 5 transactions; and **no real text-layer Kuda statement exists in the repo**, so half the parser is exercised only by representative rows |
+| **kuda-real** | rasterized twin of the above | partial | 2026-08-26 | proves only that pdfjs finds no text layer and OCR reproduces the same 5 transactions |
+
+`tests/fixtures/statements/fixtureCoverage.test.ts` scans the test sources the
+way `categoryRegistry.test.tsx` scans components and fails when a fixture is in
+the repo but **no test loads it** — the exact gap that let OPay drift. Being in
+the repo is not coverage.
+
+Rules that follow from this:
+
+- A parser test built on a **constructed** header row proves the spec, not the
+  format. Keep them — they are the fast unit layer — but a bank is only
+  "supported" once a real file parses end-to-end against figures the statement
+  itself prints (its summary block, not numbers a human retyped).
+- When you re-read a real file, bump `lastVerified` even if nothing changed.
+  An unchanged date is the signal to re-check.
+- Reconcile against **printed totals**, never against the previous run's
+  output. Asserting last week's numbers only proves the parser is consistent,
+  which a broken parser also is.
 
 ## 5. Error handling
 

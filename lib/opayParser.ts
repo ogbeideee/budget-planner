@@ -130,6 +130,13 @@ const OPAY_SPEC: ColumnarSpec = {
   referenceRole: "reference",
   valueDateRole: "valueDate",
   referenceMax: MAX_OPAY_REFERENCE_LENGTH,
+  // OPay's reference wraps across the lines of a transaction block, so its
+  // halves must be rejoined rather than swept into the narration. Verified
+  // against a real statement, 2026-08-27.
+  wrappedReference: true,
+  // OPay prints "--" in whichever money column does not apply. Verified
+  // against a real statement, 2026-08-27.
+  emptyMoneyMarkers: ["--", "—", "–"],
   enrich: ({ description, cell }) => {
     const { merchant, provider } = extractEntities(description);
     const channelCell = cell("channel");
@@ -153,10 +160,19 @@ export function opayHeaderScore(row: readonly string[]): number {
   return columnarHeaderScore(OPAY_SPEC, row);
 }
 
+/**
+ * OPay's real PDF export WRAPS: one transaction occupies a block of lines,
+ * with the date/amount line in the middle and the narration and the 24-digit
+ * reference spilling onto the lines above and below it. The row geometry is
+ * therefore forwarded, not discarded — it is the only thing that says which
+ * block a stray line belongs to. Without it every wrapped line silently
+ * attached to the preceding transaction, mixing two narrations together and
+ * splitting references in half.
+ */
 export function parseOpayStatement(
   cells: string[][],
   context: NormalizationContext,
-  _rowYs?: readonly (number | undefined)[],
+  rowYs?: readonly (number | undefined)[],
 ): OpayParseResult {
-  return parseColumnarStatement(OPAY_SPEC, cells, context);
+  return parseColumnarStatement(OPAY_SPEC, cells, context, rowYs);
 }

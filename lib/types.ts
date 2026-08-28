@@ -246,6 +246,21 @@ export interface TransactionInput {
   importSource?: ImportProvenance;
 }
 
+/**
+ * A form-draft seed for a NEW entry, produced by the FR-25 quick-add
+ * suggestions (a detected recurring pattern). Values FREEZE into the
+ * TransactionForm's draft at mount (the documented lazy-initializer case —
+ * callers restart with a keyed remount); nothing here auto-saves.
+ * `amountMinor` is integer minor units, like every other money value.
+ */
+export interface TransactionPrefill {
+  categoryId?: ID;
+  amountMinor?: number;
+  date?: string;
+  note?: string;
+}
+
+
 export interface FutureExpenseInput {
   categoryId: ID;
   amount: number;

@@ -217,7 +217,7 @@ function readPalmPayRows(
 
 describe("statement fixtures (real PDFs)", () => {
   it("manifest entries reference real, non-empty PDFs", () => {
-    expect(STATEMENT_FIXTURES).toHaveLength(4);
+    expect(STATEMENT_FIXTURES).toHaveLength(5);
     for (const fixture of STATEMENT_FIXTURES) {
       const pdfPath = fixturePdfPath(fixture.id);
       expect(existsSync(pdfPath), `${fixture.id} PDF must exist`).toBe(true);

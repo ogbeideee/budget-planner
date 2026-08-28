@@ -103,7 +103,10 @@ export const BANK_PARSERS: readonly BankStatementParser[] = [
     headerScore: opayHeaderScore,
     distinctiveTokens: OPAY_DISTINCTIVE_TOKENS,
     minHeaderScore: MIN_HEADER_SCORE,
-    capabilities: { ocrAware: false, wrappedLines: false },
+    // The real PDF export wraps a transaction across a block of lines
+    // (verified 2026-08-27); CSV/Excel exports do not, and the parser is a
+    // no-op for geometry it is not given.
+    capabilities: { ocrAware: false, wrappedLines: true },
     parse: parseOpayStatement,
   },
   {

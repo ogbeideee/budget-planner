@@ -12,6 +12,7 @@ import { MAX_NOTE_LENGTH } from "@/lib/validate";
 import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useToast } from "@/hooks/useToast";
 import { useAppStore } from "@/store/useAppStore";
+import { AnomalyNote } from "@/components/txn/AnomalyNote";
 
 export function QuickAddExpense({ month }: { month: Month }) {
   const categories = useAppStore((s) => s.state.categories);
@@ -88,6 +89,8 @@ export function QuickAddExpense({ month }: { month: Month }) {
         {preview && (
           <p className="-mt-2 text-sm text-muted">Preview: {preview}</p>
         )}
+        {/* FR-25 — soft anomaly flag; informational only, never blocks save. */}
+        <AnomalyNote categoryId={categoryId} amountMinor={toMinorUnits(amount)} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input
             label="Date"

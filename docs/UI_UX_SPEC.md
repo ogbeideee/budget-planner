@@ -251,12 +251,28 @@ Allocation has no permanent section — it opens as a right-edge drawer on deman
   moves clamp to the overage. Footer: "Cancel" (secondary) + "Apply" (primary, disabled
   until something changes). Escape and scrim click behave as Cancel. Apply → toast
   "Moved $X to {category}" (or "{category} limit set to $X").
+- **Recurring payments suggestions card** (FR-25, optional): rendered between the
+  Budget Status Band and Budgets ONLY when at least one detected recurring pattern
+  (lib/recurringPatterns.ts — 3+ same-category occurrences, amounts within ±10%,
+  interval detected weekly/biweekly/monthly/yearly) projects its next occurrence into
+  the viewed planner month; hidden otherwise, so it adds no empty section to the page
+  order. One row per due pattern, sorted by projected date: registry icon + name,
+  cadence chip, "Usually {amount} · next expected {date}" support line (teal "(Due
+  soon)" emphasis when inside today's due window), and an "Add" button that opens the
+  ordinary Add Expense form PRE-FILLED (category, expected amount, latest note,
+  projected date) via the form's `initialDraft` seed. It never saves by itself; there
+  is no dialog and no auto-created transaction.
 - **Quick Add Expense** card: category select (expense categories), amount input with
   live `formatMoney` preview (AC-14), date input (defaults inside the viewed planner
   month: today when today falls in that month, else the 1st — a record's calendar date,
   never the current date, decides which month it belongs to), note (optional, max 200
   chars), "Add expense" primary button. Success → toast; amount/note clear, category and
   date retained. Validation errors inline (amount parseable and > 0, category required).
+  A soft FR-25 anomaly note may appear beside the preview when the typed amount exceeds
+  2× the category's trailing 6-month average ("This is notably higher than your usual
+  {category} spending — just flagging in case of a typo") — informational only, one
+  Dismiss action, never blocking; it never appears for categories with fewer than 3
+  prior entries.
 - **Deferred expenses** card: one row per deferred expense — category icon, note or
   category name, date, amount (expense color); footer total. "View in History" link →
   `/history?month=YYYY-MM`. Empty state: "Nothing was deferred into this month."
@@ -337,6 +353,18 @@ Allocation has no permanent section — it opens as a right-edge drawer on deman
   Transfer / Add Income** ("Save changes" when editing). Date defaults inside the viewed
   planner month (today when today falls in that month, else the 1st); note optional, max
   200 chars. Validation unchanged: amount > 0 and parseable, category required.
+- **Recurring quick-fill + anomaly note** (FR-25, additive): while adding (never when
+  editing) on the Expense or Income tab, up to three detected recurring patterns whose
+  next projected date is due render above the fields as hints — "This looks like your
+  recurring {category} payment of ₦{amount} — add it?" — each with a "Fill in" button
+  that pours the prefill (category, expected amount, latest note, projected date) into
+  this form's draft for confirmation; nothing saves until normal submit, no field locks.
+  No hint appears on the Transfer tab or for patterns that are not due. While a valid
+  amount and category are set on Expense/Income tabs, an amount beyond 2× the category's
+  trailing 6-month average raises ONE dismissible inline note beside the preview
+  (`role="note"`, "This is notably higher than your usual {category} spending — just
+  flagging in case of a typo") — informational only: submission validation, buttons and
+  flow are unchanged, and categories with fewer than 3 prior entries never produce it.
 - Delete: `ConfirmDialog`; if transaction is a generated recurring instance, text explains
   "This deletes this month's copy only. The recurring rule stays."
 - Empty states: no records at all → CTA "Add first record"; no matches for filters →

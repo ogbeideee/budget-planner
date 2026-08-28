@@ -1,0 +1,211 @@
+import { describe, expect, it } from "vitest";
+import {
+  addCadence,
+  addDaysIso,
+  detectRecurringPatterns,
+  isPatternDue,
+  patternsDueBetween,
+  weightedExpectedAmount,
+} from "../recurringPatterns";
+import type { RecurringPattern } from "../recurringPatterns";
+import type { Transaction } from "../types";
+
+let seq = 0;
+function tx(
+  categoryId: string,
+  amount: number,
+  date: string,
+  extra: Partial<Transaction> = {},
+): Transaction {
+  seq += 1;
+  return {
+    id: `t${seq}`,
+    categoryId,
+    amount,
+    type: "expense",
+    date,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...extra,
+  };
+}
+
+const CAT = "c1";
+// Fixed calendar months: May has 31 days, June 30, July 31 — the monthly
+// detector must tolerate that spread (gaps 31/30/31 land inside 25–35).
+const MONTHLY_DATES = ["2026-05-01", "2026-06-01", "2026-07-01"];
+
+describe("pattern detection needs 3 occurrences", () => {
+  it("detects an established monthly pattern after 3 regular occurrences", () => {
+    const patterns = detectRecurringPatterns(
+      MONTHLY_DATES.map((date) => tx(CAT, 100000, date)),
+    );
+    expect(patterns).toHaveLength(1);
+    const pattern = patterns[0];
+    expect(pattern.categoryId).toBe(CAT);
+    expect(pattern.cadence).toBe("monthly");
+    expect(pattern.expectedAmount).toBe(100000);
+    expect(pattern.occurrences).toBe(3);
+    expect(pattern.lastDate).toBe("2026-07-01");
+    // Calendar-aware projection: keeps the day-of-month anchor and clamps
+    // into the next month rather than adding ~30 raw days.
+    expect(pattern.nextExpectedDate).toBe("2026-08-01");
+  });
+
+  it("detects weekly and biweekly intervals instead of assuming monthly", () => {
+    const weekly = detectRecurringPatterns([
+      tx(CAT, 5000, "2026-08-03"),
+      tx(CAT, 5000, "2026-08-10"),
+      tx(CAT, 5000, "2026-08-17"),
+    ]);
+    expect(weekly).toHaveLength(1);
+    expect(weekly[0].cadence).toBe("weekly");
+    expect(weekly[0].nextExpectedDate).toBe("2026-08-24");
+
+    const biweekly = detectRecurringPatterns([
+      tx(CAT, 6000, "2026-08-03"),
+      tx(CAT, 6000, "2026-08-17"),
+      tx(CAT, 6000, "2026-08-31"),
+    ]);
+    expect(biweekly).toHaveLength(1);
+    expect(biweekly[0].cadence).toBe("biweekly");
+    expect(biweekly[0].intervalDays).toBe(14);
+    expect(biweekly[0].nextExpectedDate).toBe("2026-09-14");
+  });
+
+  it("does NOT fire after only 2 occurrences — a coincidence, not a pattern", () => {
+    expect(
+      detectRecurringPatterns([
+        tx(CAT, 100000, "2026-05-01"),
+        tx(CAT, 100000, "2026-06-01"),
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("amount drift updates the expectation", () => {
+  it("weights recent occurrences more than old ones", () => {
+    // Weights 1..3 over (10000, 10500, 11000) -> 10666.67 -> 10667.
+    expect(weightedExpectedAmount([10000, 10500, 11000])).toBe(10667);
+  });
+
+  it("follows gradual price drift while keeping the pattern intact", () => {
+    const patterns = detectRecurringPatterns([
+      tx(CAT, 10000, "2026-07-01"),
+      tx(CAT, 10500, "2026-08-01"),
+      tx(CAT, 11000, "2026-09-01"),
+    ]);
+    // Each step is +5% — inside the ±10% chain tolerance.
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0].expectedAmount).toBe(10667);
+    expect(patterns[0].expectedAmount).toBeGreaterThan(10000);
+    expect(patterns[0].nextExpectedDate).toBe("2026-10-01");
+  });
+
+  it("hands the pattern to the NEWER run when spending jumped beyond tolerance", () => {
+    const patterns = detectRecurringPatterns([
+      tx(CAT, 10000, "2026-01-01"),
+      tx(CAT, 10000, "2026-02-01"),
+      tx(CAT, 10000, "2026-03-01"),
+      // A doubled price cannot join the old run (>> ±10%) and forms its own;
+      // the most recent run owns the (category, cadence) id going forward.
+      tx(CAT, 20000, "2026-05-01"),
+      tx(CAT, 20000, "2026-06-01"),
+      tx(CAT, 20000, "2026-07-01"),
+    ]);
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0].expectedAmount).toBe(20000);
+    expect(patterns[0].lastDate).toBe("2026-07-01");
+    expect(patterns[0].firstDate).toBe("2026-05-01");
+  });
+
+  it("does NOT merge unrelated amounts inside one regular-date run", () => {
+    expect(
+      detectRecurringPatterns([
+        tx(CAT, 10000, "2026-05-01"),
+        tx(CAT, 10000, "2026-06-01"),
+        tx(CAT, 30000, "2026-07-01"), // triples out of nowhere
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("detection boundaries", () => {
+  it("keeps weekly and monthly patterns of one category separate", () => {
+    const patterns = detectRecurringPatterns([
+      tx(CAT, 100000, "2026-06-01"),
+      tx(CAT, 100000, "2026-07-01"),
+      tx(CAT, 100000, "2026-08-01"),
+      tx(CAT, 5000, "2026-08-03"),
+      tx(CAT, 5000, "2026-08-10"),
+      tx(CAT, 5000, "2026-08-17"),
+    ]);
+    expect(patterns.map((p) => p.id)).toEqual([
+      `${CAT}:monthly`,
+      `${CAT}:weekly`,
+    ]);
+  });
+
+  it("ignores instances generated by an explicit recurrence rule", () => {
+    expect(
+      detectRecurringPatterns(
+        MONTHLY_DATES.map((date) =>
+          tx(CAT, 100000, date, { recurringRuleId: "rule-1" }),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("preserves the transaction kind on the pattern", () => {
+    const patterns = detectRecurringPatterns([
+      tx(CAT, 90000, "2026-05-01", { type: "income" }),
+      tx(CAT, 90000, "2026-06-01", { type: "income" }),
+      tx(CAT, 90000, "2026-07-01", { type: "income" }),
+    ]);
+    expect(patterns[0].type).toBe("income");
+  });
+
+  it("clamps a month-end anchor when projecting monthly", () => {
+    expect(addCadence("2026-01-31", "monthly", 31)).toBe("2026-02-28");
+    expect(addCadence("2026-02-28", "monthly", 28)).toBe("2026-03-28");
+  });
+});
+
+describe("due-window helpers", () => {
+  const pattern = (nextExpectedDate: string): RecurringPattern => ({
+    id: `${CAT}:monthly`,
+    categoryId: CAT,
+    type: "expense",
+    cadence: "monthly",
+    intervalDays: 30,
+    expectedAmount: 100000,
+    occurrences: 3,
+    firstDate: "2026-05-01",
+    lastDate: "2026-07-01",
+    nextExpectedDate,
+  });
+
+  it("is due inside the grace..ahead window around today", () => {
+    const today = "2026-08-20";
+    expect(isPatternDue(pattern(addDaysIso(today, 5)), today)).toBe(true);
+    // Up to 3 days overdue still counts — it hasn't been logged yet.
+    expect(isPatternDue(pattern("2026-08-18"), today)).toBe(true);
+    expect(isPatternDue(pattern("2026-08-27"), today)).toBe(true);
+    expect(isPatternDue(pattern("2026-08-16"), today)).toBe(false);
+    expect(isPatternDue(pattern("2026-08-28"), today)).toBe(false);
+  });
+
+  it("filters inclusively and sorts by projected date", () => {
+    const early = pattern("2026-08-05");
+    const late = pattern("2026-08-25");
+    expect(
+      patternsDueBetween([late, early], "2026-08-01", "2026-08-31").map(
+        (p) => p.nextExpectedDate,
+      ),
+    ).toEqual(["2026-08-05", "2026-08-25"]);
+    expect(
+      patternsDueBetween([early, late], "2026-08-06", "2026-08-24"),
+    ).toEqual([]);
+  });
+});
+
+

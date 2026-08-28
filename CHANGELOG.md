@@ -4,6 +4,13 @@
 
 ### Added
 
+- **Import a statement without categorizing every row first.** The Import
+  Statement review no longer blocks the whole batch until every row has a
+  category. Rows that already have a category import straight away; any row
+  still uncategorized is simply skipped and reported on the done screen
+  ("N uncategorized rows will be skipped"), so you can categorize the rest
+  later or leave them out. A flagged possible-duplicate is still the one thing
+  you must answer before finishing.
 - **Groundwork for reading bank alert emails** — the parsing engine, the list of
   bank senders it will ever look at, and secure password storage are in place.
   Your email password is kept in the operating system’s own keychain; if that

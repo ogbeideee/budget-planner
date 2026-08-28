@@ -8,12 +8,13 @@ import { PlusIcon, UploadIcon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { TransactionForm } from "@/components/txn/TransactionForm";
 import { useMonth } from "@/hooks/useMonth";
-import type { CategoryKind } from "@/lib/types";
+import type { CategoryKind, TransactionPrefill } from "@/lib/types";
 import { ImportStatementModal } from "./ImportStatementModal";
 import { BudgetList } from "./BudgetList";
 import { BudgetStatusBand } from "./BudgetStatusBand";
 import { Hero } from "./Hero";
 import { RecentActivity } from "./RecentActivity";
+import { RecurringSuggestions } from "./RecurringSuggestions";
 import { SummaryCards } from "./SummaryCards";
 
 export function PlannerView() {
@@ -23,6 +24,23 @@ export function PlannerView() {
   const focusCreate = searchParams.get("focus") === "create";
   const [txnType, setTxnType] = useState<CategoryKind | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // FR-25: a detected-pattern prefill handed to the transaction form. The
+  // form's draft freezes at mount (documented convention), so each suggestion
+  // bump also bumps the key to remount the form with the new seed.
+  const [prefill, setPrefill] = useState<TransactionPrefill | undefined>(
+    undefined,
+  );
+  const [formNonce, setFormNonce] = useState(0);
+
+  const openTransactionForm = (
+    type: CategoryKind,
+    draft?: TransactionPrefill,
+  ) => {
+    setPrefill(draft);
+    setFormNonce((nonce) => nonce + 1);
+    setTxnType(type);
+  };
+
 
   return (
     <div className="relative">
@@ -63,14 +81,14 @@ export function PlannerView() {
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 icon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setTxnType("expense")}
+                onClick={() => openTransactionForm("expense")}
               >
                 Add Expense
               </Button>
               <Button
                 variant="secondary"
                 icon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setTxnType("income")}
+                onClick={() => openTransactionForm("income")}
               >
                 Add Income
               </Button>
@@ -88,13 +106,22 @@ export function PlannerView() {
         <Hero month={month} />
         <SummaryCards month={month} />
         <BudgetStatusBand month={month} />
+        {/* FR-25 — quick-add suggestions for recurring payments due in the
+            viewed month; renders nothing when none are due. Sits between the
+            status band and the budget list so "what's coming up" is answered
+            before the allocation work starts. */}
+        <RecurringSuggestions
+          month={month}
+          onQuickAdd={(draft) => openTransactionForm("expense", draft)}
+        />
         <BudgetList month={month} focusOver={focusOver} focusCreate={focusCreate} />
         <RecentActivity month={month} />
         <TransactionForm
-          key={txnType ?? "closed"}
+          key={`${txnType ?? "closed"}-${formNonce}`}
           open={txnType !== null}
           initialType={txnType ?? "expense"}
           defaultMonth={month}
+          initialDraft={prefill}
           onClose={() => setTxnType(null)}
         />
         <ImportStatementModal

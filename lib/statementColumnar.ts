@@ -34,13 +34,21 @@ import {
 
 /** Normalized header token: lowercase, dots and currency/unit markers
  *  stripped, whitespace collapsed ("Balance After(₦)" → "balance after",
- *  "Money In (NGN)" → "money in"). */
+ *  "Money In (NGN)" → "money in").
+ *
+ *  A PDF text layer emits "(₦)" as separate positioned items, so a header
+ *  cell reconstructed from x-coordinates can arrive with the marker torn
+ *  across two columns — OPay's real export yields "Balance After ₦)" and
+ *  "( Channel". The well-formed strips above cannot see those, so orphaned
+ *  brackets and bare currency marks are removed afterwards; neither ever
+ *  carries meaning in a column label. */
 export function headerToken(raw: string): string {
   return String(raw ?? "")
     .trim()
     .toLowerCase()
     .replace(/\([₦$€£¥][^)]*\)/g, "")
     .replace(/\((?:ngn|naira|usd|gbp|eur)\)/g, "")
+    .replace(/[₦$€£¥()]/g, "")
     .replace(/\./g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -94,6 +102,26 @@ export interface ColumnarSpec {
   valueDateRole?: string;
   /** Cap for the transient reference (review aid only). */
   referenceMax?: number;
+  /** Opt-in: this bank's reference WRAPS across the lines of a transaction
+   *  block, so fragments found in the reference column are reassembled into
+   *  the reference (in page order) instead of being folded into the
+   *  narration. OPay's 24-digit reference does this. Off by default: for a
+   *  bank whose reference always fits one line, a value in that column on a
+   *  continuation line is narration that drifted there, and appending it
+   *  would corrupt a perfectly good reference. */
+  wrappedReference?: boolean;
+  /**
+   * Placeholder text a bank prints in a money column that holds NO value.
+   *
+   * OPay writes "--" in whichever of Debit/Credit does not apply. Without
+   * this the cell is neither empty (so it is not skipped) nor a number (so
+   * `parseAmountCell` returns null), and the row is rejected as "unparseable
+   * amount" — which silently dropped EVERY OPay transaction.
+   *
+   * Opt-in per bank: a marker that is meaningful for one issuer must not be
+   * assumed for another.
+   */
+  emptyMoneyMarkers?: readonly string[];
   /** Bank-specific per-row enrichment (branch, channel, merchant/provider). */
   enrich?: (ctx: ColumnarRowContext) => Partial<NormalizedBankTransaction>;
 }
@@ -152,6 +180,30 @@ function detectColumns(spec: ColumnarSpec, rows: string[][]): {
   return { headerIndex, columns };
 }
 
+/** How many line heights apart two continuation lines may sit and still be
+ *  read as one wrapped block. Blocks are separated by a visibly wider gap
+ *  than the lines inside one, so anything below 2 separates them; 1.8 leaves
+ *  room for the sub-pixel variation a PDF text layer reports. */
+const BLOCK_GAP_FACTOR = 1.8;
+
+/** The statement's own line height: the median gap between consecutive row
+ *  baselines. Returns null when the rows carry no usable geometry (CSV and
+ *  Excel imports), which keeps every non-PDF path on the previous behavior. */
+function medianRowGap(rows: readonly { y: number | undefined }[]): number | null {
+  const gaps: number[] = [];
+  for (let i = 1; i < rows.length; i += 1) {
+    const a = rows[i - 1].y;
+    const b = rows[i].y;
+    if (a === undefined || b === undefined) continue;
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    const gap = Math.abs(a - b);
+    if (gap > 0) gaps.push(gap);
+  }
+  if (gaps.length === 0) return null;
+  gaps.sort((x, y) => x - y);
+  return gaps[Math.floor(gaps.length / 2)];
+}
+
 /**
  * Parses a column-header-driven statement (CSV/Excel/PDF text layer) into
  * normalized transactions. Columns are located BY HEADER NAME (tolerant of
@@ -196,26 +248,58 @@ export function parseColumnarStatement(
   // printed BELOW a row on that row.
   interface PendingGroup {
     fragments: string[];
+    /** Fragments read from the REFERENCE column, kept apart from the
+     *  narration: OPay wraps its 24-digit reference across a block's lines,
+     *  and joining those digits into the description both corrupts the
+     *  narration and destroys the reference. */
+    refs: string[];
     ys: number[];
   }
   let pendingGroups: PendingGroup[] = [];
   const transactionYs: number[] = [];
 
+  // One transaction occupies a BLOCK of lines: the date/amount line plus the
+  // lines its narration and reference wrap onto, printed one line-height
+  // apart, with a wider gap between blocks. `lineGap` is the statement's own
+  // line height (the median gap between consecutive rows), so consecutive
+  // continuation lines separated by more than that belong to DIFFERENT
+  // blocks and must not be flushed as one group — otherwise the block below
+  // is read as a continuation of the block above.
+  const lineGap = medianRowGap(dataRows);
+
   const attachFragments = (
     target: NormalizedBankTransaction,
-    fragments: string[],
+    group: PendingGroup,
     prepend: boolean,
   ): void => {
+    if (group.refs.length > 0) {
+      // A wrapped reference reassembles in page order, so a fragment printed
+      // ABOVE the anchor line leads and one printed below trails.
+      const parts = prepend
+        ? [...group.refs, target.reference ?? ""]
+        : [target.reference ?? "", ...group.refs];
+      const joined = parts.join("");
+      if (joined !== "") {
+        target.reference = truncate(
+          joined,
+          spec.referenceMax ?? MAX_ORIGINAL_DESCRIPTION_LENGTH,
+        );
+      }
+    }
+    if (group.fragments.length === 0) return;
     const extra = truncate(
-      fragments.join(" "),
+      group.fragments.join(" "),
       MAX_ORIGINAL_DESCRIPTION_LENGTH,
     );
-    const base =
-      target.description === "(no description)" ? extra : target.description;
+    // A row whose own narration cell was empty has no base text to join to —
+    // the fragments ARE the description. (Joining the placeholder branch's
+    // `base` here printed the fragments twice.)
     const merged =
-      target.description === "(no description)" || prepend
-        ? `${extra} ${base}`.trim()
-        : `${target.description} ${extra}`;
+      target.description === "(no description)"
+        ? extra
+        : prepend
+          ? `${extra} ${target.description}`.trim()
+          : `${target.description} ${extra}`;
     target.description = truncate(merged, MAX_ORIGINAL_DESCRIPTION_LENGTH);
     target.originalDescription = truncate(
       merged,
@@ -252,9 +336,9 @@ export function parseColumnarStatement(
         attachSelf = distSelf <= distLast;
       }
       if (attachSelf && next !== undefined) {
-        attachFragments(next, group.fragments, true);
+        attachFragments(next, group, true);
       } else if (transactions.length > 0) {
-        attachFragments(transactions[transactions.length - 1], group.fragments, false);
+        attachFragments(transactions[transactions.length - 1], group, false);
       }
     }
     pendingGroups = [];
@@ -309,18 +393,32 @@ export function parseColumnarStatement(
       balanceCell === "" &&
       row.some((cell) => cell !== "")
     ) {
-      const fragment = row.filter((cell) => cell !== "").join(" ");
-      if (pendingGroups.length > 0) {
-        pendingGroups[pendingGroups.length - 1].fragments.push(fragment);
-        if (rowY !== undefined && Number.isFinite(rowY)) {
-          pendingGroups[pendingGroups.length - 1].ys.push(rowY);
-        }
-      } else {
-        pendingGroups.push({
-          fragments: [fragment],
-          ys: rowY !== undefined && Number.isFinite(rowY) ? [rowY] : [],
-        });
-      }
+      const referenceColumn =
+        spec.wrappedReference === true && spec.referenceRole !== undefined
+          ? columns[spec.referenceRole]
+          : NO_COLUMN;
+      const referenceFragment =
+        referenceColumn >= 0 ? (row[referenceColumn] ?? "") : "";
+      const fragment = row
+        .filter((cell, index) => cell !== "" && index !== referenceColumn)
+        .join(" ");
+
+      const open = pendingGroups[pendingGroups.length - 1];
+      const openY = open?.ys[open.ys.length - 1];
+      // A gap wider than one line height means a new transaction block began;
+      // its fragments must be weighed against the transactions separately.
+      const sameBlock =
+        open !== undefined &&
+        (lineGap === null ||
+          rowY === undefined ||
+          openY === undefined ||
+          Math.abs(openY - rowY) <= lineGap * BLOCK_GAP_FACTOR);
+      const target = sameBlock
+        ? open
+        : (pendingGroups[pendingGroups.push({ fragments: [], refs: [], ys: [] }) - 1]);
+      if (fragment !== "") target.fragments.push(fragment);
+      if (referenceFragment !== "") target.refs.push(referenceFragment);
+      if (rowY !== undefined && Number.isFinite(rowY)) target.ys.push(rowY);
       continue;
     }
 
@@ -331,12 +429,18 @@ export function parseColumnarStatement(
       errors.push({ row: rowNumber, reason: "invalid date" });
       continue;
     }
-    const debit = debitCell === "" ? null : parseAmountCell(debitCell);
-    const credit = creditCell === "" ? null : parseAmountCell(creditCell);
-    if (
-      (debitCell !== "" && debit === null) ||
-      (creditCell !== "" && credit === null)
-    ) {
+    // A bank's own "no value here" placeholder reads as an EMPTY cell, not as
+    // a broken one — see `emptyMoneyMarkers`.
+    const isBlankMoney = (cell: string): boolean =>
+      cell === "" ||
+      (spec.emptyMoneyMarkers ?? []).some(
+        (marker) => cell.trim() === marker,
+      );
+    const debitBlank = isBlankMoney(debitCell);
+    const creditBlank = isBlankMoney(creditCell);
+    const debit = debitBlank ? null : parseAmountCell(debitCell);
+    const credit = creditBlank ? null : parseAmountCell(creditCell);
+    if ((!debitBlank && debit === null) || (!creditBlank && credit === null)) {
       skipped += 1;
       errors.push({ row: rowNumber, reason: "unparseable amount" });
       continue;
@@ -362,10 +466,25 @@ export function parseColumnarStatement(
     }
 
     const referenceCell = cellAt(row, spec.referenceRole);
+    // An EXPLICIT empty-money marker is proof the columns did not shift: the
+    // bank itself rendered "--" in that exact cell, so the money columns are
+    // where the header says they are. The left-shift heuristic below would
+    // otherwise reject a perfectly good row whose reference happens to be a
+    // short numeric run (OPay wraps references, leaving fragments like
+    // "2198771" that parse as a number).
+    const moneyColumnsProven =
+      (spec.emptyMoneyMarkers ?? []).length > 0 &&
+      [debitCell, creditCell].some((cell) =>
+        (spec.emptyMoneyMarkers ?? []).some((marker) => cell.trim() === marker),
+      );
     // A reference that parses as an amount means the same left-shift landed
     // a reference in the money columns — the "amount" it produced belongs
     // to a different column. Reject rather than importing a phantom value.
-    if (referenceCell !== "" && parseAmountCell(referenceCell) !== null) {
+    if (
+      !moneyColumnsProven &&
+      referenceCell !== "" &&
+      parseAmountCell(referenceCell) !== null
+    ) {
       skipped += 1;
       errors.push({ row: rowNumber, reason: "misaligned row" });
       continue;

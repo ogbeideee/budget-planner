@@ -513,6 +513,42 @@ Full detail in `15_EMAIL_PARSING.md`. Summary:
   to build from, and shipping a client secret inside a desktop binary is worse than one
   revocable app password in the OS keychain.
 
+### FR-25 — Recurring-pattern detection, quick-add suggestions and anomaly flagging
+
+Works entirely from the user's own transaction history — no AI/LLM call, no network.
+Two pure engines (no React, no store access) feed additive, non-blocking surfaces:
+
+- **Detection (`lib/recurringPatterns.ts`, derived — never persisted).** Transactions
+  grouped per category form runs whose consecutive day-gaps classify as ONE cadence
+  (weekly / biweekly / monthly / yearly) and stay within tolerance of the run's median
+  gap; the interval is DETECTED, never assumed monthly. A run qualifies only at
+  `MIN_OCCURRENCES = 3` occurrences with amounts chaining within `AMOUNT_TOLERANCE`
+  (±10% step-to-step). The expected amount is a recency-weighted mean over the run, so
+  a price drift (subscription increase) moves the expectation forward instead of
+  locking to the first-detected amount; a jump beyond tolerance starts a newer run and
+  the most recent run owns the (category, cadence) pattern id. Nothing is stored —
+  patterns recompute from the ledger every read (same asymmetry as FR-21 streaks), so
+  there is no schema bump and nothing to migrate. Instances materialized from an
+  explicit recurrence rule (`recurringRuleId`) never feed detection — they already
+  have an owner.
+- **Quick-add suggestions (additive UI only).** Detected patterns due in the viewed
+  month surface on the Planner as a "Recurring payments" card (rendered ONLY when
+  something is due; hidden otherwise, page order §06 unchanged for all other content),
+  and inside the Add Expense/Income flow as one tappable hint — "This looks like your
+  recurring {category} payment of ₦{amount} — add it?". Confirming PREFILLS amount,
+  category, description and projected date into the ordinary TransactionForm draft
+  (new `initialDraft` prop, frozen at mount per the derived-draft convention,
+  restarted by keyed remount); it never silently saves. Submission is the normal path.
+- **Anomaly flagging (`lib/anomalies.ts`, informational only).** For a new manual
+  entry, the category's trailing 6-month expense average is computed over prior
+  entries only. Fewer than 3 prior entries → never flagged (insufficient data must
+  not produce false positives). An entry exceeding 2× that average shows ONE soft,
+  dismissible inline note ("This is notably higher than your usual {category}
+  spending — just flagging in case of a typo") — never a dialog, never a block;
+  low amounts are deliberately never flagged, exactly 2× does not clear the threshold.
+- **Manual entry is otherwise untouched**: transactions matching neither a pattern
+  nor an anomaly behave bit-for-bit as before.
+
 ## 6. Data Model
 
 All values are plain JSON-serializable objects. Money is stored as integer minor units
@@ -752,6 +788,10 @@ Salary          💰 #0ea5e9 income
 | AC-44 | Correcting a row to a different category rewrites the existing mapping (one entry, newest choice) instead of creating a conflicting second one |
 | AC-45 | Deleting a mapping in Settings, or clearing them all, stops it suggesting on later imports; other mappings are unaffected |
 | AC-46 | A row pre-filled from a learned mapping shows a visible "Learned" indicator and is still overridable before the batch is imported |
+| AC-47 | Three regular same-category occurrences at ~30-day gaps produce a monthly pattern with expected amount = recency-weighted mean and next date preserving the day-of-month anchor (clamped); TWO occurrences never do |
+| AC-48 | Gradual price drift moves the expected amount toward recent actuals (e.g. 10000→10500→11000 expects ≈10667); a doubling beyond tolerance starts a fresh run and the NEWER run wins the (category, cadence) id |
+| AC-49 | Confirming a suggestion pre-fills amount, category, note and projected date in the Add Expense form WITHOUT saving anything — the ledger only changes after the ordinary submit |
+| AC-50 | An entry at 3× its category's 6-month average shows the dismissible inline note; an entry at exactly 2× does not; a category with fewer than 3 prior entries NEVER produces the note; dismissing or ignoring it never blocks a save |
 
 ## 8. Non-functional Requirements
 

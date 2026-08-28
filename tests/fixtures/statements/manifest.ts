@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import {
   groupPdfLines,
   groupPdfRows,
-  rowsFromPdfItems,
+  rowsFromPdfPage,
 } from "../../../lib/statementImport";
 
 const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
@@ -55,7 +55,7 @@ export interface FixtureOptionalFields {
 
 export interface StatementFixture {
   /** Stable id — the future parser id / `importSource.bank` candidate. */
-  id: "kuda" | "kuda-real" | "palmpay" | "gtco-real";
+  id: "kuda" | "kuda-real" | "palmpay" | "gtco-real" | "opay";
   /** Display label. */
   label: string;
   /** Real statement PDF, relative to this file's directory. */
@@ -69,6 +69,24 @@ export interface StatementFixture {
   pages: number;
   /** Whether pdfjs can extract a transaction text layer from the PDF. */
   textLayer: "present" | "absent";
+  /** ISO date this fixture's PARSE was last checked against the real file —
+   *  not when the file was committed. A fixture can sit in the repo for
+   *  months while the bank quietly changes its export; OPay's did, and the
+   *  failure only showed up in the live app. Bump this when you re-read the
+   *  real file and re-confirm the numbers. */
+  lastVerified: string;
+  /** What the real file actually proves, in the same verified-vs-
+   *  representative tiering the email templates use (docs/15_EMAIL_PARSING.md):
+   *
+   *  "end-to-end" — a test parses the real extraction and asserts figures
+   *      taken from the statement's own printed totals.
+   *  "partial"    — a test parses the real extraction, but it covers only
+   *      part of the file or only one of the parser's input paths.
+   *  "none"       — the file is in the repo but no test reads it; the
+   *      parser's tests are representative constructions only. */
+  coverage: "end-to-end" | "partial" | "none";
+  /** Why `coverage` is what it is — specifically, what is NOT covered. */
+  coverageNote: string;
   /** Observed layout facts (from the real PDF, incl. its OCR output). */
   layout: string[];
   optionalFields: FixtureOptionalFields;
@@ -83,6 +101,10 @@ export const STATEMENT_FIXTURES: readonly StatementFixture[] = [
     ocrTextFile: "./Kuda/kuda.ocr.txt",
     pages: 2,
     textLayer: "absent",
+    lastVerified: "2026-08-26",
+    coverage: "partial",
+    coverageNote:
+      "OCR path only — the real OCR text is parsed end-to-end, but it reads just 5 transactions because page 2 of the scan is too dark to read, and no real TEXT-LAYER Kuda statement exists in the repo, so that half of the parser is exercised only by representative rows in lib/__tests__/kudaParser.test.ts.",
     layout: [
       "scanned/image pages — no extractable transaction text (2 pages, 6 image XObjects, 3 JPEG streams)",
       "only the page markers 'Page 1 of 2' / 'Page 2 of 2' survive pdfjs text extraction; OCR (scripts/ocr-check.mjs) reads the printed layout (kuda.ocr.txt)",
@@ -111,6 +133,10 @@ export const STATEMENT_FIXTURES: readonly StatementFixture[] = [
     ocrTextFile: "./KUDA-real.ocr.txt",
     pages: 2,
     textLayer: "absent",
+    lastVerified: "2026-08-26",
+    coverage: "partial",
+    coverageNote:
+      "Same statement as the scanned fixture, rasterized; proves only that pdfjs finds no text layer and that OCR reproduces the same 5 transactions.",
     layout: [
       "rasterized export of the SAME statement as the scanned fixture (account 2003640955, period 01/07/2026 - 14/08/2026): every page is a strip of JPEG images — the raw content stream draws only image XObjects plus the 'Page 1 of 2' / 'Page 2 of 2' text runs",
       "pdfjs text extraction (legacy + modern builds share the engine) surfaces ONLY the two page markers — no fonts beyond the marker font (Type0 CIDFontType2 'MYFGFW+SuisseIntl-Regular', ToUnicode maps just the marker glyphs), no selectable transaction text exists",
@@ -136,6 +162,10 @@ export const STATEMENT_FIXTURES: readonly StatementFixture[] = [
     snapshotFile: "./Palmpay/palmpay.extracted.json",
     pages: 3,
     textLayer: "present",
+    lastVerified: "2026-08-26",
+    coverage: "end-to-end",
+    coverageNote:
+      "lib/__tests__/palmpayParser.test.ts parses the real extraction and reconciles against the printed Total Money In / Total Money Out.",
     layout: [
       "account-statement header block: Name, Phone Number, Account Number, Total Money In ₦183,800.71, Statement Period, Total Money Out ₦340,270.00, Print Time, Address",
       "5-column table header: Transaction Date | Transaction Detail | Money In (NGN) | Money Out (NGN) | Transaction ID",
@@ -159,6 +189,10 @@ export const STATEMENT_FIXTURES: readonly StatementFixture[] = [
     snapshotFile: "./GTCO-real.extracted.json",
     pages: 5,
     textLayer: "present",
+    lastVerified: "2026-08-26",
+    coverage: "end-to-end",
+    coverageNote:
+      "statementFixtures.test.ts asserts all 49 real transactions with exact dates, amounts, chained balances and references. Covers the FIRST of the file's three accounts by design; the other two must not be imported.",
     layout: [
       "PASSWORD-PROTECTED (Standard security handler, /V 2 /R 3 /Length 128 = RC4-128): pdfjs opens it with the owner password; without one it throws PasswordException code 1, with a wrong one code 2. The unlock password is user-provided — the committed regression tests read it from the GTCO_STATEMENT_PASSWORD env var and skip cleanly when unset",
       "ONE file, THREE accounts: SAVINGS 066XXXX272 (pages 1-3), GTTARGET 081XXXX044 (page 4) and GTTARGET 079XXXX533 (page 5). Each account prints its own 'Statement Period … Currency' block + 'CUSTOMER STATEMENT' line + 'Trans. Date | Value Date | Reference | Debits | Credits | Balance | Originating Branch | Remarks' table — only the FIRST account's 49 transactions are imported (multi-account statements must not mix accounts)",
@@ -175,6 +209,39 @@ export const STATEMENT_FIXTURES: readonly StatementFixture[] = [
       category: false,
       account: true,
       time: false,
+      valueDate: true,
+    },
+  },
+  {
+    id: "opay",
+    label: "OPay",
+    pdfFile: "./Opay/DAVID OSAHON OGBEIDE_8082389369_20260827085939.pdf",
+    snapshotFile: "./Opay/opay.extracted.json",
+    pages: 11,
+    textLayer: "present",
+    lastVerified: "2026-08-27",
+    coverage: "end-to-end",
+    coverageNote:
+      "tests/fixtures/statements/opayReal.test.ts reconciles all 250 transactions against both printed summary blocks. This fixture existed but was wired into NOTHING before 2026-08-27, which is how the format drift reached the live app.",
+    // Re-read from the PDF and re-verified 2026-08-27. The earlier entry
+    // described a single 150-transaction table and a "repair pass" that no
+    // longer exists; both were wrong.
+    layout: [
+      "ONE file, TWO complete statements, each with its own header block and its own table: Wallet Account 8082389369 (pages 1-7, Total Debit ₦782,090.50 / count 77, Total Credit ₦782,090.50 / count 73) and Savings Account (pages 7-11, Total Debit ₦388,370.50 / count 60, Total Credit ₦388,348.12 / count 40) — 250 transactions in total, and unlike GTCO both belong to the same wallet, so both are imported",
+      "8-column table header, printed across TWO baselines: 'Balance After' sits one line above 'Trans. Time | Value Date | Description | Debit (₦) | Credit (₦) | ... | Channel | Transaction Reference'. Aligned by column geometry the currency marker tears apart, so the header cells arrive as 'Balance After ₦)' and '( Channel' — headerToken strips orphaned brackets so both columns still match their role",
+      "the SECOND table's money columns sit ~38pt further left than the first's, and its continuation pages reprint no header: column anchors must carry from page to page (rowsFromPdfPage) and re-anchor at the second header, or pages 8-11 collapse the Debit/Credit/Balance triple into one cell",
+      "'--' is the empty-money marker — OPay prints it in whichever money column does not apply, on EVERY row. Read as an unparseable amount it rejects the entire statement",
+      "one transaction spans a BLOCK of lines with the date/amount line in the MIDDLE: the '|'-separated narration ('Transfer to NAME | Bank | account') and the 24-digit Transaction Reference both wrap onto the lines above AND below it, one line-height (~6pt) apart, with ~21pt between blocks",
+      "dates print as '30 Jul 2026 16:08:05' (a combined datetime in Trans. Time) with a separate Value Date; amounts use thousands commas + 2 decimals; Channel is 'Mobile' on every row",
+      "OWealth auto-save, withdrawals and 'OWealth Interest Earned' (sub-naira credits) are real money rows; the two tables' opening/closing balances are ₦0.00, so debit and credit totals do NOT net to zero across the file",
+    ],
+    optionalFields: {
+      balance: true,
+      reference: true,
+      counterparty: true,
+      category: false,
+      account: true,
+      time: true,
       valueDate: true,
     },
   },
@@ -247,8 +314,14 @@ export function fixtureRowYs(id: string): (number | undefined)[] {
 export function fixtureAlignedCells(id: string): string[][] {
   const pages = loadFixtureSnapshot(id);
   const rows: string[][] = [];
+  // Threads table-column anchors across pages exactly as the runtime page
+  // loop does. Continuation pages print no header of their own, so without
+  // this the fixture path drifts away from the app it is meant to mirror.
+  let anchors: number[] | null = null;
   for (const page of pages) {
-    rows.push(...rowsFromPdfItems(page.items).map((row) => row.cells));
+    const result = rowsFromPdfPage(page.items, anchors);
+    anchors = result.anchors;
+    rows.push(...result.rows.map((row) => row.cells));
   }
   return rows;
 }
@@ -259,8 +332,11 @@ export function fixtureAlignedCells(id: string): string[][] {
 export function fixtureAlignedRowYs(id: string): (number | undefined)[] {
   const pages = loadFixtureSnapshot(id);
   const ys: (number | undefined)[] = [];
+  let anchors: number[] | null = null;
   for (const page of pages) {
-    ys.push(...rowsFromPdfItems(page.items).map((row) => row.y));
+    const result = rowsFromPdfPage(page.items, anchors);
+    anchors = result.anchors;
+    ys.push(...result.rows.map((row) => row.y));
   }
   return ys;
 }
