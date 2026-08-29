@@ -126,6 +126,13 @@ export interface NormalizedBankTransaction {
   creditAmount?: number;
   /** Running balance after the transaction (minor units), when available. */
   balanceAfter?: number;
+  /** Flow magnitude (minor units) preserved when the direction could NOT be
+   *  determined from the statement (Kuda rows with no trusted balance delta
+   *  and no direction tag). Transient review aid: the row keeps type
+   *  "unknown" and lands in the review screen's needs-review bucket — the
+   *  magnitude is booked only on the ledger side the USER chooses, never on
+   *  a guessed side. */
+  unresolvedAmount?: number;
   /** Originating branch when the statement reports one (GTCO statements);
    *  provenance for review and classification; only the confirmed row's
    *  reference survives as importSource provenance, never the branch. */

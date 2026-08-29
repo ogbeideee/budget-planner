@@ -219,10 +219,10 @@ export const STATEMENT_FIXTURES: readonly StatementFixture[] = [
     snapshotFile: "./Opay/opay.extracted.json",
     pages: 11,
     textLayer: "present",
-    lastVerified: "2026-08-27",
+    lastVerified: "2026-08-28",
     coverage: "end-to-end",
     coverageNote:
-      "tests/fixtures/statements/opayReal.test.ts reconciles all 250 transactions against both printed summary blocks. This fixture existed but was wired into NOTHING before 2026-08-27, which is how the format drift reached the live app.",
+      "tests/fixtures/statements/opayReal.test.ts reconciles all 250 transactions against both printed summary blocks. Re-verified 2026-08-28 through the app's ACTUAL PDF seam: classifyPdfDocument re-derived column anchors per page instead of threading them, so headerless continuation pages drifted and the live review screen surfaced only 124 of 250 (406 rows misreported unreadable); the probe now threads anchors exactly like pdfRowsFromPdf, and statementRealEngine.test.ts asserts 250 through the real bytes plus probe ≡ pdfRowsFromPdf identity. This fixture existed but was wired into NOTHING before 2026-08-27, which is how the format drift reached the live app.",
     // Re-read from the PDF and re-verified 2026-08-27. The earlier entry
     // described a single 150-transaction table and a "repair pass" that no
     // longer exists; both were wrong.

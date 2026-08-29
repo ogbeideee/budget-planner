@@ -134,6 +134,17 @@ describe("parseAmountCell", () => {
     expect(parseAmountCell("250.50-")?.direction).toBe("out");
   });
 
+  it("treats a bare plus as neutral — the column context decides", () => {
+    // A leading "+" carries no direction of its own: in a signed single
+    // amount column (PalmPay's Money In) the parser's own column knowledge
+    // decides "in"; in a debit/credit table the column membership decides.
+    // The cell parser must not guess income from a sign alone.
+    expect(parseAmountCell("+1,234.56")).toEqual({
+      minor: 123456,
+      direction: "unknown",
+    });
+  });
+
   it("reads CR/DR/DB markers as direction", () => {
     expect(parseAmountCell("1,000.00 CR")).toEqual({
       minor: 100000,

@@ -4,6 +4,30 @@
 
 ### Added
 
+- **Statement import now pre-fills each row's transaction type from the
+  statement itself.** Whether a row is an expense or income is read from the
+  sign and columns your bank prints — a debit column, a "−" amount or a
+  negative balance delta pre-fills Expense; a credit column, "+" amount or
+  positive delta pre-fills Income — so you no longer set the type row by row.
+  The dropdown stays editable on every row for the odd refund or reversed
+  entry, and a row whose direction genuinely can't be determined (a garbled
+  Kuda line with no balance to compare and no direction tag) is shown for
+  review with its amount and no sign — it is never guessed as expense or
+  income, and only your choice books it. Amounts are stored exactly like
+  manual entries: a positive number with the type carrying the direction.
+- **Statement import gets import-time intelligence — all from the same
+  deterministic engines, with no new AI.** **Transfers** between your own
+  accounts are spotted two ways: narrations that name your own account/wallet,
+  and a same-amount debit/credit pair across statements (an amount you sent
+  that shows up in the other account's statement around the same date) — the
+  review pre-fills "Transfer" with a "Likely your own account" note, and
+  transfers are kept out of spending and income totals. **Fees** like "SMS
+  ALERT CHARGE" and "FT_Out Fee" now classify as a bank charge and build their
+  own learned-category confidence just like any merchant. **Recurring
+  patterns** from your ledger surface a "Recurring" chip next to a matching
+  row so you can confirm it's on schedule. And the review list can run
+  **Review first** — rows that need your attention on top, rows already
+  pre-filled and ready below — instead of one long statement-order scroll.
 - **Import a statement without categorizing every row first.** The Import
   Statement review no longer blocks the whole batch until every row has a
   category. Rows that already have a category import straight away; any row

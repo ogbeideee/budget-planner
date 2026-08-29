@@ -461,17 +461,26 @@ describe("parseKudaStatement — error handling", () => {
     ]);
   });
 
-  it("an amount with no direction signal is skipped and reported", () => {
+  it("a row whose direction can't be resolved is emitted unresolved, never guessed", () => {
     const cells = [
       ["Date/Time", "Money In", "Money Out", "Category", "To/From", "Description", "Balance"],
       ["01/08/26", "0.70", "garbled noise"],
     ];
     const result = parse(cells);
-    expect(result.transactions).toHaveLength(0);
-    expect(result.skipped).toBe(1);
-    expect(result.errors).toEqual([
-      { row: 2, reason: "unresolved direction" },
-    ]);
+    // No longer skipped: the row reaches review flagged for the user.
+    expect(result.skipped).toBe(0);
+    expect(result.errors).toEqual([]);
+    expect(result.transactions).toHaveLength(1);
+    expect(result.transactions[0]).toMatchObject({
+      direction: "unknown",
+      type: "unknown",
+      unresolvedAmount: 70,
+      transactionDate: "2026-08-01",
+    });
+    // Neither side is claimed — a guessed side would silently pre-fill
+    // expense or income.
+    expect(result.transactions[0].debitAmount).toBeUndefined();
+    expect(result.transactions[0].creditAmount).toBeUndefined();
   });
 
   it("one bad row never kills the good rows around it", () => {
@@ -497,8 +506,12 @@ describe("parseKudaStatement — direction is never guessed from 'Transfer'", ()
       ["01/08/26", "", "500.00", "Transfer to JOHN DOE", "999.33"],
     ];
     const result = parse(cells);
-    expect(result.transactions).toHaveLength(0);
-    expect(result.errors[0].reason).toBe("unresolved direction");
+    expect(result.transactions).toHaveLength(1);
+    expect(result.transactions[0].direction).toBe("unknown");
+    expect(result.transactions[0].type).toBe("unknown");
+    expect(result.transactions[0].unresolvedAmount).toBe(50_000);
+    expect(result.skipped).toBe(0);
+    expect(result.errors).toEqual([]);
   });
 
   it("balance delta outranks any tag", () => {
@@ -546,5 +559,22 @@ describe("processStatement — Kuda end to end", () => {
     for (const tx of preview.transactions) {
       expect(tx.categoryId).toBeNull();
     }
+  });
+
+  it("an unresolved-direction row reaches review flagged — never booked by default", () => {
+    const cells = [
+      ["Date/Time", "Money In", "Money Out", "Category", "To/From", "Description", "Balance"],
+      ["01/08/26", "0.70", "garbled noise"],
+    ];
+    const result = processStatement({ cells, context: CONTEXT, categories: CATEGORIES });
+    expect(result.status).toBe("supported");
+    expect(result.transactions).toHaveLength(1);
+    const tx = result.transactions[0];
+    // The pipeline's type pre-fill leaves an unresolved direction "unknown";
+    // classification flags the row for the user instead of guessing.
+    expect(tx.direction).toBe("unknown");
+    expect(tx.type).toBe("unknown");
+    expect(tx.unresolvedAmount).toBe(70);
+    expect(tx.needsReview).toBe(true);
   });
 });

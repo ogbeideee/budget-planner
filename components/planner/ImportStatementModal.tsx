@@ -14,6 +14,7 @@ import {
   ChevronUpIcon,
   FileTextIcon,
   InfoIcon,
+  RepeatIcon,
   SparklesIcon,
   UploadIcon,
   XIcon,
@@ -36,14 +37,24 @@ import {
 import {
   ledgerKindFor,
   planImport,
+  prefillLedgerKindFor,
   processStatement,
   type DuplicateResolution,
 } from "@/lib/statementPipeline";
 import type { ImportPlan, StatementPreview } from "@/lib/statementPipeline";
 import { isPdfPasswordError } from "@/lib/statementPdf";
-import { matchExistingTransaction } from "@/lib/statementIdentity";
-import type { DuplicateStatus } from "@/lib/statementIdentity";
-import type { LedgerTransactionSlice } from "@/lib/statementIdentity";
+import {
+  findCounterpartTransfer,
+  matchExistingTransaction,
+  type CounterpartMatch,
+  type DuplicateStatus,
+  type LedgerTransactionSlice,
+} from "@/lib/statementIdentity";
+import {
+  detectRecurringPatterns,
+  findRecurringMatch,
+  type RecurringPattern,
+} from "@/lib/recurringPatterns";
 import type { RuleCorrectionInput } from "@/lib/learnedRules";
 import type {
   BankTransactionKind,
@@ -257,6 +268,19 @@ export function ImportStatementModal({ open, onClose }: ImportStatementModalProp
    *  as the batch is written, and recomputing afterwards would misreport
    *  every imported row as "already existing". */
   const [importResult, setImportResult] = useState<ImportPlan | null>(null);
+  /** Own-account (internal) transfer suggestions keyed by row id: the row's
+   *  amount pairs with an opposite-side ledger entry around the same date
+   *  (lib/statementIdentity.ts). Session-only, never persisted. */
+  const [transferHints, setTransferHints] = useState<Map<string, CounterpartMatch>>(
+    () => new Map(),
+  );
+  /** FR-25 reuse — patterns derived from the CURRENT ledger on every read
+   *  (persisted nowhere), so a review row can be matched against the user's
+   *  recurring cadences. */
+  const recurringPatterns = useMemo(
+    () => detectRecurringPatterns(existingTransactions),
+    [existingTransactions],
+  );
 
   const reset = () => {
     setStage("upload");
@@ -268,6 +292,7 @@ export function ImportStatementModal({ open, onClose }: ImportStatementModalProp
     setDragging(false);
     setImportResult(null);
     setCorrections(new Map());
+    setTransferHints(new Map());
     setOcrPhase(null);
     setOcrWarning(null);
     setPendingFile(null);
@@ -351,9 +376,29 @@ export function ImportStatementModal({ open, onClose }: ImportStatementModalProp
         return;
       }
       setPreview(result);
+      // Own-account transfer suggestion — ONLY rows classification left
+      // unknown: a confident "SALARY"/"RENT" narration always beats a
+      // coincidental same-amount ledger entry. The suggestion changes the
+      // pre-fill, never the editable dropdown.
+      const counterpartHints = new Map<string, CounterpartMatch>();
+      for (const tx of result.transactions) {
+        if (tx.type !== "unknown") continue;
+        const hit = findCounterpartTransfer(tx, existingTransactions);
+        if (hit) counterpartHints.set(tx.id, hit);
+      }
+      setTransferHints(counterpartHints);
       setTransactions(
         result.transactions.map((tx) => ({
           ...tx,
+          // Pre-fill "Transaction type" from the statement's own direction
+          // fact (debit/credit column, sign, balance delta) when
+          // classification had no narration signal — unless the row pairs
+          // with an opposite-side ledger entry, which suggests a Transfer
+          // between the user's own accounts instead. The dropdown stays
+          // user-editable, and an unresolved direction keeps "unknown".
+          type: counterpartHints.has(tx.id)
+            ? "internal-transfer"
+            : prefillLedgerKindFor(tx),
           excluded: false,
           selected: false,
           skipAsDuplicate: false,
@@ -824,6 +869,8 @@ export function ImportStatementModal({ open, onClose }: ImportStatementModalProp
           categories={categories}
           existing={existingTransactions}
           duplicateFlags={duplicateFlags}
+          transferHints={transferHints}
+          recurringPatterns={recurringPatterns}
           updateRow={updateRow}
           ocrWarning={ocrWarning}
         />
@@ -895,6 +942,13 @@ interface ReviewRowItemProps {
   /** FR-23: existing ledger rows this one scored above the flag threshold
    *  against. Empty for the overwhelming majority of rows. */
   duplicateCandidates: DuplicateCandidate[];
+  /** Own-account (internal) transfer suggestion for this row, when
+   *  classification was unknown and the amount pairs with an opposite-side
+   *  ledger entry. Undefined for most rows. */
+  transferHint?: CounterpartMatch;
+  /** Recurring patterns derived from the current ledger (stable reference —
+   *  derived once per ledger change in the parent). */
+  recurringPatterns: RecurringPattern[];
   onUpdate: PreviewStageProps["updateRow"];
 }
 
@@ -911,6 +965,8 @@ const ReviewRowItem = memo(function ReviewRowItem({
   status,
   isDuplicate,
   duplicateCandidates,
+  transferHint,
+  recurringPatterns,
   onUpdate,
 }: ReviewRowItemProps) {
   const [expanded, setExpanded] = useState(false);
@@ -921,12 +977,30 @@ const ReviewRowItem = memo(function ReviewRowItem({
     .filter((part): part is string => Boolean(part))
     .join(" · ");
 
+  // FR-25 reuse (no second detector): the row matches a recurring pattern
+  // when its pre-filled category owns one and the amount sits within the
+  // detector's own AMOUNT_TOLERANCE of the pattern's expected amount.
+  const recurringMatch = useMemo(
+    () =>
+      tx.categoryId === null
+        ? null
+        : findRecurringMatch(recurringPatterns, {
+            categoryId: tx.categoryId,
+            amount: tx.creditAmount ?? tx.debitAmount ?? 0,
+          }),
+    [recurringPatterns, tx.categoryId, tx.creditAmount, tx.debitAmount],
+  );
+
   const amountLabel =
     tx.creditAmount !== undefined
       ? `+${formatMoney(tx.creditAmount, currency)}`
       : tx.debitAmount !== undefined
         ? formatMoney(-tx.debitAmount, currency)
-        : "—";
+        : tx.unresolvedAmount !== undefined
+          ? // Direction unresolved: show the magnitude without a sign —
+            // printing "+" or "-" would guess what the statement didn't say.
+            `±${formatMoney(tx.unresolvedAmount, currency)}`
+          : "—";
 
   const toggle = () => setExpanded((value) => !value);
 
@@ -1131,6 +1205,23 @@ const ReviewRowItem = memo(function ReviewRowItem({
 
       {expanded && (
         <div className="border-t border-border/60 px-4 py-3">
+          {transferHint && tx.type === "internal-transfer" && (
+            <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-brand-500/[0.06] px-2.5 py-2 text-xs text-ink">
+              <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-500" />
+              <span>
+                Likely your own account: a{" "}
+                {transferHint.ledgerType === "income" ? "credit" : "debit"} of{" "}
+                {formatMoney(transferHint.amount, currency)} on {transferHint.date} (
+                {transferHint.daysApart === 0
+                  ? "same day"
+                  : `${transferHint.daysApart} day${
+                      transferHint.daysApart === 1 ? "" : "s"
+                    } apart`}
+                ) is already in your ledger. Keep it a Transfer to keep it out
+                of spending and income — or change the type if it isn&apos;t.
+              </span>
+            </p>
+          )}
           <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
             <div className="min-w-0 flex-1 text-sm">
               <p className="break-words font-medium text-ink">{tx.description}</p>
@@ -1214,6 +1305,15 @@ const ReviewRowItem = memo(function ReviewRowItem({
                         Learned
                       </span>
                     )}
+                    {recurringMatch && (
+                      <span
+                        title={`This matches your recurring ${recurringMatch.cadence} pattern — ${recurringMatch.occurrences} previous entries, about ${formatMoney(recurringMatch.expectedAmount, currency)} each.`}
+                        className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-1.5 py-0.5 text-caption font-semibold text-brand-600 dark:text-brand-400"
+                      >
+                        <RepeatIcon className="h-3 w-3 shrink-0" />
+                        Recurring
+                      </span>
+                    )}
                   </span>
                   <select
                     aria-label={`Category for ${tx.description}`}
@@ -1272,6 +1372,11 @@ interface PreviewStageProps {
   existing: readonly LedgerTransactionSlice[];
   /** FR-23: rows flagged as likely duplicates, keyed by review-row id. */
   duplicateFlags: Map<string, DuplicateCandidate[]>;
+  /** Own-account (internal) transfer suggestions keyed by review-row id —
+   *  the row's amount pairs with an opposite-side ledger entry. */
+  transferHints: Map<string, CounterpartMatch>;
+  /** Recurring patterns derived from the current ledger (FR-25 reuse). */
+  recurringPatterns: RecurringPattern[];
   updateRow: (
     id: string,
     patch: Partial<
@@ -1290,10 +1395,16 @@ const PreviewStage = memo(function PreviewStage({
   categories,
   existing,
   duplicateFlags,
+  transferHints,
+  recurringPatterns,
   updateRow,
   ocrWarning = null,
 }: PreviewStageProps) {
   const [filter, setFilter] = useState<PreviewFilter>("all");
+  /** Review-efficiency grouping: genuinely uncertain rows first, so the
+   *  user's attention lands on them before the (collapsed) rows that are
+   *  already pre-filled and ready. One click restores statement order. */
+  const [reviewFirst, setReviewFirst] = useState(true);
 
   // Every row is matched against the whole ledger once per review change —
   // never on each render (the parent re-renders with the same props often).
@@ -1375,6 +1486,48 @@ const PreviewStage = memo(function PreviewStage({
 
 
   const visible = transactions.filter((tx) => matchesFilter(tx, filter, duplicateIds, statusOf));
+
+  /** Rows the user genuinely has to look at: flagged for review, low/uncertain
+   *  confidence, waiting on an FR-23 duplicate answer, or possibly already in
+   *  the ledger. Deliberately NOT gated on `needsReview` clearing when a row
+   *  is edited — grouping follows the row's CLASSIFICATION, which editing never
+   *  rewrites — so a row stays in whichever group it started in while the user
+   *  works on it (its DOM node is never remounted mid-interaction). */
+  const needsAttention = (tx: ReviewRow): boolean =>
+    tx.needsReview === true ||
+    tx.confidence === "low" ||
+    tx.confidence === "none" ||
+    tx.duplicateResolution === "unresolved" ||
+    statusOf(tx.id) === "possible-duplicate";
+
+  /** Confidence-based grouping: needs-attention rows first (statement order
+   *  preserved within each group), pre-filled rows after. Off = statement
+   *  order, exactly as printed. Group keys are STABLE ("attention"/"prefilled")
+   *  so a count change never remounts the group's rows. Plain per-render
+   *  filtering — O(n), cheaper than memoizing around a fresh `visible`. */
+  let groupedRows: Array<{ key: string; label: string | null; rows: ReviewRow[] }>;
+  if (!reviewFirst) {
+    groupedRows = [{ key: "all", label: null, rows: visible }];
+  } else {
+    const attention = visible.filter((tx) => needsAttention(tx));
+    const rest = visible.filter((tx) => !needsAttention(tx));
+    groupedRows = [];
+    if (attention.length > 0) {
+      groupedRows.push({
+        key: "attention",
+        label: `Needs your attention (${attention.length})`,
+        rows: attention,
+      });
+    }
+    if (rest.length > 0) {
+      groupedRows.push({
+        key: "prefilled",
+        label: attention.length > 0 ? `Pre-filled · ready to import (${rest.length})` : null,
+        rows: rest,
+      });
+    }
+    if (groupedRows.length === 0) groupedRows = [{ key: "all", label: null, rows: visible }];
+  }
 
   const stats = [
     { label: "transactions", value: transactions.length },
@@ -1534,6 +1687,31 @@ const PreviewStage = memo(function PreviewStage({
             </button>
           );
         })}
+        <button
+          type="button"
+          aria-pressed={reviewFirst}
+          onClick={() => setReviewFirst(true)}
+          className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors duration-150 ease-premium focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none ${
+            reviewFirst
+              ? "bg-brand-500/10 text-brand-500"
+              : "bg-sidebar-hover/70 text-caption hover:text-ink"
+          }`}
+        >
+          Review first
+        </button>
+        <button
+          type="button"
+          aria-pressed={!reviewFirst}
+          onClick={() => setReviewFirst(false)}
+          title="Show rows exactly as the statement printed them"
+          className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors duration-150 ease-premium focus-visible:ring-2 focus-visible:ring-brand-500/40 focus:outline-none ${
+            !reviewFirst
+              ? "bg-brand-500/10 text-brand-500"
+              : "bg-sidebar-hover/70 text-caption hover:text-ink"
+          }`}
+        >
+          Statement order
+        </button>
       </div>
 
       <div
@@ -1600,20 +1778,34 @@ const PreviewStage = memo(function PreviewStage({
             No transactions match this filter.
           </p>
         ) : (
-          <ul className="flex flex-col divide-y divide-border/60">
-            {visible.map((tx) => (
-              <ReviewRowItem
-                key={tx.id}
-                tx={tx}
-                categories={categories}
-                currency={currency}
-                status={statusOf(tx.id)}
-                isDuplicate={duplicateIds.has(tx.id)}
-                duplicateCandidates={duplicateFlags.get(tx.id) ?? EMPTY_CANDIDATES}
-                onUpdate={updateRow}
-              />
-            ))}
-          </ul>
+          groupedRows.map((group) => (
+            <div
+              key={group.key}
+              className={group.key !== "all" && group.key === "prefilled" ? "border-t border-border" : undefined}
+            >
+              {group.label && (
+                <p className="sticky top-0 z-10 bg-surface px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-caption">
+                  {group.label}
+                </p>
+              )}
+              <ul className="flex flex-col divide-y divide-border/60">
+                {group.rows.map((tx) => (
+                  <ReviewRowItem
+                    key={tx.id}
+                    tx={tx}
+                    categories={categories}
+                    currency={currency}
+                    status={statusOf(tx.id)}
+                    isDuplicate={duplicateIds.has(tx.id)}
+                    duplicateCandidates={duplicateFlags.get(tx.id) ?? EMPTY_CANDIDATES}
+                    transferHint={transferHints.get(tx.id)}
+                    recurringPatterns={recurringPatterns}
+                    onUpdate={updateRow}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))
         )}
       </div>
 

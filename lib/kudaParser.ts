@@ -46,7 +46,12 @@
 // - Direction is a STRUCTURAL fact: the running-balance delta decides first
 //   (exact-match chain), then Kuda's own printed Category tag ("outward
 //   transfer", "local funds transfer", "spend and save"…). The word
-//   "Transfer" alone never decides anything.
+//   "Transfer" alone never decides anything. When NEITHER resolves — no
+//   trusted delta, no tag — the row is emitted with `direction: "unknown"`
+//   and its flow magnitude preserved in `unresolvedAmount`: it reaches the
+//   review screen's needs-review bucket instead of being skipped, and is
+//   booked only on the ledger side the USER assigns (never a guessed
+//   expense/income default).
 // - No channel, value-date or reference columns exist — they stay absent
 //   (Prompt 8C honesty — a parser must not fabricate missing fields).
 // - One bad row never fails the import: unreadable rows are skipped and
@@ -66,7 +71,7 @@ import {
 } from "./statementTypes";
 
 export interface KudaRowError extends StatementRowError {
-  reason: "missing debit and credit" | "unresolved direction";
+  reason: "missing debit and credit";
 }
 
 /** Kuda parser output — conforms to the bank parser contract (Prompt 7A). */
@@ -274,8 +279,37 @@ export function parseKudaStatement(
     }
     if (direction === undefined) direction = tagDirection(text);
     if (direction === undefined) {
-      skipped += 1;
-      errors.push({ row: tx.rowNumber, reason: "unresolved direction" });
+      // Direction genuinely UNRESOLVED (no trusted balance delta, no Kuda
+      // direction tag): emit the row into review with the direction left
+      // "unknown" and the flow magnitude preserved — it lands in the
+      // needs-review bucket, is never booked as expense or income by
+      // default, and enters the ledger only on the side the USER assigns.
+      const unresolvedDescription = truncate(
+        text,
+        MAX_ORIGINAL_DESCRIPTION_LENGTH,
+      );
+      transactions.push({
+        id: `kd-r${tx.rowNumber}`,
+        transactionDate: tx.date,
+        transactionTime: tx.time,
+        description:
+          unresolvedDescription === "" ? "(no description)" : unresolvedDescription,
+        originalDescription:
+          unresolvedDescription === "" ? undefined : unresolvedDescription,
+        unresolvedAmount: flow,
+        balanceAfter: balance,
+        currency: context.currency,
+        sourceBank: "kuda",
+        type: "unknown",
+        direction: "unknown",
+        confidence: "none",
+        status: "draft",
+        categoryId: null,
+        row: tx.rowNumber,
+      });
+      // An unresolved delta poisons the chain — drop it rather than
+      // propagate a wrong anchor.
+      previousBalance = null;
       return;
     }
     // An untrusted delta (mismatch) poisons the chain — drop it rather than

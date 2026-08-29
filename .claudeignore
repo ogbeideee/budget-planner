@@ -1,0 +1,62 @@
+# Files Claude Code should not read into context.
+#
+# Everything here is GENERATED, VENDORED or a local artifact — never authored
+# source. Nothing in this file is a secret; it is purely a context-budget
+# guard. The repo's largest generated trees are .next (550 MB), dist (1.2 GB)
+# and node_modules (1.2 GB); one stray read of a bundle costs more context
+# than the entire authored codebase.
+#
+# NOT ignored on purpose:
+#   tests/fixtures/statements/**      real bank statements + their extracted
+#                                     text-layer snapshots. Generated, but they
+#                                     are the ground truth a parser is verified
+#                                     against (see ARCHITECTURE §4.1a) and they
+#                                     are small (< 1 MB each).
+#   build/icon.ico, build/icon.png    drawn by scripts/make-icon.mjs but
+#                                     committed as electron-builder source.
+#   .claude/                          the harness's own config.
+
+# --- dependencies ---------------------------------------------------------
+node_modules/
+.pnp
+.pnp.*
+.yarn/
+
+# --- build / packaging output ---------------------------------------------
+.next/
+out/
+dist/
+build/
+coverage/
+
+# --- vendored third-party binaries (8 MB of wasm + OCR training data) ------
+public/vendor/
+eng.traineddata
+*.wasm
+*.traineddata
+
+# --- lockfiles ------------------------------------------------------------
+*.lock
+package-lock.json
+
+# --- logs and local debug artifacts ---------------------------------------
+*.log
+cdp6-electron.log
+dev-server.log
+tests-output.log
+opay-test-output.log
+devlog.txt
+startlog.txt
+opay-diag.txt
+temp-test-out.txt
+tmp_probe.mjs
+
+# --- generated TypeScript / tooling state ---------------------------------
+*.tsbuildinfo
+next-env.d.ts
+
+# --- environment and OS noise ---------------------------------------------
+.env*
+*.pem
+.DS_Store
+.vercel/

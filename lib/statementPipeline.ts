@@ -289,9 +289,12 @@ function finish(
 
 /** The ledger side a classified row can take, when any: expense and income
  *  kinds map to categories; refunds and interest are income; an unknown row
- *  gets a pool by its flow direction. Transfers, fees, taxes, savings and
- *  loan payments are NOT spending or earning — they get no category and are
- *  never imported into the ledger. */
+ *  gets a pool by its flow direction — but ONLY when the direction was
+ *  actually resolved by the parser (debit/credit column, sign, balance
+ *  delta). A genuinely unresolved direction never silently defaults to
+ *  expense: the row stays unbookable until the user assigns a type.
+ *  Transfers, fees, taxes, savings and loan payments are NOT spending or
+ *  earning — they get no category and are never imported into the ledger. */
 export function ledgerKindFor(
   tx: Pick<NormalizedBankTransaction, "type" | "direction">,
 ): "income" | "expense" | null {
@@ -299,8 +302,29 @@ export function ledgerKindFor(
   if (tx.type === "income" || tx.type === "refund" || tx.type === "interest") {
     return "income";
   }
-  if (tx.type === "unknown") return tx.direction === "in" ? "income" : "expense";
+  if (tx.type === "unknown") {
+    if (tx.direction === "in") return "income";
+    if (tx.direction === "out") return "expense";
+  }
   return null;
+}
+
+/** What a review row's "Transaction type" control PRE-FILLS: the classified
+ *  kind, except that a row classification left "unknown" prefills from the
+ *  statement's own direction fact — a resolved outflow (debit column, minus
+ *  sign, negative balance delta) prefills Expense, a resolved inflow
+ *  prefills Income. The prefill is a starting point, never a lock: the
+ *  dropdown stays user-editable, and the row stays flagged needs-review
+ *  until it has a category. A row whose direction itself is unresolved
+ *  (Kuda) stays "unknown" — an ambiguous row is surfaced, not guessed. */
+export function prefillLedgerKindFor(
+  tx: Pick<NormalizedBankTransaction, "type" | "direction">,
+): BankTransactionKind {
+  if (tx.type === "unknown") {
+    if (tx.direction === "out") return "expense";
+    if (tx.direction === "in") return "income";
+  }
+  return tx.type;
 }
 
 /** The slice of a review row the import planner needs. */
@@ -313,6 +337,9 @@ export interface ImportRow {
   description: string;
   debitAmount?: number;
   creditAmount?: number;
+  /** Flow magnitude preserved for rows whose direction the parser could not
+   *  resolve; booked on the side the user chose, never a guessed side. */
+  unresolvedAmount?: number;
   /** User-chosen skip (session-only). */
   excluded: boolean;
   /** Issuing bank (provenance). */
@@ -483,7 +510,12 @@ export function planImport(
       missingCategory += 1;
       continue;
     }
-    const amount = ledger === "expense" ? row.debitAmount : row.creditAmount;
+    const sided = ledger === "expense" ? row.debitAmount : row.creditAmount;
+    // A row the user explicitly typed on an unresolved-direction row books
+    // the preserved flow magnitude on the chosen side; resolved rows always
+    // have their amount on the matching side.
+    const amount =
+      sided ?? (row.direction === "unknown" ? row.unresolvedAmount : undefined);
     if (amount === undefined || !Number.isFinite(amount) || amount <= 0) {
       skipped.failed += 1;
       continue;

@@ -3,6 +3,7 @@ import {
   addCadence,
   addDaysIso,
   detectRecurringPatterns,
+  findRecurringMatch,
   isPatternDue,
   patternsDueBetween,
   weightedExpectedAmount,
@@ -208,4 +209,58 @@ describe("due-window helpers", () => {
   });
 });
 
+
+
+describe("findRecurringMatch — import-time recurring surfacing", () => {
+  const pattern = (overrides: Partial<RecurringPattern> = {}): RecurringPattern => ({
+    id: "c1:monthly",
+    categoryId: "c1",
+    type: "expense",
+    cadence: "monthly",
+    intervalDays: 30,
+    expectedAmount: 5_000_000,
+    occurrences: 4,
+    firstDate: "2026-05-01",
+    lastDate: "2026-08-01",
+    lastNote: "LOAN REPAYMENT",
+    nextExpectedDate: "2026-09-01",
+    ...overrides,
+  });
+
+  it("matches a review row in the pattern's category within amount tolerance", () => {
+    const match = findRecurringMatch([pattern()], {
+      categoryId: "c1",
+      amount: 5_100_000, // within 10% of 5_000_000
+    });
+    expect(match?.id).toBe("c1:monthly");
+  });
+
+  it("ignores a row far from the pattern's expected amount", () => {
+    expect(
+      findRecurringMatch([pattern()], { categoryId: "c1", amount: 6_000_000 }),
+    ).toBeNull();
+  });
+
+  it("ignores a row in a different category — no pattern to match against", () => {
+    expect(
+      findRecurringMatch([pattern()], { categoryId: "c2", amount: 5_000_000 }),
+    ).toBeNull();
+  });
+
+  it("prefers the pattern whose expected amount is nearest, then the higher occurrence count", () => {
+    const match = findRecurringMatch(
+      [
+        pattern({ id: "c1:weekly", cadence: "weekly", expectedAmount: 4_800_000, occurrences: 2 }),
+        pattern({ id: "c1:monthly", cadence: "monthly", expectedAmount: 5_000_000, occurrences: 4 }),
+      ],
+      { categoryId: "c1", amount: 4_950_000 },
+    );
+    // 4_950k is 1% off 5_000k and 3% off 4_800k — the closer one wins.
+    expect(match?.id).toBe("c1:monthly");
+  });
+
+  it("returns null for a non-positive or non-finite amount", () => {
+    expect(findRecurringMatch([pattern()], { categoryId: "c1", amount: 0 })).toBeNull();
+  });
+});
 

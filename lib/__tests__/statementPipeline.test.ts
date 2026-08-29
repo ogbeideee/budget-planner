@@ -4,11 +4,17 @@ import {
   detectStatementFormat,
   ledgerKindFor,
   planImport,
+  prefillLedgerKindFor,
   processStatement,
 } from "../statementPipeline";
 import type { ImportRow } from "../statementPipeline";
 import { BANK_PARSERS } from "../statementRegistry";
-import type { BankSource, BankStatementParser, NormalizedBankTransaction } from "../statementTypes";
+import type {
+  BankDirection,
+  BankSource,
+  BankStatementParser,
+  NormalizedBankTransaction,
+} from "../statementTypes";
 import type { Category } from "../types";
 
 const CATEGORIES: Category[] = [
@@ -496,7 +502,7 @@ describe("processStatement — safety", () => {
 
 describe("ledgerKindFor — what can be booked", () => {
   it("maps expense/income kinds and unknown-by-direction to a ledger side", () => {
-    const row = (type: Parameters<typeof ledgerKindFor>[0]["type"], direction: "in" | "out") =>
+    const row = (type: Parameters<typeof ledgerKindFor>[0]["type"], direction: BankDirection) =>
       ({ type, direction });
     expect(ledgerKindFor(row("expense", "out"))).toBe("expense");
     expect(ledgerKindFor(row("income", "in"))).toBe("income");
@@ -506,10 +512,42 @@ describe("ledgerKindFor — what can be booked", () => {
     expect(ledgerKindFor(row("unknown", "in"))).toBe("income");
   });
 
+  it("never silently defaults an unresolved direction to expense", () => {
+    // A genuinely ambiguous row (Kuda: no trusted balance delta, no
+    // direction tag) is not bookable until the user assigns a type —
+    // "expense" is a guess, not a default.
+    expect(ledgerKindFor({ type: "unknown", direction: "unknown" })).toBeNull();
+  });
+
   it("never maps money movements to a ledger side", () => {
     for (const type of ["transfer", "internal-transfer", "bank-fee", "tax", "loan-payment", "savings"] as const) {
       expect(ledgerKindFor({ type, direction: "out" })).toBeNull();
     }
+  });
+});
+
+describe("prefillLedgerKindFor — the review screen's type pre-fill", () => {
+  it("pre-fills expense for a resolved outflow the narration couldn't classify", () => {
+    // Negative amount / debit column / negative balance delta — the parser
+    // resolved direction "out"; the row shows Expense, still editable.
+    expect(prefillLedgerKindFor({ type: "unknown", direction: "out" })).toBe("expense");
+  });
+
+  it("pre-fills income for a resolved inflow", () => {
+    expect(prefillLedgerKindFor({ type: "unknown", direction: "in" })).toBe("income");
+  });
+
+  it("keeps the classified kind when classification had a signal", () => {
+    // "Transfer to John" stays a transfer (never income), a refund stays a
+    // refund — the prefill only fills what classification left unknown.
+    expect(prefillLedgerKindFor({ type: "transfer", direction: "in" })).toBe("transfer");
+    expect(prefillLedgerKindFor({ type: "refund", direction: "out" })).toBe("refund");
+    expect(prefillLedgerKindFor({ type: "expense", direction: "out" })).toBe("expense");
+    expect(prefillLedgerKindFor({ type: "income", direction: "in" })).toBe("income");
+  });
+
+  it("keeps 'unknown' when the direction itself is unresolved — never guesses", () => {
+    expect(prefillLedgerKindFor({ type: "unknown", direction: "unknown" })).toBe("unknown");
   });
 });
 
@@ -1088,5 +1126,36 @@ describe("explicit duplicate resolution (FR-23)", () => {
     expect(plan.inputs.map((i) => i.note).sort()).toEqual(["B", "C"]);
     expect(plan.replacedTransactionIds).toEqual(["existing-rent"]);
     expect(plan.skipped.possibleSkipped).toBe(1);
+  });
+});
+
+describe("planImport — unresolved-direction rows", () => {
+  const base = (patch: Partial<ImportRow> = {}): ImportRow => ({
+    id: "kd-1",
+    type: "unknown",
+    direction: "unknown",
+    categoryId: "c-rent",
+    transactionDate: "2026-08-01",
+    description: "Transfer to JOHN DOE",
+    unresolvedAmount: 50_000,
+    excluded: false,
+    sourceBank: "kuda",
+    ...patch,
+  });
+
+  it("books the preserved magnitude on the side the USER assigned", () => {
+    // The user typed the row as an expense in review — the magnitude moves
+    // to that side; nothing was guessed at parse time.
+    const plan = planImport([base({ type: "expense" })], []);
+    expect(plan.inputs).toHaveLength(1);
+    expect(plan.inputs[0]).toMatchObject({ amount: 50_000, type: "expense" });
+    expect(plan.skipped.movements).toBe(0);
+  });
+
+  it("skips a row the user never typed — no silent expense default", () => {
+    const plan = planImport([base()], []);
+    expect(plan.inputs).toHaveLength(0);
+    expect(plan.skipped.movements).toBe(1);
+    expect(plan.skipped.failed).toBe(0);
   });
 });

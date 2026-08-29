@@ -301,6 +301,41 @@ export function patternsDueBetween(
     .sort((a, b) => (a.nextExpectedDate < b.nextExpectedDate ? -1 : 1));
 }
 
+/**
+ * Surfaces a detected pattern for one reviewed transaction at import time
+ * (FR-25 reuse — NO second recurring detector). Patterns are per
+ * (category, cadence) — the detector's documented v1 scope — so a row
+ * "matches" when its pre-filled category owns a pattern and its amount sits
+ * within the same AMOUNT_TOLERANCE the detector accepts. Ties break to the
+ * nearest expected amount, then the most occurrences, then the id.
+ * Pure and deterministic.
+ */
+export function findRecurringMatch(
+  patterns: readonly RecurringPattern[],
+  input: { categoryId: ID; amount: number },
+): RecurringPattern | null {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) return null;
+  let best: RecurringPattern | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const pattern of patterns) {
+    if (pattern.categoryId !== input.categoryId) continue;
+    if (pattern.expectedAmount <= 0) continue;
+    const diff = Math.abs(input.amount - pattern.expectedAmount) / pattern.expectedAmount;
+    if (diff > AMOUNT_TOLERANCE) continue;
+    if (
+      diff < bestDiff ||
+      (diff === bestDiff &&
+        best !== null &&
+        (pattern.occurrences > best.occurrences ||
+          (pattern.occurrences === best.occurrences && pattern.id < best.id)))
+    ) {
+      best = pattern;
+      bestDiff = diff;
+    }
+  }
+  return best;
+}
+
 /** ISO date arithmetic helper (local time; no timezone surprises). */
 export function addDaysIso(iso: string, days: number): string {
   const date = isoToDate(iso);

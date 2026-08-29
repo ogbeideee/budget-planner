@@ -21,7 +21,7 @@ import {
   extractStatementRows,
   parseAmountCell,
   parseStatementDate,
-  rowsFromPdfItems,
+  rowsFromPdfPage,
   type StatementSource,
 } from "./statementImport";
 import type { OcrImage, OcrService } from "./ocrService";
@@ -160,6 +160,14 @@ export async function classifyPdfDocument(
     try {
       const cells: string[][] = [];
       const rowYs: number[] = [];
+      // Table columns thread from page to page, exactly as `pdfRowsFromPdf`
+      // does: a continuation page prints no header of its own, so alignment
+      // MUST carry the previous page's anchors. Re-deriving per page (the old
+      // behaviour) dropped every headerless page into gap-based splitting,
+      // whose drifted columns fail to parse — the real OPay statement surfaced
+      // only 124 of its 250 transactions through this seam, each lost page
+      // reported as a pile of "invalid date"/"unparseable amount" errors.
+      let anchors: number[] | null = null;
       for (let pageNo = 1; pageNo <= doc.numPages; pageNo += 1) {
         const page = await doc.getPage(pageNo);
         try {
@@ -173,9 +181,10 @@ export async function classifyPdfDocument(
               x: item.transform[4],
               y: item.transform[5],
             }));
-          const rows = rowsFromPdfItems(items);
-          cells.push(...rows.map((row) => row.cells));
-          rowYs.push(...rows.map((row) => row.y));
+          const result = rowsFromPdfPage(items, anchors);
+          anchors = result.anchors;
+          cells.push(...result.rows.map((row) => row.cells));
+          rowYs.push(...result.rows.map((row) => row.y));
         } finally {
           page.cleanup();
         }

@@ -78,6 +78,17 @@ describe("classifyTransaction — fees, taxes and charges", () => {
     expect(result.type).toBe("bank-fee");
     expect(result.confidence).toBe("high");
   });
+
+  it("classifies FT_Out Fee narrations as a bank fee — a real recurring charge shape", () => {
+    const result = classify("FT_Out Fee:DAVID OSAHON OGBEIDE_OPAY NIGERIA_Amount Transfer");
+    expect(result.type).toBe("bank-fee");
+    expect(result.confidence).toBe("high");
+    expect(result.classificationReason).toBe("bank-fee");
+  });
+
+  it("classifies Service Charge narrations as a bank fee", () => {
+    expect(classify("SERVICE CHARGE").type).toBe("bank-fee");
+  });
 });
 
 describe("classifyTransaction — interest, savings, loans, refunds", () => {
@@ -349,6 +360,16 @@ describe("6B — real OPay statement patterns", () => {
     const result = classify("OWealth Withdrawal");
     expect(result.type).toBe("internal-transfer");
     expect(result.confidence).toBe("medium");
+  });
+
+  it("classifies OWN ACCOUNT TRANSFER as an internal transfer", () => {
+    const result = classify("OWN ACCOUNT TRANSFER");
+    expect(result.type).toBe("internal-transfer");
+    expect(result.confidence).toBe("medium");
+  });
+
+  it("classifies TRANSFER TO MY OWN ACCOUNT as an internal transfer (own-account beats generic transfer)", () => {
+    expect(classify("TRANSFER TO MY OWN ACCOUNT").type).toBe("internal-transfer");
   });
 
   it("classifies OWealth Interest Earned as interest, not a transfer", () => {

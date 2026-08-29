@@ -872,8 +872,13 @@ BANK STATEMENT (CSV / Excel / PDF)
   │                     the modal shows its password stage; Unlock retries
   │                     the SAME file with the password (memory-only, never
   │                     persisted/logged); the probe then routes by text
-  │                     layer: "text" → cells below (rowsFromPdfItems-
-  │                     aligned); "scanned" → OCR below
+  │                     layer: "text" → cells below (rowsFromPdfPage-aligned,
+  │                     anchors THREADED across pages — the same carry as
+  │                     pdfRowsFromPdf; before 2026-08-28 the probe re-aligned
+  │                     each page in isolation, so headerless continuation
+  │                     pages drifted and the real OPay statement surfaced
+  │                     only 124 of its 250 transactions through this seam);
+  │                     "scanned" → OCR below
   │      "scanned"    → OCR: cells empty / < 40 chars / no row carrying BOTH
   │                     a date and an amount — lib/ocrService.ts
   │                     (Tesseract.js 5.1.1, assets served by the app from
@@ -970,7 +975,13 @@ lib/statementPipeline.ts — processStatement({ cells, context, categories, rowY
   │       balance-delta chain first, then Kuda's printed category tags
   │       ("outward", "local funds", "spend and save", …) — the word
   │       "Transfer" alone never decides; "#" naira amounts (OCR); per-row
-  │       errors ("missing debit and credit" / "unresolved direction")
+  │       errors ("missing debit and credit"); a row NEITHER signal resolves
+  │       is EMITTED with direction "unknown" and its flow magnitude in
+  │       `unresolvedAmount` (2026-08-28) — it reaches the review screen's
+  │       needs-review bucket instead of being skipped, and `planImport`
+  │       books it only on the ledger side the USER assigns (ledgerKindFor
+  │       returns null for an unresolved direction — never a silent
+  │       expense default)
   │     lib/palmpayParser.ts — parsePalmPayStatement(cells, context, rowYs?) (8J)
   │       real text-layer PDF (75 certified rows): 5-column header vocabulary
   │       (registry min 6; real header 11); month-first MM/DD/YYYY dates; SIGNED
@@ -1089,7 +1100,41 @@ ImportStatementModal — preview + confirm + import (4A–4D, 5A, 5B, 6A): uploa
   │  confidence + duplicate badges, direction icons, filters
   │  All/Expenses/Income/Transfers/Needs review/Duplicates/Already imported/
   │  Possible duplicates/Uncategorized/Low confidence with counts (8I);
-  │  per-row duplicate STATUS chip (New /
+  │  TYPE PRE-FILL (2026-08-28): the "Transaction type" control PRE-FILLS
+  │  from the statement's own direction FACT when classification had no
+  │  narration signal — `prefillLedgerKindFor` (lib/statementPipeline.ts)
+  │  maps a resolved outflow (debit column, "−"/DR sign, negative balance
+  │  delta) to Expense and a resolved inflow to Income; the dropdown stays
+  │  user-editable and the row stays needs-review until categorized; a row
+  │  whose direction itself is unresolved (Kuda) keeps "Unknown" — an
+  │  ambiguous row is surfaced with a sign-less ±amount, never guessed;
+  │  imported amounts are always the ABSOLUTE minor units with the ledger
+  │  side as `type` (identical to manual entry);
+  │  IMPORT-TIME INTELLIGENCE (2026-08-28 — reuse, no new AI):
+  │    • OWN-ACCOUNT TRANSFERS — an unknown-narration row whose amount pairs
+  │      with an OPPOSITE-side ledger entry within 2 days
+  │      (`findCounterpartTransfer`, lib/statementIdentity.ts) pre-fills a
+  │      Transfer instead of Expense and shows a "Likely your own account"
+  │      hint; unmatched / same-side / different-amount rows are never
+  │      flagged; narration patterns ("OWN ACCOUNT TRANSFER", "TRANSFER TO MY
+  │      OWN ACCOUNT") also classify as internal-transfer and the "Transfers"
+  │      bucket — internal-transfers never reach the ledger (ledgerKindFor →
+  │      null → skipped as a movement), so they never count as income or
+  │      expense in Reports;
+  │    • FEES — the bank-fee patterns grew ("SMS ALERT CHARGE", "FT_Out Fee",
+  │      "service charge", a word-boundary "fee") so recurring small charges
+  │      classify consistently; the same learned-rules threshold
+  │      (RULE_MIN_STRENGTH) auto-applies fee mappings like any other merchant —
+  │      no separate fee rule/table;
+  │    • RECURRING SURFACING — `findRecurringMatch` (lib/recurringPatterns.ts)
+  │      matches a review row's category + amount (within the detector's own
+  │      AMOUNT_TOLERANCE) against the CURRENT ledger's FR-25 patterns and shows
+  │      a "Recurring" chip — no second recurring detector;
+  │    • REVIEW-FIRST GROUPING — a Review first / Statement order toggle splits
+  │      the list into "Needs your attention" (review-flagged, low/none
+  │      confidence, unresolved duplicates, possible duplicates) above
+  │      "Pre-filled · ready to import"; grouping follows classification so a
+  │      row never jumps groups mid-edit; per-row duplicate STATUS chip (New /
   │  Already imported / Possible duplicate; Excluded replaces it when
   │  excluded) + per-row Skip/Keep toggle for possible duplicates (5B — user
   │  decides, nothing silently discarded) + warn banner when possible

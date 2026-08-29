@@ -88,6 +88,37 @@ function duplicateCsv(): File {
   return new File([text], "dupes.csv", { type: "text/csv" });
 }
 
+/** Narrations classification can't place — direction must come from the
+ *  statement's own Debit/Credit columns (the type pre-fill). */
+function directionCsv(): File {
+  const text = [
+    "Value Date,Description,Debit,Credit,Balance",
+    "01/08/2026,MYSTERY CHARGE X7,12,000.00,,2,388,000.00",
+    "02/08/2026,MYSTERY CREDIT X9,,7,500.00,2,395,500.00",
+  ].join("\n");
+  return new File([text], "direction.csv", { type: "text/csv" });
+}
+
+/** An unknown narration — its type must come from the statement (and, for
+ *  the own-account transfer tests, from a same-amount ledger counterpart). */
+function pairStatementCsv(): File {
+  const text = [
+    "Value Date,Description,Debit,Credit,Balance",
+    "05/08/2026,MYSTERY SWEEP X2,12,000.00,,1,000,000.00",
+  ].join("\n");
+  return new File([text], "pair.csv", { type: "text/csv" });
+}
+
+/** A Groceries purchase the classifier confidently pre-fills — used by the
+ *  recurring-pattern surfacing test. */
+function groceryStatementCsv(): File {
+  const text = [
+    "Value Date,Description,Debit,Credit,Balance",
+    "01/08/2026,SUPERMARKET GROCERIES,50,000.00,,1,000,000.00",
+  ].join("\n");
+  return new File([text], "grocery.csv", { type: "text/csv" });
+}
+
 async function uploadStatement(
   user: ReturnType<typeof userEvent.setup>,
   file: File = statementCsv(),
@@ -271,7 +302,7 @@ describe("ImportStatementModal — preview header", () => {
     expect(screen.getByText("$")).toBeInTheDocument();
 
     expect(summaryText()).toContain("4transactions");
-    expect(summaryText()).toContain("1expenses");
+    expect(summaryText()).toContain("2expenses");
     expect(summaryText()).toContain("1income");
     expect(summaryText()).toContain("1transfers");
     expect(summaryText()).toContain("2needs review");
@@ -341,7 +372,7 @@ describe("ImportStatementModal — transaction list", () => {
     expect(within(salaryRow).getByLabelText("Money in")).toBeInTheDocument();
   });
 
-  it("marks unknown transactions for review", async () => {
+  it("pre-fills the statement's direction for unknown narrations and flags them for review", async () => {
     const user = userEvent.setup();
     render(<ImportStatementModal open onClose={() => {}} />);
     await uploadStatement(user);
@@ -354,11 +385,47 @@ describe("ImportStatementModal — transaction list", () => {
       .getByText("MYSTERY CHARGE X7")
       .closest("li") as HTMLElement;
     await expandRow(user, "MYSTERY CHARGE X7");
+    // The narration matched nothing, but the statement's own Debit column is
+    // a direction FACT: the type pre-fills Expense (user-editable) instead of
+    // leaving "Unknown".
     expect(
       within(mystery).getByRole("combobox", { name: "Type for MYSTERY CHARGE X7" }),
-    ).toHaveValue("unknown");
+    ).toHaveValue("expense");
     expect(within(mystery).getByText("Uncertain")).toBeInTheDocument();
     expect(within(mystery).getByText("Needs review")).toBeInTheDocument();
+  });
+
+  it("pre-fills Expense/Income from the statement's direction and stays editable", async () => {
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user, directionCsv());
+
+    await screen.findByRole("group", { name: "Statement summary" });
+
+    // Debit-column row (an expense the narration can't classify): Expense.
+    const debitRow = screen
+      .getByText("MYSTERY CHARGE X7")
+      .closest("li") as HTMLElement;
+    await expandRow(user, "MYSTERY CHARGE X7");
+    const debitSelect = within(debitRow).getByRole("combobox", {
+      name: "Type for MYSTERY CHARGE X7",
+    });
+    expect(debitSelect).toHaveValue("expense");
+    expect(debitSelect).toBeEnabled();
+    // Still in the needs-review bucket until it has a category.
+    expect(within(debitRow).getByText("Needs review")).toBeInTheDocument();
+    // The prefill is a starting point, never a lock — the user can override.
+    await user.selectOptions(debitSelect, "income");
+    expect(debitSelect).toHaveValue("income");
+
+    // Credit-column row (an income the narration can't classify): Income.
+    const creditRow = screen
+      .getByText("MYSTERY CREDIT X9")
+      .closest("li") as HTMLElement;
+    await expandRow(user, "MYSTERY CREDIT X9");
+    expect(
+      within(creditRow).getByRole("combobox", { name: "Type for MYSTERY CREDIT X9" }),
+    ).toHaveValue("income");
   });
 
   it("never lets transfers be miscategorized — no category offered", async () => {
@@ -593,7 +660,7 @@ describe("ImportStatementModal — excluding transactions", () => {
     expect(within(row).getByText("Excluded")).toBeInTheDocument();
     expect(screen.getAllByText("RENT PAYMENT").length).toBeGreaterThan(0);
     expect(summaryText()).toContain("1excluded");
-    expect(summaryText()).toContain("0expenses");
+    expect(summaryText()).toContain("1expenses");
     expect(
       screen.getByRole("button", { name: "Import 1 transaction" }),
     ).toBeEnabled();
@@ -1961,7 +2028,7 @@ describe("ImportStatementModal — review & confirmation experience (8I)", () =>
 
     await screen.findByRole("group", { name: "Statement summary" });
     expect(summaryText()).toContain("4transactions");
-    expect(summaryText()).toContain("1expenses");
+    expect(summaryText()).toContain("2expenses");
     expect(summaryText()).toContain("1income");
     expect(summaryText()).toContain("1transfers");
     expect(summaryText()).toContain("2needs review");
@@ -2218,6 +2285,7 @@ describe("ImportStatementModal — password-protected PDFs", () => {
     await screen.findByText("Password-protected statement");
 
     await user.type(screen.getByLabelText("PDF password"), "hunter2");
+
     await user.click(screen.getByRole("button", { name: "Unlock & continue" }));
     await screen.findByRole("group", { name: "Statement summary" });
 
@@ -2238,3 +2306,130 @@ describe("ImportStatementModal — password-protected PDFs", () => {
     setItemSpy.mockRestore();
   });
 });
+
+describe("ImportStatementModal — import-time intelligence", () => {
+  it("flags a same-amount debit/credit pair across statements as an internal transfer", async () => {
+    // The pair's other side was imported earlier: this exact amount arrived
+    // in the ledger as income one day before the row being imported now.
+    useAppStore.setState((state) => ({
+      state: {
+        ...state.state,
+        transactions: [
+          {
+            id: "ledger-in",
+            categoryId: categoryId("Salary"),
+            amount: 1_200_000,
+            type: "income",
+            date: "2026-08-04",
+            note: "TRANSFER FROM MYSTERY",
+            createdAt: "2026-08-04T00:00:00.000Z",
+          },
+        ],
+      },
+    }));
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user, pairStatementCsv());
+
+    await screen.findByRole("group", { name: "Statement summary" });
+    const row = screen.getByText("MYSTERY SWEEP X2").closest("li") as HTMLElement;
+    await expandRow(user, "MYSTERY SWEEP X2");
+    // The unknown narration + a matching opposite-side ledger entry pre-fill
+    // a Transfer (still user-editable), with an explanatory hint.
+    expect(
+      within(row).getByRole("combobox", { name: "Type for MYSTERY SWEEP X2" }),
+    ).toHaveValue("internal-transfer");
+    expect(within(row).getByText(/Likely your own account/i)).toBeInTheDocument();
+    // It counts toward Transfers, never income/expense totals.
+    expect(summaryText()).toContain("1transfers");
+    expect(summaryText()).toContain("0expenses");
+    expect(summaryText()).toContain("0income");
+  });
+
+  it("does not flag a genuine external transaction as a transfer", async () => {
+    // Same amount, but on the SAME side in the ledger (an expense — not the
+    // opposite side of a transfer): coincidence, not an own-account pair.
+    useAppStore.setState((state) => ({
+      state: {
+        ...state.state,
+        transactions: [
+          {
+            id: "ledger-out",
+            categoryId: categoryId("Groceries"),
+            amount: 1_200_000,
+            type: "expense",
+            date: "2026-08-05",
+            note: "SUPERMARKET GROCERIES",
+            createdAt: "2026-08-05T00:00:00.000Z",
+          },
+        ],
+      },
+    }));
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user, pairStatementCsv());
+
+    await screen.findByRole("group", { name: "Statement summary" });
+    const row = screen.getByText("MYSTERY SWEEP X2").closest("li") as HTMLElement;
+    await expandRow(user, "MYSTERY SWEEP X2");
+    expect(
+      within(row).getByRole("combobox", { name: "Type for MYSTERY SWEEP X2" }),
+    ).toHaveValue("expense");
+    expect(
+      within(row).queryByText(/Likely your own account/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("surfaces a recurring-pattern match during review", async () => {
+    // Three monthly payments in Groceries establish a recurring pattern in
+    // the ledger (FR-25 detection, derived on read).
+    useAppStore.setState((state) => ({
+      state: {
+        ...state.state,
+        transactions: [0, 1, 2].map((i) => ({
+          id: `seed-g-${i}`,
+          categoryId: categoryId("Groceries"),
+          amount: 5_000_000,
+          type: "expense",
+          date: `2026-0${6 + i}-01`, // 2026-06-01, 07-01, 08-01
+          note: "SUPERMARKET GROCERIES",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        })),
+      },
+    }));
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user, groceryStatementCsv());
+
+    await screen.findByRole("group", { name: "Statement summary" });
+    const row = screen
+      .getByRole("button", { name: "Review SUPERMARKET GROCERIES" })
+      .closest("li") as HTMLElement;
+    await expandRow(user, "SUPERMARKET GROCERIES");
+    expect(within(row).getByText("Recurring")).toBeInTheDocument();
+  });
+
+  it("groups needs-attention rows first and restores statement order on click", async () => {
+    const user = userEvent.setup();
+    render(<ImportStatementModal open onClose={() => {}} />);
+    await uploadStatement(user, richStatementCsv());
+    await screen.findByRole("group", { name: "Statement summary" });
+
+    // Default: review-flagged rows are grouped under "Needs your attention".
+    expect(
+      screen.getByText(/Needs your attention \(\d+\)/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Pre-filled · ready to import \(\d+\)/),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Statement order" }));
+    expect(
+      screen.queryByText(/Needs your attention \(\d+\)/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Pre-filled · ready to import \(\d+\)/),
+    ).not.toBeInTheDocument();
+  });
+});
+

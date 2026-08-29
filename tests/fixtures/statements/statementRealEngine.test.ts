@@ -261,6 +261,60 @@ describe("real pdfjs — the actual engine, the actual bytes (8L)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The MODAL's actual PDF seam (probe-seam regression, 2026-08-28).
+// ---------------------------------------------------------------------------
+
+describe("real Opay PDF through classifyPdfDocument — the seam the import modal actually uses", () => {
+  // `classifyPdfDocument` used to build its cells with `rowsFromPdfItems`
+  // per page — single-page alignment, anchors reset to null on EVERY page.
+  // Every continuation page reprints no header, fell back to gap-based
+  // splitting, and its drifted columns failed to parse: the real OPay
+  // statement surfaced 124 of its 250 transactions in the live review screen
+  // (406 rows reported "invalid date"/"unparseable amount") while every
+  // snapshot-path test stayed green — the fixture loader threads anchors,
+  // the probe did not. The probe now threads anchors exactly like
+  // `pdfRowsFromPdf`; these tests read the REAL bytes through the REAL seam
+  // so the two page loops can drift no more.
+  const opay = findFixture("opay");
+
+  it("threads column anchors across pages: all 250 transactions surface", async () => {
+    const probe = await classifyPdfDocument(
+      exactArrayBuffer(readFileSync(fixturePdfPath(opay.id))),
+    );
+    expect(probe.kind).toBe("text");
+
+    const preview = processStatement({
+      cells: probe.cells,
+      context: CONTEXT,
+      categories: [],
+      rowYs: probe.rowYs,
+    });
+    expect(preview.status).toBe("supported");
+    expect(preview.detectedBank).toBe("opay");
+    // The statement's own printed summary blocks: Wallet 77 debits + 73
+    // credits, Savings 60 debits + 40 credits.
+    expect(preview.transactions).toHaveLength(250);
+    // Nothing vanishes silently: what fails to parse is REPORTED in review,
+    // and it is only the five summary lines that resemble transaction starts
+    // (the same five the snapshot path has always reported) — the money
+    // totals reconcile to the penny without them (opayReal.test.ts).
+    expect(preview.skipped).toBe(5);
+    expect(preview.errors).toHaveLength(5);
+  });
+
+  it("extracts identically to pdfRowsFromPdf — the other runtime page loop", async () => {
+    const probe = await classifyPdfDocument(
+      exactArrayBuffer(readFileSync(fixturePdfPath(opay.id))),
+    );
+    const direct = await pdfRowsFromPdf(
+      exactArrayBuffer(readFileSync(fixturePdfPath(opay.id))),
+    );
+    expect(probe.cells).toEqual(direct.map((row) => row.cells));
+    expect(probe.rowYs).toEqual(direct.map((row) => row.y));
+  });
+});
+
 describe("real SheetJS — the actual engine, actual xlsx bytes (8L)", () => {
   it("reads a real .xlsx workbook through rowsFromExcel", async () => {
     const XLSX = await import("xlsx");

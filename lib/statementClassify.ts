@@ -49,10 +49,10 @@ export const CLASSIFICATION_RULES: ReadonlyArray<ClassifyRule> = [
   { id: "refund", kind: "refund", confidence: "high", patterns: ["refund", "cashback", "reversal"] },
   { id: "loan", kind: "loan-payment", confidence: "high", patterns: ["loan repayment", "loan payment", "easemoni", "loan"] },
   { id: "tax", kind: "tax", confidence: "high", patterns: ["stamp duty", "vat", "vatrecover", "withholding tax", "capital gains", "cac levy"] },
-  { id: "bank-fee", kind: "bank-fee", confidence: "high", patterns: ["commission", "sms alert", "sms charge", "ussd charge", "transfer fee", "maintenance fee", "card maintenance", "bank charge", "charges"] },
+  { id: "bank-fee", kind: "bank-fee", confidence: "high", patterns: ["commission", "sms alert", "sms charge", "ussd charge", "transfer fee", "maintenance fee", "card maintenance", "bank charge", "charges", "service charge", "fee"] },
   { id: "interest", kind: "interest", confidence: "high", patterns: ["interest earned", "interest capitalised", "interest capitalized", "interest"] },
   { id: "savings", kind: "savings", confidence: "high", patterns: ["auto-save", "autosave", "round-up", "roundup", "save to owealth", "savings plan", "spend and save", "spend + save"] },
-  { id: "internal-transfer", kind: "internal-transfer", confidence: "medium", patterns: ["owealth withdrawal", "owealth deposit", "owealth transfer", "wallet transfer", "self transfer", "transfer to owealth"] },
+  { id: "internal-transfer", kind: "internal-transfer", confidence: "medium", patterns: ["owealth withdrawal", "owealth deposit", "owealth transfer", "wallet transfer", "self transfer", "transfer to owealth", "own account", "own wallet", "my account"] },
   { id: "merchant-gateway", kind: "expense", confidence: "medium", patterns: ["third-party merchant order", "merchant order", "checkout", "paystack", "kora payments", "moniepoint", "flutterwave", "interswitch"] },
   { id: "transfer", kind: "transfer", confidence: "medium", patterns: ["transfer to", "transfer from", "nip transfer", "nibss", "interbank transfer", "intrabank transfer", "local funds transfer", "outward transfer", "incoming transfer"] },
   { id: "income-salary", kind: "income", confidence: "high", patterns: ["salary", "wages", "payroll", "stipend"], categoryNames: ["Salary"] },
@@ -185,9 +185,11 @@ function suggestExpenseCategory(
   return { categoryId: suggestion.categoryId, reason: "keyword-suggestion" };
 }
 
-/** Extracts the useful merchant/recipient from a narration (Prompt 8G) —
- *  see lib/merchant.ts. Returns a known merchant/provider name or a transfer
- *  recipient; the original description is never modified. */
+/** The user's own-account narration patterns above are the FIRST way an
+ *  internal transfer is recognized. The review layer adds a second, structural
+ *  one (lib/statementIdentity.ts findCounterpartTransfer): an amount leaving
+ *  this statement that arrived in the LEDGER as an income around the same
+ *  date — a debit/credit pair across two of the user's own statements. */
 
 function decide(
   tx: NormalizedBankTransaction,

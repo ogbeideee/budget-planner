@@ -2,7 +2,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DUPLICATE_SIGNALS,
+  findCounterpartTransfer,
   matchExistingTransaction,
+  TRANSFER_COUNTERPART_WINDOW_DAYS,
   type IdentityRow,
   type LedgerTransactionSlice,
 } from "../statementIdentity";
@@ -306,5 +308,97 @@ describe("matchExistingTransaction — Prompt 8H conservative duplicate strategy
     );
     expect(match.status).toBe("possible-duplicate");
     expect(match.status).not.toBe("already-imported");
+  });
+});
+
+describe("findCounterpartTransfer — own-account pairs across statements", () => {
+  it("flags a same-amount debit whose other side arrived in the ledger as income", () => {
+    const match = findCounterpartTransfer(
+      row({
+        transactionDate: "2026-08-05",
+        debitAmount: 1_200_000,
+        creditAmount: undefined,
+        description: "MYSTERY SWEEP",
+      }),
+      [
+        ledgerTx({
+          id: "ledger-in",
+          amount: 1_200_000,
+          type: "income",
+          date: "2026-08-04",
+          note: "TRANSFER FROM MYSTERY",
+        }),
+      ],
+    );
+    expect(match).not.toBeNull();
+    expect(match!.ledgerType).toBe("income");
+    expect(match!.daysApart).toBe(1);
+    expect(match!.ledgerId).toBe("ledger-in");
+  });
+
+  it("flags a same-amount credit whose other side left the ledger as an expense", () => {
+    const match = findCounterpartTransfer(
+      row({
+        transactionDate: "2026-08-05",
+        creditAmount: 500_000,
+        debitAmount: undefined,
+      }),
+      [
+        ledgerTx({
+          id: "ledger-out",
+          amount: 500_000,
+          type: "expense",
+          date: "2026-08-05",
+          note: "INTERNAL TO BANK",
+        }),
+      ],
+    );
+    expect(match?.ledgerType).toBe("expense");
+    expect(match?.daysApart).toBe(0);
+  });
+
+  it("never flags a genuine external transaction — different amount", () => {
+    const match = findCounterpartTransfer(
+      row({ transactionDate: "2026-08-05" }), // 50_000_000 debit
+      [ledgerTx({ amount: 5_000_000, type: "income", date: "2026-08-05" })],
+    );
+    expect(match).toBeNull();
+  });
+
+  it("never pairs a ledger entry on the SAME side — a coincidental same amount", () => {
+    // An expense of the same amount in the ledger is not the income side of
+    // a transfer; it is just another spend.
+    const match = findCounterpartTransfer(
+      row({ transactionDate: "2026-08-05" }), // debit 50_000_000
+      [ledgerTx({ amount: 50_000_000, type: "expense", date: "2026-08-05" })],
+    );
+    expect(match).toBeNull();
+  });
+
+  it(`does not reach entries outside the ${TRANSFER_COUNTERPART_WINDOW_DAYS}-day window`, () => {
+    const match = findCounterpartTransfer(
+      row({ transactionDate: "2026-08-05" }),
+      [ledgerTx({ amount: 50_000_000, type: "income", date: "2026-08-08" })], // 3 days
+    );
+    expect(match).toBeNull();
+  });
+
+  it("picks the closest of several candidates, then the lowest ledger id", () => {
+    const match = findCounterpartTransfer(
+      row({ transactionDate: "2026-08-05" }),
+      [
+        ledgerTx({ id: "b", amount: 50_000_000, type: "income", date: "2026-08-06" }),
+        ledgerTx({ id: "a", amount: 50_000_000, type: "income", date: "2026-08-06" }),
+      ],
+    );
+    expect(match?.ledgerId).toBe("a");
+  });
+
+  it("returns null for a row without a readable date", () => {
+    expect(
+      findCounterpartTransfer(row({ transactionDate: null }), [
+        ledgerTx({ amount: 50_000_000, type: "income", date: "2026-08-01" }),
+      ]),
+    ).toBeNull();
   });
 });
