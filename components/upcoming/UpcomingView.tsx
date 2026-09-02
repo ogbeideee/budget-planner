@@ -24,6 +24,7 @@ import {
   TrashIcon,
 } from "@/components/ui/icons";
 import { useToast } from "@/hooks/useToast";
+import { useMarkExpensePaid } from "@/hooks/useMarkExpensePaid";
 import { formatDateShort, formatMonthLabel, monthKeyFromIso, nextMonthDate } from "@/lib/date";
 import { formatMoney } from "@/lib/money";
 import type { Currency, FutureExpense } from "@/lib/types";
@@ -259,9 +260,9 @@ export function UpcomingView() {
   const futureExpenses = useAppStore((s) => s.state.futureExpenses);
   const categories = useAppStore((s) => s.state.categories);
   const currency = useAppStore((s) => s.state.settings.currency);
-  const addTransaction = useAppStore((s) => s.addTransaction);
   const updateFutureExpense = useAppStore((s) => s.updateFutureExpense);
   const deleteFutureExpense = useAppStore((s) => s.deleteFutureExpense);
+  const markExpensePaid = useMarkExpensePaid();
   const { success } = useToast();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -334,15 +335,7 @@ export function UpcomingView() {
 
   const markPaid = (expense: FutureExpense) => {
     setMenuFor(null);
-    addTransaction({
-      categoryId: expense.categoryId,
-      amount: expense.amount,
-      type: "expense",
-      date: expense.dueDate,
-      note: expense.notes ?? expense.title,
-    });
-    updateFutureExpense(expense.id, { status: "paid" });
-    success("Paid — added to your timeline and budget.");
+    markExpensePaid(expense);
   };
 
   const skip = (expense: FutureExpense) => {

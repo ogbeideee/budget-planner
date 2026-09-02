@@ -5,6 +5,7 @@ import {
   DatabaseIcon,
   GridIcon,
   InfoIcon,
+  MonitorIcon,
   PaletteIcon,
   RepeatIcon,
   SlidersIcon,
@@ -21,6 +22,7 @@ export type SettingsSection =
   | "recurring"
   | "income"
   | "learning"
+  | "desktop"
   | "data"
   | "about";
 
@@ -61,6 +63,11 @@ export const SETTINGS_SECTIONS: ReadonlyArray<{
     icon: <SparklesIcon className="h-5 w-5" />,
   },
   {
+    id: "desktop",
+    label: "Desktop",
+    icon: <MonitorIcon className="h-5 w-5" />,
+  },
+  {
     id: "data",
     label: "Data & Backups",
     icon: <DatabaseIcon className="h-5 w-5" />,
@@ -68,16 +75,29 @@ export const SETTINGS_SECTIONS: ReadonlyArray<{
   { id: "about", label: "About", icon: <InfoIcon className="h-5 w-5" /> },
 ];
 
+/** Sections to show in this build. "Desktop" is about the tray and the window
+ *  close button, neither of which exists in a browser tab, so it is hidden
+ *  there rather than shown with every control inert. */
+export function visibleSettingsSections(
+  desktop: boolean,
+): ReadonlyArray<(typeof SETTINGS_SECTIONS)[number]> {
+  return desktop
+    ? SETTINGS_SECTIONS
+    : SETTINGS_SECTIONS.filter((section) => section.id !== "desktop");
+}
+
 export function SettingsNav({
   active,
   onSelect,
+  sections = SETTINGS_SECTIONS,
 }: {
   active: SettingsSection;
   onSelect: (section: SettingsSection) => void;
+  sections?: ReadonlyArray<(typeof SETTINGS_SECTIONS)[number]>;
 }) {
   return (
     <nav aria-label="Settings sections" className="flex w-full flex-col gap-1">
-      {SETTINGS_SECTIONS.map((section) => {
+      {sections.map((section) => {
         const selected = section.id === active;
         return (
           <button

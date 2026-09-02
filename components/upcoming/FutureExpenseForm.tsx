@@ -9,9 +9,15 @@ import { Select } from "@/components/ui/Select";
 import { CheckIcon, SparklesIcon } from "@/components/ui/icons";
 import { useToast } from "@/hooks/useToast";
 import { rememberMapping, suggestCategory } from "@/lib/categorize";
-import { todayIso } from "@/lib/date";
+import {
+  defaultDateForMonth,
+  formatMonthLabel,
+  monthBounds,
+  monthKeyFromIso,
+  todayIso,
+} from "@/lib/date";
 import { formatMoney, isMinorUnitsValid, minorToInput, toMinorUnits } from "@/lib/money";
-import type { FutureExpense, Priority } from "@/lib/types";
+import type { FutureExpense, Month, Priority } from "@/lib/types";
 import { MAX_NOTE_LENGTH, MAX_TITLE_LENGTH } from "@/lib/validate";
 import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
@@ -20,6 +26,13 @@ export interface FutureExpenseFormProps {
   open: boolean;
   onClose: () => void;
   editing: FutureExpense | null;
+  /**
+   * FR-27 — when set, the form plans an expense FOR this month: the due
+   * date defaults into it and is bounded to it (min/max + submit guard),
+   * so a record created from a month's plan can never land in another
+   * month. Unset (the Upcoming screen) keeps the free-date behaviour.
+   */
+  month?: Month;
 }
 
 const PRIORITY_OPTIONS: ReadonlyArray<{ value: Priority; label: string }> = [
@@ -32,6 +45,7 @@ export function FutureExpenseForm({
   open,
   onClose,
   editing,
+  month,
 }: FutureExpenseFormProps) {
   const categories = useAppStore((s) => s.state.categories);
   const currency = useAppStore((s) => s.state.settings.currency);
@@ -51,12 +65,18 @@ export function FutureExpenseForm({
   const [amount, setAmount] = useState(
     editing ? minorToInput(editing.amount) : "",
   );
-  const [dueDate, setDueDate] = useState(editing?.dueDate ?? todayIso());
+  const [dueDate, setDueDate] = useState(
+    editing?.dueDate ?? (month ? defaultDateForMonth(month) : todayIso()),
+  );
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [recurring, setRecurring] = useState(editing?.recurring ?? false);
   const [priority, setPriority] = useState<Priority>(editing?.priority ?? "medium");
   const [error, setError] = useState<string | null>(null);
   const [suggestionAccepted, setSuggestionAccepted] = useState(false);
+
+  // Month-scoped planning (FR-27): the date picker cannot leave the month,
+  // and the submit guard below catches typed-in values that bypass min/max.
+  const bounds = month ? monthBounds(month) : null;
 
   const suggestion = useMemo(() => {
     if (title.trim().length === 0) return null;
@@ -103,6 +123,10 @@ export function FutureExpenseForm({
       setError("Choose a due date.");
       return;
     }
+    if (month && monthKeyFromIso(dueDate) !== month) {
+      setError(`Keep the due date inside ${formatMonthLabel(month)}.`);
+      return;
+    }
     const input = {
       categoryId,
       amount: minor,
@@ -115,11 +139,11 @@ export function FutureExpenseForm({
     if (editing) {
       updateFutureExpense(editing.id, input);
       rememberMapping(title.trim(), categoryId);
-      success("Upcoming expense updated.");
+      success(month ? "Planned expense updated." : "Upcoming expense updated.");
     } else {
       addFutureExpense(input);
       rememberMapping(title.trim(), categoryId);
-      success("Upcoming expense added.");
+      success(month ? "Planned expense added." : "Upcoming expense added.");
     }
     onClose();
   };
@@ -132,7 +156,15 @@ export function FutureExpenseForm({
     <Modal
       open={open}
       onClose={onClose}
-      title={editing ? "Edit upcoming expense" : "Add upcoming expense"}
+      title={
+        editing
+          ? month
+            ? "Edit planned expense"
+            : "Edit upcoming expense"
+          : month
+            ? "Add planned expense"
+            : "Add upcoming expense"
+      }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
@@ -201,9 +233,15 @@ export function FutureExpenseForm({
           <Input
             label="Due date"
             type="date"
+            min={bounds?.first}
+            max={bounds?.last}
             value={dueDate}
             onChange={(event) => setDueDate(event.target.value)}
-            error={error?.startsWith("Choose a due") ? error : undefined}
+            error={
+              error?.startsWith("Choose a due") || error?.startsWith("Keep the due date")
+                ? error
+                : undefined
+            }
           />
           <Select
             label="Priority"

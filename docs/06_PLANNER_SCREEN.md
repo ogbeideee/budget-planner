@@ -44,6 +44,11 @@ Month At A Glance (hero card)
 
 ↓
 
+Upcoming month planning (FR-27 MonthPlanCard; rendered ONLY while the
+viewed month is in the future — current and past months never show it)
+
+↓
+
 Recommendation Card
 
 ↓
@@ -444,6 +449,63 @@ helper `components/planner/reviewBudgets.ts`: `scrollIntoView` on
 for router-capable contexts, where the `focus=over` flow also highlights
 the over-limit rows. The hero's "Review Budget" button uses the SAME
 helper — both buttons on the page go to the identical destination.
+
+--------------------------------------------------
+UPCOMING MONTH PLANNING (FR-27)
+--------------------------------------------------
+
+ONE card, full width, directly below the hero — rendered ONLY while the
+viewed month is in the future (`isFutureMonth`, lib/date.ts). The user
+reaches it through the ordinary MonthPicker: pick a future month and the
+planner becomes a forward-looking plan. Current and past months render
+exactly as before — no card, no placeholder, no layout shift.
+
+The card is a pure READ of existing planning data. Nothing new is stored
+and no new calculation exists: every figure comes from `lib/monthPlan.ts`,
+which composes the same selectors every other surface reads.
+
+- Expected income — `expectedIncomeForMonth` over the month's IncomePlans
+  (the canonical planning source, exactly as `monthFinance` uses).
+- Budgeted — Σ `effectiveLimit` over the month's budgets. `monthPlan`
+  never reads rollover records, so a planned month's limit is ALWAYS its
+  base limit — a boosted number cannot appear for a month that has not
+  happened (user-approved FR-27 decision).
+- Planned expenses — unpaid `FutureExpense` amounts whose dueDate falls in
+  the month (the Upcoming screen's data, re-read here).
+- Still needs funding — Σ `fundingNeeds().missing` over real gaps: THE
+  funding-gap logic, never recomputed, so this card, the Planner funding
+  panel, the health checklist and the header status cannot disagree.
+- Total planned commitments — budgeted + still-needs-funding: the money
+  the month needs, everything allocated PLUS the part of planned spending
+  no budget covers yet.
+- Projected remaining — expected income − total commitments. This is the
+  forward-looking answer `monthFinance` cannot give for an unstarted month
+  (its own projection only subtracts expense transactions that already
+  exist, and a future month has none).
+
+Status (aria-live summary + card badge):
+
+- "No income planned" until at least one income plan exists for the month
+  — a plan of zero cannot be called funded just because nothing is
+  committed yet.
+- "Underfunded" when projected remaining is negative; the summary states
+  the shortfall amount.
+- "Adequately funded" otherwise; the summary states the spare amount.
+
+Up to three biggest funding gaps list inline (category icon + registry
+name via `categoryDisplay`, "over allocation" or "Unbudgeted", missing
+amount); more point at the budget list below.
+
+Every action reuses an ordinary write path — no new editing surface:
+
+- Edit income opens the shared `IncomeModal` for the month (month-scoped
+  `setIncomePlan`).
+- Plan expenses routes to the Upcoming screen and its `FutureExpenseForm`.
+- Allocate budgets scrolls to the existing `#budget-allocation` list via
+  the shared `scrollToBudgetAllocation` helper.
+
+Explicitly OUT OF SCOPE for this foundation (per the request): savings
+plans, loan recommendations, PDF export, smart recommendations.
 
 --------------------------------------------------
 RECURRING PAYMENTS (FR-25)

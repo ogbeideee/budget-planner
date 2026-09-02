@@ -70,6 +70,40 @@ const menu = {
 const windowControls = {
   setTitleBarOverlay: (payload) =>
     ipcRenderer.send("desktop:window:setTitleBarOverlay", payload),
+  show: (deepLink) => ipcRenderer.invoke("desktop:window:show", deepLink),
+};
+
+// Tray + background mode (FR-26). The renderer OWNS the setting (it lives in
+// AppState); this channel only mirrors it into the main process, which is the
+// only place that can act on a window `close` event.
+const backgroundMode = {
+  set: (enabled) => ipcRenderer.invoke("desktop:background-mode:set", enabled),
+  get: () => ipcRenderer.invoke("desktop:background-mode:get"),
+};
+
+const quickAdd = {
+  open: () => ipcRenderer.invoke("desktop:quick-add:open"),
+  close: () => ipcRenderer.invoke("desktop:quick-add:close"),
+  /** Announce a save so other windows rehydrate. Carries NO transaction data —
+   *  the row is already persisted through the ordinary storage seam. */
+  saved: () => ipcRenderer.invoke("desktop:quick-add:saved"),
+};
+
+// Cross-window state invalidation: main -> renderer, same subscribe shape as
+// the menu bridge so callers get an unsubscribe back.
+const appEvents = {
+  onStateChanged(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = () => callback();
+    ipcRenderer.on("desktop:state:changed", listener);
+    return () => ipcRenderer.removeListener("desktop:state:changed", listener);
+  },
+  onNavigate(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, route) => callback(route);
+    ipcRenderer.on("desktop:navigate", listener);
+    return () => ipcRenderer.removeListener("desktop:navigate", listener);
+  },
 };
 
 function migrateBrowserData() {
@@ -126,4 +160,7 @@ contextBridge.exposeInMainWorld("budgetPlannerDesktop", {
   credentials,
   menu,
   window: windowControls,
+  backgroundMode,
+  quickAdd,
+  appEvents,
 });

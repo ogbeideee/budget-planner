@@ -9,6 +9,7 @@ const {
   net,
   ipcMain,
   Menu,
+  Tray,
   nativeTheme,
   safeStorage,
   shell,
@@ -24,6 +25,13 @@ const { createSplashScreen } = require("./splash.cjs");
 const { initAutoUpdates } = require("./updater.cjs");
 const { MENU_ACTIONS, buildApplicationMenu } = require("./menu.cjs");
 const { createCredentialStore } = require("./credentials.cjs");
+const { createTray } = require("./tray.cjs");
+const { openQuickAdd, closeQuickAdd } = require("./quickAdd.cjs");
+const {
+  resolveCloseBehavior,
+  shouldKeepRunning,
+  normalizeSetting,
+} = require("./backgroundMode.cjs");
 
 const APP_SCHEME = "app";
 const APP_HOST = "bundle";
@@ -45,6 +53,31 @@ const CANVAS_DARK = "#0f172a";
 let db = null;
 let mainWindow = null;
 let splashWindow = null;
+let tray = null;
+
+// --- Background mode (FR-26) -------------------------------------------------
+//
+// `backgroundModeEnabled` mirrors `settings.backgroundMode` from AppState. The
+// RENDERER is the authority: it pushes the value at mount and on every change
+// (`desktop:background-mode:set`). Main deliberately does not parse the stored
+// AppState blob to find it — that would put the state schema in two places and
+// break the next time the shape moves.
+//
+// It starts FALSE, which is also what it stays if the renderer never reports.
+// The fail-safe direction is quitting: a stuck value can only ever cost the
+// user the new convenience, never leave a process running they cannot see.
+let backgroundModeEnabled = false;
+
+// Set once an exit is genuinely intended (tray Quit, app menu, OS shutdown) so
+// the close handler stops intercepting. Without it the tray would trap the app.
+let isQuitting = false;
+
+const APP_NAME = pkg.productName || pkg.name;
+
+// A deep link requested while no main window existed. createWindow() hands it
+// to the renderer once the page has actually loaded — sending before then goes
+// nowhere, because there is no listener yet.
+let pendingDeepLink = null;
 
 function showSplash() {
   if (isSmokeMode()) return; // keep the smoke run deterministic (no windows)
@@ -299,7 +332,7 @@ function registerDesktopHandlers() {
   // Desktop notifications (Windows toast). AUMID is set at startup, so
   // packaged toasts have an identity; isSupported() guards the rest.
   ipcMain.handle("desktop:notify", (event, payload) => {
-    const { title, body, silent } =
+    const { title, body, silent, deepLink } =
       typeof payload === "object" && payload !== null ? payload : {};
     if (!Notification.isSupported()) {
       return { ok: false, error: "notifications not supported" };
@@ -307,11 +340,57 @@ function registerDesktopHandlers() {
     if (typeof title !== "string" || title.length === 0) {
       return { ok: false, error: "invalid notification" };
     }
-    new Notification({
+    const notification = new Notification({
       title,
       body: typeof body === "string" && body.length > 0 ? body : undefined,
       silent: silent === true,
-    }).show();
+    });
+    // FR-26 req 11: clicking a notification raised while the app sat in the
+    // tray must bring the window back, optionally on a specific route. Only an
+    // in-app path is honoured — see assertNavigable.
+    notification.on("click", () => {
+      showMainWindow(typeof deepLink === "string" ? deepLink : undefined);
+    });
+    notification.show();
+    return { ok: true };
+  });
+
+  // --- Tray, quick-add and background mode (FR-26) -----------------------
+
+  // The renderer reports `settings.backgroundMode` at mount and on change.
+  ipcMain.handle("desktop:background-mode:set", (event, enabled) => ({
+    enabled: applyBackgroundMode(enabled),
+    trayAvailable: tray !== null,
+  }));
+
+  ipcMain.handle("desktop:background-mode:get", () => ({
+    enabled: backgroundModeEnabled,
+    trayAvailable: tray !== null,
+  }));
+
+  ipcMain.handle("desktop:quick-add:open", () => {
+    openQuickAddWindow();
+    return { ok: true };
+  });
+
+  ipcMain.handle("desktop:quick-add:close", () => {
+    closeQuickAdd();
+    return { ok: true };
+  });
+
+  /**
+   * Quick-add saved a transaction. The row is ALREADY written — the quick-add
+   * renderer called the ordinary `addTransaction`, which persisted through the
+   * ordinary storage seam. Nothing about the transaction crosses this channel.
+   * All main does is tell the other windows to re-read (req 5).
+   */
+  ipcMain.handle("desktop:quick-add:saved", (event) => {
+    broadcastStateChanged(event.sender.id);
+    return { ok: true };
+  });
+
+  ipcMain.handle("desktop:window:show", (event, deepLink) => {
+    showMainWindow(typeof deepLink === "string" ? deepLink : undefined);
     return { ok: true };
   });
 
@@ -529,6 +608,72 @@ function handleProtocol(request) {
     });
 }
 
+/**
+ * Restores and focuses the main window, creating it if background mode let the
+ * app outlive it. Used by the tray's Open item, a notification click, and the
+ * second-instance handler.
+ *
+ * `deepLink` optionally routes the restored window somewhere specific (req 11).
+ * It is best-effort by design: if the navigation fails the user still gets
+ * their window back on the normal landing view, which the requirement allows.
+ */
+function showMainWindow(deepLink) {
+  if (mainWindow === null || mainWindow.isDestroyed()) {
+    createWindow();
+    if (typeof deepLink === "string" && mainWindow !== null) {
+      pendingDeepLink = deepLink;
+    }
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (typeof deepLink === "string" && deepLink.length > 0) {
+    mainWindow.webContents.send("desktop:navigate", deepLink);
+  }
+}
+
+/**
+ * Tells every OTHER renderer that the persisted state changed, so it can
+ * rehydrate (req 5).
+ *
+ * This exists because each BrowserWindow is its own renderer process with its
+ * own zustand store. Quick-add writes through the shared SQLite backing, but
+ * the main window's in-memory copy would not know. The sender is skipped: it
+ * already has the new state and rehydrating it would be a pointless round trip.
+ *
+ * Note what this message does NOT carry: any state. It is a bare "re-read your
+ * storage" nudge, so there is still exactly one path data travels (store ->
+ * storage seam -> SQLite) and no chance of two windows disagreeing about which
+ * copy is authoritative.
+ */
+function broadcastStateChanged(exceptWebContentsId) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    if (win.webContents.id === exceptWebContentsId) continue;
+    win.webContents.send("desktop:state:changed");
+  }
+}
+
+/** Opens (or refocuses) the tray quick-add window with this app's URL config. */
+function openQuickAddWindow() {
+  return openQuickAdd({
+    electron: { BrowserWindow },
+    devMode: isDevMode(),
+    devUrl: DEV_URL,
+    scheme: APP_SCHEME,
+    host: APP_HOST,
+    backgroundColor: windowCanvasColor(),
+  });
+}
+
+/** Applies a new background-mode setting and repaints the tray indicator. */
+function applyBackgroundMode(enabled) {
+  backgroundModeEnabled = normalizeSetting(enabled);
+  if (tray !== null) tray.setBackgroundMode(backgroundModeEnabled);
+  return backgroundModeEnabled;
+}
+
 function createWindow() {
   const windowIcon = path.join(__dirname, "..", "build", "icon.png");
   const win = new BrowserWindow({
@@ -555,7 +700,28 @@ function createWindow() {
     if (mainWindow === win) mainWindow = null;
   });
 
+  // FR-26 req 8/9: the close button either hides to the tray or quits, and
+  // which one is a user setting that defaults to the historical behaviour.
+  // The decision itself lives in backgroundMode.cjs so it can be tested.
+  win.on("close", (event) => {
+    const behavior = resolveCloseBehavior({
+      backgroundMode: backgroundModeEnabled,
+      quitting: isQuitting,
+      trayAvailable: tray !== null,
+    });
+    if (behavior !== "hide") return; // fall through: the window closes, app quits
+    event.preventDefault();
+    win.hide();
+  });
+
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
+  // Deliver a deep link requested before this window existed (req 11).
+  win.webContents.on("did-finish-load", () => {
+    if (pendingDeepLink === null) return;
+    win.webContents.send("desktop:navigate", pendingDeepLink);
+    pendingDeepLink = null;
+  });
 
   if (!isSmokeMode()) {
     win.once("ready-to-show", () => {
@@ -901,6 +1067,20 @@ async function runSmokeTest(win) {
   }
 }
 
+// Single instance. This matters much more once background mode exists: with
+// the app sitting in the tray and no window on screen, re-launching from the
+// Start menu looks to the user like "open it again", and without this lock it
+// would start a SECOND process against the same SQLite file. Instead the
+// running instance raises its window. Smoke runs opt out — they are expected
+// to run headless and in parallel with a real app.
+if (!isSmokeMode() && !app.requestSingleInstanceLock()) {
+  app.exit(0);
+} else {
+  app.on("second-instance", () => {
+    showMainWindow();
+  });
+}
+
 app.whenReady().then(() => {
   app.setAppUserModelId("com.budgetplanner.desktop");
 
@@ -949,6 +1129,27 @@ app.whenReady().then(() => {
     getDataDir: () => dataPaths().userData,
   });
 
+  // Tray (FR-26). Skipped under --smoke, which must stay window-free and
+  // deterministic. A null tray is a supported state, not an error: close-to-
+  // quit stays in force so the app can never hide somewhere unreachable.
+  if (!isSmokeMode()) {
+    tray = createTray({
+      electron: { Tray, Menu },
+      appName: APP_NAME,
+      handlers: {
+        onQuickAdd: () => openQuickAddWindow(),
+        onOpen: () => showMainWindow(),
+        onQuit: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    });
+    if (tray === null) {
+      console.warn("[tray] not available — background mode will fall back to quit-on-close");
+    }
+  }
+
   const updateStatus = initAutoUpdates();
   console.log(
     `[updater] ${updateStatus.supported ? `watching feed ${updateStatus.feed}` : `scaffold inactive (${updateStatus.reason})`}`,
@@ -977,10 +1178,18 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+  // Whatever triggered this — tray Quit, app menu, OS shutdown, `app.quit()`
+  // from anywhere — the intent is to exit, so the close handler must stop
+  // intercepting or the quit would be swallowed and the app would hang.
+  isQuitting = true;
   dismissSplash();
 });
 
 app.on("will-quit", () => {
+  if (tray !== null) {
+    tray.destroy();
+    tray = null;
+  }
   if (db) {
     db.close();
     db = null;
@@ -988,9 +1197,23 @@ app.on("will-quit", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  // FR-26 req 9: with background mode off — the default, and every install
+  // that predates the setting — this stays exactly what it was, so a user who
+  // never opts in sees no change whatsoever.
+  if (
+    shouldKeepRunning({
+      backgroundMode: backgroundModeEnabled,
+      quitting: isQuitting,
+      trayAvailable: tray !== null,
+      platform: process.platform,
+    })
+  ) {
+    return;
+  }
+  app.quit();
 });
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  else showMainWindow();
 });

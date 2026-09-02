@@ -23,7 +23,7 @@ export function createInitialState(): AppState {
     createdAt: now,
   }));
   return {
-    version: 9,
+    version: 10,
     categories,
     budgets: [],
     transactions: [],
@@ -42,6 +42,8 @@ export function createInitialState(): AppState {
       firstRunDone: false,
       theme: "system",
       debtStrategy: "avalanche",
+      // Opt-in (FR-25): a new install closes-to-quit like every version before it.
+      backgroundMode: false,
     },
   };
 }

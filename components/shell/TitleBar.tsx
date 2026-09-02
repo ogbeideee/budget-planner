@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { WalletIcon } from "@/components/ui/icons";
 import { isDesktop } from "@/lib/desktop";
 import { APP_NAME } from "@/lib/version";
+import { useAppStore } from "@/store/useAppStore";
 
 // Desktop custom title bar. The native frame is hidden (titleBarStyle:
 // "hidden") and the native Windows min/max/close controls are overlaid on the
@@ -23,6 +24,10 @@ function normalizeHex(value: string): string | null {
 }
 
 export function TitleBar() {
+  // FR-26 req 13: when background mode is on, closing this window does NOT
+  // quit the app. Say so where the close button is, so the user is never left
+  // guessing whether the app exited or went invisible.
+  const backgroundMode = useAppStore((s) => s.state.settings.backgroundMode);
   useEffect(() => {
     if (!isDesktop()) return;
     // Keep the native overlay buttons in sync with the resolved theme: colors
@@ -59,6 +64,18 @@ export function TitleBar() {
       <span className="min-w-0 truncate text-sm font-bold tracking-tight text-ink">
         {APP_NAME}
       </span>
+      {backgroundMode && isDesktop() && (
+        <span
+          title="Closing this window keeps Budget Planner running in the system tray."
+          className="ml-1 hidden shrink-0 items-center gap-1.5 rounded-full bg-sidebar-hover px-2.5 py-1 text-xs font-semibold text-secondary sm:flex"
+        >
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-success"
+          />
+          Stays in tray
+        </span>
+      )}
     </header>
   );
 }

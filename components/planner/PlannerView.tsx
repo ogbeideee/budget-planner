@@ -9,10 +9,12 @@ import { PageHeader } from "@/components/shell/PageHeader";
 import { TransactionForm } from "@/components/txn/TransactionForm";
 import { useMonth } from "@/hooks/useMonth";
 import type { CategoryKind, TransactionPrefill } from "@/lib/types";
+import { isFutureMonth } from "@/lib/date";
 import { ImportStatementModal } from "./ImportStatementModal";
 import { BudgetList } from "./BudgetList";
 import { BudgetStatusBand } from "./BudgetStatusBand";
 import { Hero } from "./Hero";
+import { MonthPlanCard } from "./MonthPlanCard";
 import { RecentActivity } from "./RecentActivity";
 import { RecurringSuggestions } from "./RecurringSuggestions";
 import { SummaryCards } from "./SummaryCards";
@@ -104,6 +106,10 @@ export function PlannerView() {
           }
         />
         <Hero month={month} />
+        {/* FR-27 — upcoming-month planning. Rendered ONLY for a future month
+            (selected via the ordinary MonthPicker); current and past months
+            render exactly as before. */}
+        {isFutureMonth(month) && <MonthPlanCard month={month} />}
         <SummaryCards month={month} />
         <BudgetStatusBand month={month} />
         {/* FR-25 — quick-add suggestions for recurring payments due in the

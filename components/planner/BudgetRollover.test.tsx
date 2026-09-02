@@ -204,7 +204,7 @@ describe("state model", () => {
     };
     const migrated = validateAppState(v6);
 
-    expect(migrated.version).toBe(9);
+    expect(migrated.version).toBe(10);
     expect(migrated.rollovers).toEqual([]);
     // No invented history, and nobody switched on behind the user's back.
     expect(migrated.categories.every((c) => c.rollover === undefined)).toBe(true);

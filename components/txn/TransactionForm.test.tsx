@@ -43,7 +43,11 @@ describe("TransactionForm (AC-04, AC-05)", () => {
     expect(state.transactions).toHaveLength(1);
     expect(state.transactions[0].amount).toBe(1250);
     expect(state.transactions[0].type).toBe("expense");
-    expect(totals(state.transactions, "2026-08").expenses).toBe(1250);
+    // The form defaults the date to today — assert against the CURRENT
+    // month, not a hard-coded one, or this breaks at every month boundary.
+    expect(
+      totals(state.transactions, monthKeyFromIso(todayIso())).expenses,
+    ).toBe(1250);
   });
 
   it("edits a transaction and updates totals (AC-05)", async () => {

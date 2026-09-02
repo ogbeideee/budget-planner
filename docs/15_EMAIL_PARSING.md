@@ -370,7 +370,82 @@ REMAINING WORK
    above, the app-password instructions, and a one-click **Disconnect email**
    wired to `disconnectEmail()`.
 3. **Needs-review UI** surfacing `EmailDraft.needsReview` with the snippet.
-4. **Sync scheduling** — a foreground interval (15 minutes is the intended
-   default) plus a manual "Check now". Explicitly scoped to a running,
-   foreground app; background/tray syncing is a separate feature and must not
-   be assumed here.
+4. **Sync scheduling** — an interval of **30 minutes exactly** (decided
+   2026-08-29; supersedes the earlier 15-minute suggestion) plus a manual
+   "Check now".
+   Three constraints on whoever builds this:
+   - The interval MUST be a named constant (`EMAIL_SYNC_INTERVAL_MS =
+     30 * 60 * 1000`) declared next to the scheduler, never an inline literal.
+   - "Check now" MUST NOT go through the timer — it calls the same fetch
+     directly, so a user who knows an alert just arrived never waits.
+   - ONE timer handle, cleared on teardown AND before every (re)start, so a
+     disconnect/reconnect or a close/reopen cycle cannot stack timers. Copy
+     the shape of `startAutoBackups` in lib/desktopFeatures.ts.
+
+--------------------------------------------------
+BACKGROUND CHECKING (FR-26) — WHAT CHANGED, AND WHAT DID NOT
+--------------------------------------------------
+
+FR-26 added a system tray, a quick-add window, and an opt-in
+`settings.backgroundMode` that makes closing the main window hide it to the
+tray instead of quitting the app. That lifts the constraint this document used
+to state — that syncing was "explicitly scoped to a running, foreground app".
+
+**It does not make background checking work.** Nothing here changed about the
+transport, because there still is no transport. Item 1 above is still open and
+nothing in the app reads a mailbox. What FR-26 provides is the *precondition*:
+a process that can still be alive with no window on screen, and a place to
+surface what it finds.
+
+What FR-26 actually landed for this feature:
+
+- **A tray menu seam.** `tray.setAlertChecker(fn)` makes a "Check for new
+  alerts now" item appear in the tray context menu. Nothing calls it today, so
+  the item is ABSENT rather than present and dead. The scheduler should call it
+  with the same function "Check now" calls — see the constraint above that
+  manual checks must not go through the timer.
+- **A notification path with a click target.** `desktop:notify` now accepts a
+  `deepLink`; clicking the toast restores the main window and routes there.
+  Use the existing path (`sendDesktopNotification`, `Notification.isSupported()`
+  -guarded) — do not introduce a second notification mechanism.
+- **Cross-window state invalidation.** `desktop:state:changed` already exists
+  for quick-add; drafts written while a window is open will reach it the same
+  way.
+
+### Connection lifecycle in the background state — decided now
+
+These bind whoever builds the transport. They are written down before the code
+because the failure they prevent (a provider throttling the account, or
+prompting for auth repeatedly) is discovered late and is painful to unwind.
+
+1. **One connection, held open — never one per tick.** The connection is
+   established when checking starts and kept idle between the 30-minute ticks.
+   Do NOT connect, `SEARCH`, and disconnect every cycle: a predictable
+   connect/auth cycle every 30 minutes for hours is precisely the pattern that
+   earns rate-limiting and repeated authentication challenges, and it multiplies
+   the number of times the secret is decrypted for no benefit.
+2. **Reconnect on failure, with backoff — never on a schedule.** Providers do
+   drop idle IMAP connections. Handle that by reconnecting when a tick finds the
+   connection dead, backing off on repeated failure; do not pre-emptively cycle
+   the connection to "keep it fresh".
+3. **The security model is unchanged, not relaxed.** `reveal()` stays
+   main-process-only; its return value never crosses IPC, is never logged, and is
+   never written anywhere. There is still no "read secret" channel and there must
+   never be one. Note the direction of the risk here: a checker running with no
+   window open has strictly LESS renderer surface than one with a window, not
+   more. Background mode weakens nothing in this document's five properties.
+4. **The credential is not re-collected because the window closed.** Hiding to
+   the tray is not a logout. The vault is on disk, encrypted by the OS keychain,
+   and unchanged by window state.
+5. **Review-first is independent of when the check runs.** A background check
+   populates the review queue and confirms NOTHING. Nothing reaches the ledger
+   without the user approving it, whether the check ran with the window open,
+   closed, or from the tray's manual item.
+6. **Off by default, and the timer follows the setting.** With
+   `backgroundMode` off — the default, and what every pre-v10 install migrates
+   to — closing the window quits the app and checking stops, matching today's
+   behaviour exactly. The timer must stop with the app; it must not be the
+   reason a process outlives its window.
+
+Architecture rationale for the tray, the close-behaviour decision and the
+manual-verification list: ARCHITECTURE §3.7.

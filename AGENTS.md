@@ -67,12 +67,12 @@ and docs/15_EMAIL_PARSING.md.
 
 On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside commands.
 
-## State model (current: schema version 9)
-- `AppState.version` is `9`; stored under `budget-planner:state` with `CURRENT_STORAGE_VERSION = 9`.
+## State model (current: schema version 10)
+- `AppState.version` is `10`; stored under `budget-planner:state` with `CURRENT_STORAGE_VERSION = 10`.
   Bumping the schema means bumping BOTH — they are separate constants in separate files
   (lib/types.ts + lib/seed.ts, and lib/storage.ts); missing the second one silently
   mis-snapshots every save as "legacy".
-- `validateAppState` (lib/validate.ts) accepts versions 1–9 and migrates each forward;
+- `validateAppState` (lib/validate.ts) accepts versions 1–10 and migrates each forward;
   legacy field normalization always runs. Two rules hold across every migration: a
   backfill opts NOBODY in (rollover, debt and badges all backfill empty), and an icon fix
   matches the lowercase name AND the specific wrong icon, so an icon the user has since
@@ -221,6 +221,18 @@ On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside
 - `lib/emailPipeline.ts` owns NO categorization and NO duplicate logic — it calls
   `suggestCategory` and `findDuplicateCandidates` so both paths stay consistent.
   Format detail: `docs/15_EMAIL_PARSING.md`.
+
+## Tray & background mode (FR-26)
+- **The close-behaviour decision stays in `electron/backgroundMode.cjs`, which imports
+  nothing from `electron`.** That is what makes it testable without a main process. An
+  explicit quit and a missing tray each force a quit regardless of the setting — never
+  remove either guard: one stops the tray trapping the app, the other stops it hiding
+  the window somewhere unreachable. Default is OFF and every migration backfills OFF.
+- **Main is TOLD `settings.backgroundMode` by the renderer; it never parses AppState.**
+- **Quick-add is the same app at `/quick-add`, calling the ordinary `addTransaction`.**
+  Never give it its own write path. `AppShell` must keep branching on the route BEFORE
+  `MainShell` mounts — that second renderer must not run the write-at-mount hooks.
+- Cross-window sync is a bare `desktop:state:changed` ping; never send state over it.
 
 ## Learned categorization (FR-22)
 - **`suggestCategory` in lib/learnedRules.ts is THE categorization entry point.** It takes

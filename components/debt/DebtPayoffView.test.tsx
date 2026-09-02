@@ -299,7 +299,7 @@ describe("the debt data model", () => {
       debts: undefined,
     };
     const migrated = validateAppState(v7);
-    expect(migrated.version).toBe(9);
+    expect(migrated.version).toBe(10);
     expect(migrated.debts).toEqual([]);
     expect(migrated.settings.debtStrategy).toBe("avalanche");
   });

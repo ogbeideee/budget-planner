@@ -53,7 +53,7 @@ describe("backup snapshots", () => {
     const raw = v1Payload();
     window.localStorage.setItem(STORAGE_KEY, raw);
     const result = parseStoredState(raw);
-    expect(result.version).toBe(9);
+    expect(result.version).toBe(10);
     const keys = backupKeys();
     expect(keys).toHaveLength(1);
     const snapshot = loadBackupSnapshot(keys[0]);

@@ -18,11 +18,12 @@ import type { RecurrenceRule } from "@/lib/types";
 import { categoryLabelOr } from "@/lib/categoryDisplay";
 import { categoryDisplay } from "@/lib/categoryRegistry";
 import { useAppStore } from "@/store/useAppStore";
+import { isDesktop } from "@/lib/desktop";
 import { useToast } from "@/hooks/useToast";
 import { RecurrenceForm } from "../txn/RecurrenceForm";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { SettingsNav } from "./SettingsNav";
-import { SETTINGS_SECTIONS } from "./SettingsNav";
+import { visibleSettingsSections } from "./SettingsNav";
 import type { SettingsSection } from "./SettingsNav";
 import { ProfilePanel } from "./ProfilePanel";
 import { AppearancePanel } from "./AppearancePanel";
@@ -31,6 +32,7 @@ import { CategoryManager } from "./CategoryManager";
 import { IncomeSourcesPanel } from "./IncomeSourcesPanel";
 import { LearnedRulesPanel } from "./LearnedRulesPanel";
 import { DataBackupsPanel } from "./DataBackupsPanel";
+import { DesktopPanel } from "./DesktopPanel";
 import { AboutPanel } from "./AboutPanel";
 
 const FREQUENCY_LABELS: Record<string, string> = {
@@ -189,10 +191,11 @@ export function SettingsView() {
   const router = useRouter();
   const isImportAction = searchParams.get("action") === "import";
 
+  const sections = visibleSettingsSections(isDesktop());
   const sectionParam = searchParams.get("section");
   const active: SettingsSection = isImportAction
     ? "data"
-    : SETTINGS_SECTIONS.some((section) => section.id === sectionParam)
+    : sections.some((section) => section.id === sectionParam)
       ? (sectionParam as SettingsSection)
       : "profile";
   const autoImport = isImportAction;
@@ -220,13 +223,13 @@ export function SettingsView() {
       <div className="grid items-start gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-8">
           <div className="hidden lg:block">
-            <SettingsNav active={active} onSelect={select} />
+            <SettingsNav active={active} onSelect={select} sections={sections} />
           </div>
           <nav
             aria-label="Settings sections"
             className="-mx-6 flex items-center gap-1.5 overflow-x-auto border-b border-border/60 bg-canvas/95 px-6 py-3 backdrop-blur-md lg:hidden"
           >
-            {SETTINGS_SECTIONS.map(({ id, label }) => (
+            {sections.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
@@ -266,6 +269,7 @@ export function SettingsView() {
           {active === "recurring" && <RecurringPanel />}
           {active === "income" && <IncomeSourcesPanel />}
           {active === "learning" && <LearnedRulesPanel />}
+          {active === "desktop" && <DesktopPanel />}
           {active === "data" && <DataBackupsPanel autoImport={autoImport} />}
           {active === "about" && <AboutPanel />}
         </div>

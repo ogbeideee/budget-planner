@@ -53,6 +53,39 @@ export interface DesktopWindowBridge {
     color: string;
     symbolColor: string;
   }): void;
+  /** Restore + focus the main window, optionally on a specific in-app route. */
+  show(deepLink?: string): Promise<{ ok: boolean }>;
+}
+
+/** Result of reporting or reading the background-mode setting (FR-26).
+ *  `trayAvailable` is false when the tray could not be registered — the app
+ *  then keeps quitting on close no matter what the setting says, and the UI
+ *  must say so rather than claiming a background mode that will not happen. */
+export interface BackgroundModeStatus {
+  enabled: boolean;
+  trayAvailable: boolean;
+}
+
+export interface DesktopBackgroundModeBridge {
+  set(enabled: boolean): Promise<BackgroundModeStatus>;
+  get(): Promise<BackgroundModeStatus>;
+}
+
+export interface DesktopQuickAddBridge {
+  open(): Promise<{ ok: boolean }>;
+  close(): Promise<{ ok: boolean }>;
+  /** Announce that a quick-add save persisted, so other windows rehydrate.
+   *  Deliberately carries no payload: the transaction already went through the
+   *  ordinary store action and storage seam. */
+  saved(): Promise<{ ok: boolean }>;
+}
+
+export interface DesktopAppEventsBridge {
+  /** Fires when another window wrote state; the handler should rehydrate. */
+  onStateChanged(callback: () => void): () => void;
+  /** Fires when the main process asks the app to route somewhere (tray Open
+   *  with a deep link, or a notification click). */
+  onNavigate(callback: (route: string) => void): () => void;
 }
 
 export interface DesktopBridge {
@@ -80,6 +113,8 @@ export interface DesktopBridge {
     title: string;
     body?: string;
     silent?: boolean;
+    /** In-app route to open when the notification is clicked (FR-26 req 11). */
+    deepLink?: string;
   }): Promise<{ ok: boolean; error?: string }>;
   paths(): Promise<DesktopPaths>;
   backups: {
@@ -124,6 +159,9 @@ export interface DesktopBridge {
     on(callback: (action: DesktopMenuAction) => void): () => void;
   };
   window: DesktopWindowBridge;
+  backgroundMode: DesktopBackgroundModeBridge;
+  quickAdd: DesktopQuickAddBridge;
+  appEvents: DesktopAppEventsBridge;
 }
 
 declare global {

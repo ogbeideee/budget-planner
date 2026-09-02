@@ -471,13 +471,16 @@ export function validateAppState(value: unknown): AppState {
     value.version !== 6 &&
     value.version !== 7 &&
     value.version !== 8 &&
-    value.version !== 9
+    value.version !== 9 &&
+    value.version !== 10
   ) {
     throw new ValidationError("Unsupported state version");
   }
-  const migrated = migrateV8(
-    migrateV7(
-      migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(value)))))),
+  const migrated = migrateV9(
+    migrateV8(
+      migrateV7(
+        migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(value)))))),
+      ),
     ),
   );
   const categories = requireArray(migrated.categories, "categories").map(
@@ -576,8 +579,12 @@ export function validateAppState(value: unknown): AppState {
   // (the strategy that costs the least), never an error.
   const debtStrategy =
     settings.debtStrategy === "snowball" ? "snowball" : "avalanche";
+  // Opt-in (FR-26). Anything but an explicit `true` means off, so a state
+  // that predates the field — or carries junk in it — keeps the close-to-quit
+  // behaviour rather than silently acquiring a background process.
+  const backgroundMode = settings.backgroundMode === true;
   return {
-    version: 9,
+    version: 10,
     categories,
     budgets,
     transactions,
@@ -594,6 +601,7 @@ export function validateAppState(value: unknown): AppState {
       firstRunDone: settings.firstRunDone,
       theme,
       debtStrategy,
+      backgroundMode,
     },
   };
 }
@@ -899,6 +907,26 @@ function migrateV6(value: Record<string, unknown>): Record<string, unknown> {
  * the app evaluates badges — no migration needs to invent earned records, and
  * inventing them would risk crediting achievements the data does not support.
  */
+/**
+ * v9 -> v10: tray + background mode (FR-26). Backfills
+ * `settings.backgroundMode` as `false`.
+ *
+ * Opts NOBODY in, per the rule every migration here follows. Background mode
+ * changes what the window's close button does — an existing user who upgrades
+ * must keep getting a quit, and must choose the new behaviour deliberately in
+ * Settings. Backfilling `true` would leave a process running behind the backs
+ * of users who never asked for one.
+ */
+function migrateV9(value: Record<string, unknown>): Record<string, unknown> {
+  if (value.version !== 9) return value;
+  const settings = isRecord(value.settings) ? value.settings : {};
+  return {
+    ...value,
+    version: 10,
+    settings: { ...settings, backgroundMode: false },
+  };
+}
+
 function migrateV8(value: Record<string, unknown>): Record<string, unknown> {
   if (value.version !== 8) return value;
   return { ...value, version: 9, badges: [] };

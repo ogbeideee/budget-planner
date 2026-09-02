@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { loadDisplayName } from "@/lib/displayName";
 import { loadOnboardingStep } from "@/lib/onboarding";
@@ -13,6 +14,7 @@ import { useRecurring } from "@/hooks/useRecurring";
 import { useBadges } from "@/hooks/useBadges";
 import { useRollover } from "@/hooks/useRollover";
 import { useTheme } from "@/hooks/useTheme";
+import { useDesktopNavigation } from "@/hooks/useDesktopNavigation";
 import { initDesktopBootstrap } from "@/lib/desktopBootstrap";
 import { initOverlayScrollbars } from "@/lib/overlayScrollbars";
 import { BottomNav } from "./BottomNav";
@@ -21,12 +23,38 @@ import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 import { NameSetupModal } from "./NameSetupModal";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
+import { QUICK_ADD_ROUTE } from "@/lib/quickAddRoute";
 
 // Desktop-only integrations (auto-backups, native menu actions). No-op in a
 // plain browser and on the server; idempotent across hot reloads.
 initDesktopBootstrap();
 
+/**
+ * Routes between the full app shell and the chromeless tray quick-add window
+ * (FR-26).
+ *
+ * The split has to happen at THIS level, before `MainShell` mounts, because
+ * quick-add runs in its own renderer process against the same SQLite file.
+ * `useRecurring` / `useRollover` / `useBadges` all WRITE at mount, and the
+ * rollover transition detects a new month by the absence of records for it —
+ * so letting a second window run them would race the main window and could
+ * append duplicate rollover records. The quick-add window therefore renders a
+ * subtree that never mounts them.
+ */
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === QUICK_ADD_ROUTE) {
+    return (
+      <div className="min-h-screen">
+        {children}
+        <ToastHost />
+      </div>
+    );
+  }
+  return <MainShell>{children}</MainShell>;
+}
+
+function MainShell({ children }: { children: ReactNode }) {
   const hydrateError = useAppStoreErrors((s) => s.hydrateError);
   const firstRunDone = useAppStore((s) => s.state.settings.firstRunDone);
   const onboardingReady = useOnboarding((s) => s.ready);
@@ -34,6 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useRollover();
   useBadges();
   useTheme();
+  useDesktopNavigation();
   useEffect(() => initOverlayScrollbars(), []);
   useEffect(() => {
     useDisplayName.setState({ name: loadDisplayName(), ready: true });

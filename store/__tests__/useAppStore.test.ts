@@ -129,7 +129,7 @@ describe("persistence (AC-08)", () => {
         }),
       ]);
       expect(state.categories.filter((c) => c.kind === "income")).toHaveLength(6);
-      expect(state.version).toBe(9);
+      expect(state.version).toBe(10);
     });
   });
 

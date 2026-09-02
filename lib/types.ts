@@ -104,6 +104,11 @@ export interface Settings {
   /** Which payoff projection to surface prominently (FR-20). A display
    *  preference only — this app never moves money. */
   debtStrategy: PayoffStrategyPreference;
+  /** Desktop only (FR-26). When true, closing the main window hides it to the
+   *  tray and leaves the app process running; when false — the default, and
+   *  the behaviour every pre-v10 install had — closing the window quits the
+   *  app. Opt-in because it changes what the close button means. */
+  backgroundMode: boolean;
 }
 
 export interface IncomePlan {
@@ -220,7 +225,7 @@ export interface EarnedBadge {
 }
 
 export interface AppState {
-  version: 9;
+  version: 10;
   categories: Category[];
   budgets: Budget[];
   transactions: Transaction[];
@@ -247,7 +252,7 @@ export interface TransactionInput {
 }
 
 /**
- * A form-draft seed for a NEW entry, produced by the FR-25 quick-add
+ * A form-draft seed for a NEW entry, produced by the FR-26 quick-add
  * suggestions (a detected recurring pattern). Values FREEZE into the
  * TransactionForm's draft at mount (the documented lazy-initializer case —
  * callers restart with a keyed remount); nothing here auto-saves.

@@ -71,6 +71,20 @@ function installBridge(
     },
     window: {
       setTitleBarOverlay: () => {},
+      show: async () => ({ ok: true }),
+    },
+    backgroundMode: {
+      set: async () => ({ enabled: false, trayAvailable: true }),
+      get: async () => ({ enabled: false, trayAvailable: true }),
+    },
+    quickAdd: {
+      open: async () => ({ ok: true }),
+      close: async () => ({ ok: true }),
+      saved: async () => ({ ok: true }),
+    },
+    appEvents: {
+      onStateChanged: () => () => {},
+      onNavigate: () => () => {},
     },
   };
 }

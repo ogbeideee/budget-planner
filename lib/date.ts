@@ -30,6 +30,15 @@ export function currentMonthKey(): Month {
   return monthKey(now.getFullYear(), now.getMonth());
 }
 
+/**
+ * True when `month` is after the current calendar month — the "plan ahead"
+ * state the upcoming-month planning surface keys on. Month keys are ISO
+ * "YYYY-MM", so lexicographic comparison IS calendar comparison.
+ */
+export function isFutureMonth(month: Month): boolean {
+  return isMonth(month) && month > currentMonthKey();
+}
+
 export function monthOffset(month: Month, delta: number): Month {
   const { year, monthIndex } = parseMonth(month);
   const date = new Date(year, monthIndex + delta, 1);
@@ -79,6 +88,16 @@ export function daysInMonth(year: number, monthIndex: number): number {
 
 export function clampDay(year: number, monthIndex: number, day: number): number {
   return Math.min(day, daysInMonth(year, monthIndex));
+}
+
+/** First and last ISO date of `month` — the bounds a month-scoped editor
+ *  (FR-27 planned expenses) uses to keep a record inside its month. */
+export function monthBounds(month: Month): { first: string; last: string } {
+  const { year, monthIndex } = parseMonth(month);
+  return {
+    first: dateToIso(new Date(year, monthIndex, 1)),
+    last: dateToIso(new Date(year, monthIndex, daysInMonth(year, monthIndex))),
+  };
 }
 
 export function nextMonthDate(iso: string): string {

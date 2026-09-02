@@ -32,6 +32,7 @@ app/
   history/page.tsx           # /history  (chronological ledger)
   reports/page.tsx           # /reports
   settings/page.tsx          # /settings
+  quick-add/page.tsx         # /quick-add  (tray quick-add window, FR-26 — chromeless)
   upcoming/page.tsx          # /upcoming  (future expenses + funding urgency)
   globals.css                # Tailwind entry + @theme design tokens
   error.tsx                  # fatal error boundary -> RecoveryPanel
@@ -41,6 +42,11 @@ components/
           ConfirmDialog.tsx, Disclosure.tsx, EmptyState.tsx, Toast.tsx, ToastHost.tsx,
           MonthPicker.tsx, Slider.tsx, ProgressBar.tsx, SectionHeading.tsx,
           PageSkeleton.tsx, AnimatedNumber.tsx, IconPicker.tsx, IconValue.tsx, icons.tsx
+  quickadd/ QuickAddPanel.tsx — the TRAY quick-add window (FR-26). Distinct from
+            planner/QuickAddExpense.tsx, which is the Planner's inline card: that
+            one is month-scoped, stays open after saving and carries an
+            AnomalyNote, none of which suit a transient tray window. Both call the
+            same `addTransaction`, which is the reuse that matters.
   onboarding/ OnboardingFlow.tsx, SetupFrame.tsx, SetupIncomeStep.tsx,
               SetupBudgetsStep.tsx  — first-run only; AppShell renders this
               INSTEAD of the shell while `settings.firstRunDone` is false
@@ -65,7 +71,8 @@ components/
   settings/ SettingsView.tsx, SettingsNav.tsx, ProfilePanel.tsx, AppearancePanel.tsx,
             BudgetPreferencesPanel.tsx, CategoryManager.tsx, CategoryModal.tsx,
             IncomeSourcesPanel.tsx, IncomeSourceModal.tsx, DataBackupsPanel.tsx,
-            AboutPanel.tsx, BackupsManager.tsx, categoryColors.ts, iconLibrary.ts
+            AboutPanel.tsx, BackupsManager.tsx, DesktopPanel.tsx (FR-26 background
+            mode — desktop build only), categoryColors.ts, iconLibrary.ts
   theme/   ThemeToggle.tsx
   recovery/ RecoveryPanel.tsx
   charts/  BarChart.tsx            # custom animated CSS chart (Planner, FR-15)
@@ -89,6 +96,11 @@ lib/                          # pure TS, zero React imports — unit-tested (17 
                               # the single source of truth for "Needs Funding": every
                               # funding surface (Planner panel, health checklist, header
                               # status, insights) derives from it (pure)
+  monthPlan.ts                # monthPlan(...) — upcoming-month planning summary (FR-27):
+                              # a pure COMPOSITION of expectedIncomeForMonth,
+                              # effectiveLimit and fundingNeeds — no second calculation
+                              # system; base limits ONLY (never reads rollover records);
+                              # Planner's future-month card is its only reader
   allocation.ts               # clampAllocation(), totalAllocated() (pure, FR-11)
   insights.ts                 # insightsFor(...) -> Insight[] (pure, FR-13)
   todo.ts                     # todoFor(state, month) -> TodoItem[] (pure, FR-17)
@@ -234,6 +246,8 @@ lib/                          # pure TS, zero React imports — unit-tested (17 
                               # applyAccent/applyAnimations + extended bootstrap that sets
                               # data-accent / data-animations pre-paint
   scrollLock.ts               # lockScroll()/unlockScroll() — shared by Modal/Drawer
+  quickAddRoute.ts            # QUICK_ADD_ROUTE — the one definition of "/quick-add",
+                              # shared by main.cjs, AppShell and desktopBootstrap (FR-26)
 store/
   useAppStore.ts              # Zustand store (state + actions), persist middleware;
                               # also exports useAppStoreErrors (hydrateError)
@@ -247,6 +261,9 @@ hooks/
                               # applies data-accent / data-animations attributes)
   usePlannerStatus.ts         # planner derived flags; useAnimatedNumber.ts (rAF counter)
   useChartColors.ts           # theme-aware chart palette (MutationObserver on data-theme)
+  useDesktopNavigation.ts     # FR-26: routes on a main-process `desktop:navigate`
+                              # (tray Open, notification click); isNavigableRoute()
+                              # keeps an IPC string from becoming an off-app navigation
 public/                       # favicon.ico only (starter SVGs removed)
 tests: components/*.test.tsx (colocated) · lib/__tests__/ (17 files) · store/__tests__/
 ```
@@ -395,6 +412,14 @@ interface ToastStore {                      // store/useToastStore.ts — NOT pe
     never touch the network. When enabled: background check at startup,
     `Help → Check for updates…` on demand, auto-download, install-on-quit, and
     system notifications. Menu wiring lives in `electron/menu.cjs`.
+- **Tray, quick-add & background mode** (FR-26, desktop only) —
+  `electron/tray.cjs` (tray icon + `buildTrayMenuTemplate`, reusing the
+  installer/window icon), `electron/quickAdd.cjs` (the small frameless
+  `/quick-add` window, one instance, closes on blur) and
+  `electron/backgroundMode.cjs` (the pure close-behaviour decision). The tray
+  is skipped under `--smoke`, and a tray that fails to register forces
+  close-to-quit rather than hiding the window somewhere unreachable. Full
+  rationale, the email seam and the manual-verification list: §3.7.
 - On rehydrate, `onRehydrateStorage` sets `useAppStoreErrors.hydrateError` and disables
   writes (`setWritesEnabled(false)`) when the payload is corrupt, so nothing can overwrite
   the unreadable state until the user recovers. `app/error.tsx` detects the corrupt state
@@ -809,6 +834,132 @@ month; `RecurringQuickFill` hands a prefill (the form's `initialDraft`, frozen
 at mount per §3.3a) into the ordinary form rather than saving;
 `AnomalyNote` shows one dismissible sentence beside the amount. No dialog, no
 validation change, no auto-created transaction anywhere.
+
+### 3.7 System tray, quick-add and background mode (FR-26)
+
+Three things landed together because they are one decision: the app gained a
+second entry point (the tray), a second window (quick-add), and — for the first
+time — the ability to outlive its own window.
+
+**The close button is now a setting, and it defaults to what it always did.**
+`settings.backgroundMode` (schema v10, backfilled `false`) decides whether
+closing the main window hides it to the tray or quits the app. Off is the
+default and off is what every pre-v10 install migrates to, because closing the
+window has quit this app for its whole life and a silent change would leave
+users with a process they did not know was running. The v9 → v10 migration opts
+NOBODY in, following the same rule as rollover, debt and badges.
+
+The decision itself lives in `electron/backgroundMode.cjs`, which imports
+nothing from `electron`. That is deliberate: `resolveCloseBehavior` and
+`shouldKeepRunning` are the branchy part of this feature, and keeping them pure
+is what makes them testable under vitest with no Electron main process
+(`backgroundMode.test.ts`). `main.cjs` owns the window handles and the actual
+`preventDefault()`.
+
+Three inputs, and two of them can force a quit regardless of the setting:
+
+- **`quitting`** — set by `before-quit`, so the tray's Quit, the app menu and an
+  OS shutdown always win. Without it the tray would be a roach motel: every exit
+  route would re-hide the window and the app could never be closed.
+- **`trayAvailable`** — registering a tray can genuinely fail (a Linux session
+  with no StatusNotifier host, a missing icon asset). Hiding into a tray that is
+  not there would strand the user with a running process and no UI, so a null
+  tray forces close-to-quit and the Settings panel says so out loud.
+
+**Main is told the setting; it does not read it.** `settings.backgroundMode`
+lives in AppState, and main deliberately does not parse the stored state blob to
+find it — that would put the schema in two places. The renderer reports it at
+mount and on every change (`desktop:background-mode:set`, wired in
+`desktopBootstrap.ts`). The value starts `false` in main and stays `false` if
+the renderer never reports, so the fail-safe direction is always quitting.
+
+**Quick-add is the same app at a different route, not a second app.**
+`/quick-add` loads the ordinary bundle in a small frameless window, so
+`QuickAddPanel` imports the ordinary `useAppStore` and calls the ordinary
+`addTransaction` with the ordinary `TransactionInput`. There is no second write
+path and no second categorization rule — a quick-added row is indistinguishable
+from a hand-entered one downstream (Planner, Reports, recurring detection,
+anomaly averages, learned rules), because it is the same row. A native mini
+dialog writing its own rows would have drifted from the main form within a
+release.
+
+`AppShell` branches on the route BEFORE mounting `MainShell`. That is a
+correctness requirement, not tidiness: quick-add is its own renderer process
+against the same SQLite file, and `useRecurring` / `useRollover` / `useBadges`
+all WRITE at mount. The rollover transition detects a new month by the ABSENCE
+of records for it (§3.2a), so a second window running it could race the first
+and append duplicate records. `initDesktopBootstrap` skips the quick-add route
+for the same reason.
+
+**Cross-window sync is an invalidation ping, not a payload.** Each BrowserWindow
+has its own zustand store; quick-add writes through the shared storage seam, but
+the main window's in-memory copy would not know. On save, quick-add calls
+`desktop:quick-add:saved`, main broadcasts a bare `desktop:state:changed` to
+every OTHER window, and those rehydrate from storage. No state crosses that
+channel, so there is still exactly one path data travels (store → storage seam →
+SQLite) and no chance of two windows disagreeing about which copy is
+authoritative. Rehydration is synchronous here because the seam is (§3.3a).
+
+**Single-instance lock.** Added with this feature and load-bearing for it: with
+the app in the tray and no window on screen, re-launching from the Start menu
+looks like "open it again", and without the lock that would be a second process
+against the same database. The running instance raises its window instead.
+
+**Visible state (req 13).** Three places say whether the app is still running:
+the tray tooltip, a disabled "Background mode: on/off" line in the tray menu,
+and a "Stays in tray" chip in the title bar next to the close button. A user
+should never have to guess whether closing quit the app or hid it.
+
+#### The email seam — what is NOT here
+
+This feature was asked to keep email alert checking running on its 30-minute
+interval while the window is closed. **That interval does not exist yet.** FR-24
+landed the parser, the credential vault and the draft pipeline; the IMAP
+transport, the connect UI and the scheduler are all still listed as remaining
+work in `docs/15_EMAIL_PARSING.md`, and nothing in this app reads a mailbox.
+
+So what landed is the seam, not the behaviour:
+
+- `tray.setAlertChecker(fn)` makes the "Check for new alerts now" menu item
+  appear. Nothing calls it today, so the item is absent rather than present and
+  dead — a menu entry that does nothing is worse than no entry.
+- The Settings copy describes what the toggle actually does today (keeps the app
+  running so the tray stays available) and says nothing about email. Promising
+  background email checking in a label while nothing checks mail would be a lie
+  the UI tells on every visit. A test asserts the panel mentions no email.
+
+**Decisions recorded now, binding on whoever builds the transport** (FR-26
+req 12, written down before the code rather than after):
+
+- The connection must NOT be opened and torn down per tick. One IMAP connection
+  is established when checking starts and held idle between ticks; a 30-minute
+  reconnect cycle is exactly the pattern that earns provider throttling and
+  repeated auth challenges. If a provider drops idle connections, reconnect on
+  failure with backoff — never on a schedule.
+- Background running changes NOTHING about the security model. `reveal()` stays
+  main-process-only, its return value never crosses IPC, is never logged and is
+  never written anywhere; there is still no "read secret" channel. A checker
+  running with no window open has strictly less renderer surface than one with a
+  window, not more.
+- A background check still populates the review queue and still confirms
+  nothing. The review-first rule (nothing reaches the ledger without the user
+  approving it) is independent of when the check runs.
+- New drafts found while the window is closed must surface through the existing
+  `desktop:notify` path (`Notification.isSupported()`-guarded), not a new
+  mechanism. The `deepLink` field added here carries the click target; the
+  renderer validates it with `isNavigableRoute` so an IPC-supplied string can
+  never become an off-app navigation.
+
+#### Manual verification
+
+Electron main-process behaviour that vitest cannot reach — the tray icon
+appearing, a real window `close` being intercepted, an OS toast being clicked —
+is covered by `resolveCloseBehavior` / `shouldKeepRunning` /
+`buildTrayMenuTemplate` unit tests plus the `--smoke` run, and then by hand:
+close with the toggle off (app quits), close with it on (window hides, tray
+remains, Open restores), tray Quit from the hidden state (process exits),
+quick-add with the main window open (row appears without a refresh) and with it
+closed.
 
 ## 4. Data flow
 

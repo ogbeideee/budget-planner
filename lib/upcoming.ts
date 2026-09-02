@@ -169,3 +169,60 @@ export function filterUpcoming(
   }
   return upcoming.filter((expense) => expense.dueDate.slice(0, 7) > month);
 }
+
+// ---------------------------------------------------------------------------
+// FR-27 — month-scoped planning sets. A FutureExpense's month association IS
+// its dueDate's "YYYY-MM" prefix (month keys sort as calendar months), so
+// these helpers are the ONE definition of "belongs to this month's plan";
+// the Planner's month plan and its planned-expense list both read them.
+// ---------------------------------------------------------------------------
+
+/** Every FutureExpense due in `month`, paid ones included — the month's
+ *  full planning record. */
+export function expensesInMonth(
+  expenses: readonly FutureExpense[],
+  month: string,
+): FutureExpense[] {
+  return expenses.filter((expense) => expense.dueDate.startsWith(month));
+}
+
+/** The month's planning set: unpaid FutureExpenses due in `month`. Paid
+ *  expenses have already happened — the plan tracks what is still ahead
+ *  (the same basis `monthPlan` totals and `fundingNeeds` read). */
+export function plannedExpensesForMonth(
+  expenses: readonly FutureExpense[],
+  month: string,
+): FutureExpense[] {
+  return expenses.filter(
+    (expense) =>
+      expense.status !== "paid" && expense.dueDate.startsWith(month),
+  );
+}
+
+export interface DueDateGroup {
+  /** The shared due date (ISO). */
+  key: string;
+  items: FutureExpense[];
+}
+
+/** Group by exact due date, ascending — the month plan's day-by-day view.
+ *  Unlike `groupFutureExpenses` (relative to TODAY, meaningless for a month
+ *  that has not started), this is purely calendar-ordered presentation. */
+export function groupExpensesByDueDate(
+  expenses: readonly FutureExpense[],
+): DueDateGroup[] {
+  const buckets = new Map<string, FutureExpense[]>();
+  for (const expense of [...expenses].sort((a, b) =>
+    a.dueDate.localeCompare(b.dueDate),
+  )) {
+    const list = buckets.get(expense.dueDate);
+    if (list) {
+      list.push(expense);
+    } else {
+      buckets.set(expense.dueDate, [expense]);
+    }
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, items]) => ({ key, items }));
+}

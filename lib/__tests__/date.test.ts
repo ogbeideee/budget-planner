@@ -10,6 +10,7 @@ import {
   formatDateTime,
   formatMonthLabel,
   formatTime,
+  isFutureMonth,
   isIsoDate,
   isMonth,
   isoToDate,
@@ -164,5 +165,20 @@ describe("defaultDateForMonth", () => {
       expect(monthKeyFromIso(date)).toBe(month);
       expect(isIsoDate(date)).toBe(true);
     }
+  });
+});
+
+describe("isFutureMonth (FR-27)", () => {
+  it("is true only for months after the current one", () => {
+    const current = currentMonthKey();
+    expect(isFutureMonth(monthOffset(current, 1))).toBe(true);
+    expect(isFutureMonth(monthOffset(current, 12))).toBe(true);
+    expect(isFutureMonth(current)).toBe(false);
+    expect(isFutureMonth(monthOffset(current, -1))).toBe(false);
+  });
+
+  it("rejects invalid month keys", () => {
+    expect(isFutureMonth("2099-13")).toBe(false);
+    expect(isFutureMonth("not-a-month")).toBe(false);
   });
 });

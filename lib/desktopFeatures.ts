@@ -5,7 +5,11 @@ import {
   getDesktopBridge,
   isDesktop,
 } from "./desktop";
-import type { DesktopBackupFile, DesktopPaths } from "./desktop";
+import type {
+  BackgroundModeStatus,
+  DesktopBackupFile,
+  DesktopPaths,
+} from "./desktop";
 
 export type CreateBackupResult =
   | { ok: true; file: DesktopBackupFile }
@@ -122,10 +126,90 @@ export function sendDesktopNotification(
   title: string,
   body?: string,
   silent?: boolean,
+  deepLink?: string,
 ): void {
   const bridge = getDesktopBridge();
   if (!bridge) return;
-  void bridge.notify({ title, body, silent }).catch(() => {});
+  void bridge.notify({ title, body, silent, deepLink }).catch(() => {});
+}
+
+// ---- Tray, quick-add and background mode (FR-26) ----
+//
+// Thin wrappers, same contract as everything above: no-op (or a benign
+// default) off the desktop, so no call site needs an `isDesktop()` guard.
+
+/**
+ * Mirrors `settings.backgroundMode` into the main process, which is the only
+ * place that can act on a window `close`.
+ *
+ * Resolves with what main actually applied. That return value matters: it also
+ * reports `trayAvailable`, and when the tray failed to register the app keeps
+ * quitting on close regardless of the setting — the UI needs to be able to say
+ * so instead of promising a background mode that will not happen.
+ */
+export function reportBackgroundMode(
+  enabled: boolean,
+): Promise<BackgroundModeStatus> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    return Promise.resolve({ enabled: false, trayAvailable: false });
+  }
+  return bridge.backgroundMode
+    .set(enabled)
+    .catch(() => ({ enabled, trayAvailable: false }));
+}
+
+export function readBackgroundMode(): Promise<BackgroundModeStatus> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    return Promise.resolve({ enabled: false, trayAvailable: false });
+  }
+  return bridge.backgroundMode
+    .get()
+    .catch(() => ({ enabled: false, trayAvailable: false }));
+}
+
+export function openQuickAddWindow(): void {
+  const bridge = getDesktopBridge();
+  if (!bridge) return;
+  void bridge.quickAdd.open().catch(() => {});
+}
+
+export function closeQuickAddWindow(): void {
+  const bridge = getDesktopBridge();
+  if (!bridge) return;
+  void bridge.quickAdd.close().catch(() => {});
+}
+
+/** Tell the other windows a quick-add save landed, so they rehydrate (req 5). */
+export function announceQuickAddSaved(): Promise<void> {
+  const bridge = getDesktopBridge();
+  if (!bridge) return Promise.resolve();
+  return bridge.quickAdd.saved().then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/** Restore + focus the main window, optionally on a specific route. */
+export function showMainWindow(deepLink?: string): void {
+  const bridge = getDesktopBridge();
+  if (!bridge) return;
+  void bridge.window.show(deepLink).catch(() => {});
+}
+
+export function onDesktopStateChanged(callback: () => void): () => void {
+  const bridge = getDesktopBridge();
+  if (!bridge) return () => {};
+  return bridge.appEvents.onStateChanged(callback);
+}
+
+export function onDesktopNavigate(
+  callback: (route: string) => void,
+): () => void {
+  const bridge = getDesktopBridge();
+  if (!bridge) return () => {};
+  return bridge.appEvents.onNavigate(callback);
 }
 
 // ---- Automatic file backups ----

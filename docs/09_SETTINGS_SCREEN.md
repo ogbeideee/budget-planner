@@ -52,7 +52,19 @@ Categories
 
 ↓
 
+Recurring
+
+↓
+
 Income Sources
+
+↓
+
+Learned rules
+
+↓
+
+Desktop          (desktop build only)
 
 ↓
 
@@ -259,6 +271,54 @@ Actions
 Hover
 
 Soft lift
+
+--------------------------------------------------
+DESKTOP  (desktop build only)
+--------------------------------------------------
+
+Hidden entirely in the browser build. A web page has no system tray and no
+process to keep alive, so every control here would be inert.
+
+One card: "Closing the window".
+
+Toggle — "Keep running in the background"
+
+  OFF (default)
+    Closing the window quits the app, exactly as it always has.
+    Helper text says so in as many words.
+
+  ON
+    Closing the window hides it to the system tray; the app keeps running.
+    Helper text explains the tray is how you get back: add an expense,
+    reopen the window, or Quit.
+
+The default is OFF and it is not a stylistic choice. Closing the window has
+quit this app for its entire life, so leaving a process running for someone
+who never opted in would be a change made on their behalf. Existing installs
+migrate to OFF (schema v9 → v10); nobody is opted in.
+
+Below the toggle, always: "The app never starts itself. This only changes what
+the close button does while you are already running it."
+
+Warning state — the setting is ON but the OS gave us no tray icon:
+
+  "This system didn't provide a tray icon, so closing the window will still
+  quit the app. Nothing is lost — the setting takes effect if a tray becomes
+  available."
+
+  Shown because without a tray there is nowhere to minimise into, so
+  close-to-quit stays in force whatever the toggle says. The user must not
+  discover that by losing the app.
+
+Wording note: this card says nothing about email alerts. Background email
+checking is not possible yet — FR-24's IMAP transport has not landed, so
+nothing reads a mailbox whether the app is running or not. The copy gets
+revisited when the transport ships. See docs/15_EMAIL_PARSING.md and
+ARCHITECTURE §3.7.
+
+Where background mode is visible elsewhere: the tray tooltip, a disabled
+"Background mode: on/off" line in the tray menu, and a "Stays in tray" chip in
+the title bar beside the close button.
 
 --------------------------------------------------
 CATEGORY EDIT

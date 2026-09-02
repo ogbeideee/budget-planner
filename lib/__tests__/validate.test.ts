@@ -17,7 +17,7 @@ describe("validateAppState", () => {
     expect(result.categories).toHaveLength(11);
     expect(result.incomePlans).toEqual([]);
     expect(result.learnedRules).toEqual([]);
-    expect(result.version).toBe(9);
+    expect(result.version).toBe(10);
     // A new install starts with onboarding pending; the flag is only set once
     // guided setup completes (see lib/onboarding.ts).
     expect(result.settings.firstRunDone).toBe(false);
@@ -25,7 +25,7 @@ describe("validateAppState", () => {
 
   it("rejects an unsupported version (AC-10)", () => {
     const state = clone(validState());
-    (state as { version: number }).version = 10;
+    (state as { version: number }).version = 11;
     expect(() => validateAppState(state)).toThrow(ValidationError);
   });
 
@@ -34,7 +34,7 @@ describe("validateAppState", () => {
     (state as { version: number }).version = 3;
     (state as unknown as Record<string, unknown>).learnedRules = undefined;
     const result = validateAppState(state);
-    expect(result.version).toBe(9);
+    expect(result.version).toBe(10);
     expect(result.learnedRules).toEqual([]);
   });
 
@@ -53,7 +53,7 @@ describe("validateAppState", () => {
 
     const result = validateAppState(state);
 
-    expect(result.version).toBe(9);
+    expect(result.version).toBe(10);
     expect(result.categories.find((c) => c.id === "c-edi")?.icon).toBe("📶");
     expect(result.categories.find((c) => c.id === "c-ess")?.icon).toBe("🧺");
   });
@@ -95,7 +95,7 @@ describe("validateAppState", () => {
 
     const result = validateAppState(state);
 
-    expect(result.version).toBe(9);
+    expect(result.version).toBe(10);
     expect(result.categories.find((c) => c.id === "c-loan")?.icon).toBe("💸");
     expect(result.categories.find((c) => c.id === "c-misc")?.icon).toBe("📦");
     expect(result.categories.find((c) => c.id === "c-net")?.icon).toBe("🌐");
@@ -128,7 +128,7 @@ describe("validateAppState", () => {
   it("migrates a version 2 state to version 4", () => {
     const state = clone(validState());
     (state as { version: number }).version = 2;
-    expect(validateAppState(state).version).toBe(9);
+    expect(validateAppState(state).version).toBe(10);
   });
 
   it("migrates a version 1 state: backfills income categories and converts monthly income to plans", () => {
@@ -151,7 +151,7 @@ describe("validateAppState", () => {
     ] as unknown as Transaction[];
     (state as unknown as Record<string, unknown>).incomePlans = undefined;
     const result = validateAppState(state);
-    expect(result.version).toBe(9);
+    expect(result.version).toBe(10);
     expect(result.incomePlans).toEqual([
       expect.objectContaining({
         month: "2026-08",
@@ -544,6 +544,36 @@ describe("validateAppState", () => {
     expect(result).not.toBe(state);
     result.categories[0].name = "Changed";
     expect(state.categories[0].name).toBe("Rent");
+  });
+
+  it("migrates a v9 state to v10 with background mode OFF (FR-26)", () => {
+    // The whole point of the v9 -> v10 migration: an existing user who upgrades
+    // must keep getting a quit when they close the window. Backfilling `true`
+    // would leave a process running behind the back of someone who never asked
+    // for one.
+    const state = clone(validState());
+    (state as { version: number }).version = 9;
+    delete (state.settings as unknown as Record<string, unknown>).backgroundMode;
+    const migrated = validateAppState(state);
+    expect(migrated.version).toBe(10);
+    expect(migrated.settings.backgroundMode).toBe(false);
+  });
+
+  it("keeps an explicit background-mode opt-in across validation", () => {
+    const state = clone(validState());
+    state.settings.backgroundMode = true;
+    expect(validateAppState(state).settings.backgroundMode).toBe(true);
+  });
+
+  it("treats any non-true settings.backgroundMode as off", () => {
+    // Fail-safe direction: an unreadable value can only ever cost the user the
+    // new convenience, never leave the app running invisibly.
+    for (const value of [undefined, null, 0, 1, "true", {}]) {
+      const state = clone(validState());
+      (state.settings as unknown as Record<string, unknown>).backgroundMode =
+        value;
+      expect(validateAppState(state).settings.backgroundMode).toBe(false);
+    }
   });
 
   it("defaults missing settings.theme to system (additive migration)", () => {
