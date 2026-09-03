@@ -19,6 +19,8 @@ import type {
   RecurrenceFrequency,
   RecurrenceRule,
   RolloverRecord,
+  SavingsPlan,
+  SavingsPlanStatus,
   Theme,
   Transaction,
 } from "./types";
@@ -200,6 +202,10 @@ function validateTransaction(value: unknown, categories: Category[]): Transactio
     deferred: value.deferred === undefined ? undefined : Boolean(value.deferred),
     monthlyIncome,
     importSource: validateImportSource(value.importSource),
+    savingsPlanId:
+      value.savingsPlanId === undefined || value.savingsPlanId === null
+        ? undefined
+        : requireNonEmptyString(value.savingsPlanId, "transaction.savingsPlanId"),
   };
 }
 
@@ -460,6 +466,55 @@ function validateEarnedBadge(value: unknown): EarnedBadge {
   };
 }
 
+/** Validates one savings plan (FR-28). Plans are standalone — no category
+ *  link to check — so only their own shape is enforced here. */
+function validateSavingsPlan(value: unknown): SavingsPlan {
+  if (!isRecord(value)) throw new ValidationError("Invalid savings plan");
+  const status = requireString(value.status, "savingsPlan.status");
+  if (
+    status !== "active" &&
+    status !== "completed" &&
+    status !== "ongoing" &&
+    status !== "archived"
+  ) {
+    throw new ValidationError("Invalid savingsPlan.status");
+  }
+  const targetDate =
+    value.targetDate === undefined || value.targetDate === null
+      ? undefined
+      : (() => {
+          const date = requireString(value.targetDate, "savingsPlan.targetDate");
+          if (!isIsoDate(date)) {
+            throw new ValidationError("Invalid savingsPlan.targetDate");
+          }
+          return date;
+        })();
+  const completedAt =
+    value.completedAt === undefined || value.completedAt === null
+      ? undefined
+      : requireString(value.completedAt, "savingsPlan.completedAt");
+  const archivedAt =
+    value.archivedAt === undefined || value.archivedAt === null
+      ? undefined
+      : requireString(value.archivedAt, "savingsPlan.archivedAt");
+  return {
+    id: requireNonEmptyString(value.id, "savingsPlan.id"),
+    name: requireNonEmptyString(value.name, "savingsPlan.name"),
+    targetAmount: requireAmount(value.targetAmount, "savingsPlan.targetAmount"),
+    targetDate,
+    // A plan opened with money already held starts part-way there; absent
+    // means 0. Never negative — a starting balance is money held.
+    startingBalance:
+      value.startingBalance === undefined || value.startingBalance === null
+        ? 0
+        : requireAmount(value.startingBalance, "savingsPlan.startingBalance"),
+    status: status as SavingsPlanStatus,
+    createdAt: requireString(value.createdAt, "savingsPlan.createdAt"),
+    completedAt,
+    archivedAt,
+  };
+}
+
 export function validateAppState(value: unknown): AppState {
   if (!isRecord(value)) throw new ValidationError("Invalid state");
   if (
@@ -472,25 +527,43 @@ export function validateAppState(value: unknown): AppState {
     value.version !== 7 &&
     value.version !== 8 &&
     value.version !== 9 &&
-    value.version !== 10
+    value.version !== 10 &&
+    value.version !== 11
   ) {
     throw new ValidationError("Unsupported state version");
   }
-  const migrated = migrateV9(
-    migrateV8(
-      migrateV7(
-        migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(value)))))),
+  const migrated = migrateV10(
+    migrateV9(
+      migrateV8(
+        migrateV7(
+          migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(value)))))),
+        ),
       ),
     ),
   );
   const categories = requireArray(migrated.categories, "categories").map(
     (entry) => validateCategory(entry),
   );
+  // Plans carry no reference to transactions, so they are validated first and
+  // their ids are used to strip orphan contribution tags below.
+  const savingsPlans =
+    migrated.savingsPlans === undefined || migrated.savingsPlans === null
+      ? []
+      : requireArray(migrated.savingsPlans, "savingsPlans").map((entry) =>
+          validateSavingsPlan(entry),
+        );
+  const knownPlan = new Set(savingsPlans.map((plan) => plan.id));
+  const transactions = requireArray(migrated.transactions, "transactions")
+    .map((entry) => validateTransaction(entry, categories))
+    .map((transaction) =>
+      transaction.savingsPlanId && !knownPlan.has(transaction.savingsPlanId)
+        ? // A deleted plan must not leave its tag behind: the row would stay
+          // invisible to reports while still tracking a goal that is gone.
+          { ...transaction, savingsPlanId: undefined }
+        : transaction,
+    );
   const budgets = requireArray(migrated.budgets, "budgets").map((entry) =>
     validateBudget(entry, categories),
-  );
-  const transactions = requireArray(migrated.transactions, "transactions").map(
-    (entry) => validateTransaction(entry, categories),
   );
   const futureExpenses =
     migrated.futureExpenses === undefined || migrated.futureExpenses === null
@@ -584,7 +657,7 @@ export function validateAppState(value: unknown): AppState {
   // behaviour rather than silently acquiring a background process.
   const backgroundMode = settings.backgroundMode === true;
   return {
-    version: 10,
+    version: 11,
     categories,
     budgets,
     transactions,
@@ -595,6 +668,7 @@ export function validateAppState(value: unknown): AppState {
     rollovers,
     debts,
     badges,
+    savingsPlans,
     settings: {
       currency,
       recurringEnabled: settings.recurringEnabled,
@@ -925,6 +999,20 @@ function migrateV9(value: Record<string, unknown>): Record<string, unknown> {
     version: 10,
     settings: { ...settings, backgroundMode: false },
   };
+}
+
+/**
+ * v10 -> v11: savings plans (FR-28). Backfills the empty `savingsPlans` array
+ * only.
+ *
+ * Creates NO plan and tags NO transaction: opening a goal is an explicit user
+ * action, and inventing one would put a fake target in front of every
+ * existing user. Tags on transactions are carried through and orphan-checked
+ * in `validateAppState`.
+ */
+function migrateV10(value: Record<string, unknown>): Record<string, unknown> {
+  if (value.version !== 10) return value;
+  return { ...value, version: 11, savingsPlans: [] };
 }
 
 function migrateV8(value: Record<string, unknown>): Record<string, unknown> {

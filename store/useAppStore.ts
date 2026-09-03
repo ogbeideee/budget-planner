@@ -43,6 +43,9 @@ import type {
   RecurrenceRule,
   RecurrenceRuleInput,
   RolloverRecord,
+  SavingsPlan,
+  SavingsPlanInput,
+  SavingsPlanStatus,
   Settings,
   Transaction,
   TransactionInput,
@@ -111,6 +114,24 @@ export interface AppStore {
    *  and ignores any record for a (category, month) already settled, so a
    *  month transition can never be applied twice. */
   applyRollovers(records: RolloverRecord[]): void;
+  /** Creates a savings goal (FR-28). Standalone — no category, budget or debt
+   *  record is touched. An empty/blank name is rejected silently. */
+  addSavingsPlan(input: SavingsPlanInput): void;
+  /** Edits the user-facing fields of a plan. Contributions live in the
+   *  ledger, never here — progress is always derived. */
+  updateSavingsPlan(id: ID, patch: Partial<SavingsPlanInput>): void;
+  /** Moves a plan between active/completed/ongoing/archived. Stamps
+   *  `completedAt` the first time the plan is closed out, marked ongoing, or
+   *  kept open past its target (`stampCompletedAt` — the completion prompt's
+   *  "keep contributing" answer). */
+  setSavingsPlanStatus(
+    id: ID,
+    status: SavingsPlanStatus,
+    options?: { stampCompletedAt?: boolean },
+  ): void;
+  /** Deletes a plan with no contributions. A plan that has ledger rows tagged
+   *  to it is refused (`in-use-transactions`) — archive it instead. */
+  deleteSavingsPlan(id: ID): { ok: boolean; reason?: CategoryDeleteReason };
   deleteCategory(id: ID): { ok: boolean; reason?: CategoryDeleteReason };
   addRecurrenceRule(input: RecurrenceRuleInput): void;
   updateRecurrenceRule(id: ID, patch: Partial<RecurrenceRule>): void;
@@ -142,6 +163,7 @@ export function createAppStore() {
                   date: input.date,
                   note: input.note,
                   deferred: input.deferred === true ? true : undefined,
+                  savingsPlanId: input.savingsPlanId,
                   createdAt: new Date().toISOString(),
                 },
                 ...s.state.transactions,
@@ -165,6 +187,7 @@ export function createAppStore() {
                   // Statement-import provenance must survive the write — it
                   // is the re-import detection signal (Prompt 5B).
                   importSource: input.importSource,
+                  savingsPlanId: input.savingsPlanId,
                   createdAt: new Date().toISOString(),
                 })),
                 ...s.state.transactions,
@@ -715,6 +738,127 @@ export function createAppStore() {
               state: { ...s.state, rollovers: [...s.state.rollovers, ...fresh] },
             };
           }),
+
+        addSavingsPlan: (input) =>
+          set((s) => {
+            const name = input.name.trim().slice(0, MAX_TITLE_LENGTH);
+            if (name === "") return s;
+            const clean = (value: number) =>
+              Number.isFinite(value) && Number.isInteger(value) && value >= 0
+                ? value
+                : 0;
+            const plan: SavingsPlan = {
+              id: createId(),
+              name,
+              targetAmount: clean(input.targetAmount),
+              // Absent means open-ended — same rule as the validator.
+              targetDate:
+                input.targetDate && isIsoDate(input.targetDate)
+                  ? input.targetDate
+                  : undefined,
+              startingBalance: clean(input.startingBalance ?? 0),
+              status: "active",
+              createdAt: new Date().toISOString(),
+            };
+            return {
+              state: { ...s.state, savingsPlans: [...s.state.savingsPlans, plan] },
+            };
+          }),
+
+        updateSavingsPlan: (id, patch) =>
+          set((s) => ({
+            state: {
+              ...s.state,
+              savingsPlans: s.state.savingsPlans.map((plan) => {
+                if (plan.id !== id) return plan;
+                const name =
+                  patch.name !== undefined
+                    ? patch.name.trim().slice(0, MAX_TITLE_LENGTH)
+                    : plan.name;
+                if (name === "") return plan;
+                return {
+                  ...plan,
+                  name,
+                  targetAmount:
+                    patch.targetAmount !== undefined &&
+                    Number.isFinite(patch.targetAmount) &&
+                    Number.isInteger(patch.targetAmount) &&
+                    patch.targetAmount >= 0
+                      ? patch.targetAmount
+                      : plan.targetAmount,
+                  targetDate:
+                    patch.targetDate === undefined
+                      ? plan.targetDate
+                      : isIsoDate(patch.targetDate)
+                        ? patch.targetDate
+                        : undefined,
+                  startingBalance:
+                    patch.startingBalance !== undefined &&
+                    Number.isFinite(patch.startingBalance) &&
+                    Number.isInteger(patch.startingBalance) &&
+                    patch.startingBalance >= 0
+                      ? patch.startingBalance
+                      : plan.startingBalance,
+                };
+              }),
+            },
+          })),
+
+        setSavingsPlanStatus: (id, status, options) =>
+          set((s) => ({
+            state: {
+              ...s.state,
+              savingsPlans: s.state.savingsPlans.map((plan) => {
+                if (plan.id !== id) return plan;
+                // Same status is usually a no-op — except when the completion
+                // prompt asks to stamp a plan that is staying open-ended.
+                if (plan.status === status && options?.stampCompletedAt !== true) {
+                  return plan;
+                }
+                const now = new Date().toISOString();
+                return {
+                  ...plan,
+                  status,
+                  // Stamped once — when the plan is closed out, switched to
+                  // ongoing, or kept open past its target at the completion
+                  // prompt — and never cleared by a later status change, so
+                  // the reached-the-target fact survives.
+                  completedAt:
+                    plan.completedAt ??
+                    (status === "completed" ||
+                    status === "ongoing" ||
+                    options?.stampCompletedAt === true
+                      ? now
+                      : undefined),
+                  archivedAt:
+                    status === "archived" ? (plan.archivedAt ?? now) : plan.archivedAt,
+                };
+              }),
+            },
+          })),
+
+        deleteSavingsPlan: (id) => {
+          const { state } = get();
+          if (!state.savingsPlans.some((plan) => plan.id === id)) {
+            return { ok: false, reason: "in-use-transactions" };
+          }
+          const tagged = state.transactions.some(
+            (transaction) => transaction.savingsPlanId === id,
+          );
+          if (tagged) {
+            // Contributions are ledger rows; deleting the plan would either
+            // orphan the tag or silently rewrite money history. Archive
+            // instead — that hides the plan and keeps every row readable.
+            return { ok: false, reason: "in-use-transactions" };
+          }
+          set((s) => ({
+            state: {
+              ...s.state,
+              savingsPlans: s.state.savingsPlans.filter((plan) => plan.id !== id),
+            },
+          }));
+          return { ok: true };
+        },
 
         deleteCategory: (id) => {
           const { state } = get();

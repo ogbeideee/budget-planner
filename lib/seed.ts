@@ -23,7 +23,7 @@ export function createInitialState(): AppState {
     createdAt: now,
   }));
   return {
-    version: 10,
+    version: 11,
     categories,
     budgets: [],
     transactions: [],
@@ -34,6 +34,7 @@ export function createInitialState(): AppState {
     rollovers: [],
     debts: [],
     badges: [],
+    savingsPlans: [],
     settings: {
       currency: "USD",
       recurringEnabled: true,

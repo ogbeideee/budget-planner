@@ -226,7 +226,7 @@ describe("badge persistence", () => {
       badges: undefined,
     };
     const migrated = validateAppState(v8);
-    expect(migrated.version).toBe(10);
+    expect(migrated.version).toBe(11);
     expect(migrated.badges).toEqual([]);
   });
 

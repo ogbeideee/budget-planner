@@ -11,6 +11,7 @@ const GRID_COLUMNS: Record<number, string> = {
   5: "grid grid-cols-5",
   6: "grid grid-cols-6",
   7: "grid grid-cols-7",
+  8: "grid grid-cols-8",
 };
 
 export function BottomNav() {

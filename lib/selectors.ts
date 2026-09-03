@@ -49,8 +49,18 @@ export function earned(
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 }
 
+/** A savings contribution (FR-28) is money moved into a goal, not money
+ *  spent or earned: report-level totals never see it. Budget envelopes DO —
+ *  `spent` below stays inclusive so a contribution drawn from a rollover
+ *  category consumes that envelope. */
+function isSavingsContribution(transaction: Transaction): boolean {
+  return transaction.savingsPlanId !== undefined;
+}
+
 export function totals(transactions: Transaction[], month: Month): Totals {
-  const monthTransactions = transactionsForMonth(transactions, month);
+  const monthTransactions = transactionsForMonth(transactions, month).filter(
+    (transaction) => !isSavingsContribution(transaction),
+  );
   const income = monthTransactions
     .filter((transaction) => transaction.type === "income")
     .reduce((sum, transaction) => sum + transaction.amount, 0);
@@ -204,6 +214,7 @@ export function spendingByCategory(
   const grouped = new Map<ID, number>();
   for (const transaction of transactionsForMonth(transactions, month)) {
     if (transaction.type !== "expense") continue;
+    if (isSavingsContribution(transaction)) continue;
     grouped.set(
       transaction.categoryId,
       (grouped.get(transaction.categoryId) ?? 0) + transaction.amount,
@@ -420,6 +431,7 @@ export function spendingByCategoryInMonths(
   const grouped = new Map<ID, number>();
   for (const transaction of transactions) {
     if (transaction.type !== "expense") continue;
+    if (isSavingsContribution(transaction)) continue;
     if (!window.has(monthKeyFromIso(transaction.date))) continue;
     grouped.set(
       transaction.categoryId,

@@ -961,6 +961,41 @@ remains, Open restores), tray Quit from the hidden state (process exits),
 quick-add with the main window open (row appears without a refresh) and with it
 closed.
 
+### 3.8 Savings plans — tagged ledger rows, derived progress (FR-28)
+
+A savings plan is a standalone `SavingsPlan` record; its money is NOT stored on
+the plan. A contribution is an ordinary expense transaction written through the
+ONE creation path (`addTransaction` — the quick-add seam) carrying
+`savingsPlanId`. That single decision gives the feature its shape:
+
+- **No second balance store.** `saved = startingBalance + Σ tagged amounts`,
+  computed on every read by `lib/savings.ts` — a pure module (no React, no
+  store, no I/O, `today` a parameter, same discipline as §3.4). Editing or
+  deleting the underlying row updates progress for free, because there is
+  nothing to sync.
+- **One exclusion rule, one exception.** Report-level aggregation
+  (`totals`, `spendingByCategory`, `spendingByCategoryInMonths`) skips tagged
+  rows on both sides — savings movement is not consumption. The budget envelope
+  (`spent`) deliberately does NOT skip them, which is what lets a rollover
+  category's carried-over funds be allocated into a plan by simply contributing
+  against it: the envelope draws down, and the untouched FR-19 month transition
+  carries only the true remainder. The savings feature never writes a rollover
+  record.
+- **Schema v11.** `migrateV10` backfills `savingsPlans: []` and nothing else —
+  no invented plans, no tagged rows. `validateAppState` strips orphan tags (a
+  transaction tagged to a plan id that no longer exists) instead of failing the
+  load, mirroring how orphan rollover records are dropped.
+- **Completion is derived, not flagged.** The prompt fires whenever a plan is
+  `active`, its progress is complete, and `completedAt` is unset — three facts
+  read from the record on every render, so there is no "prompt shown" state to
+  fall out of sync. Resolving it goes through `setSavingsPlanStatus`, which
+  stamps `completedAt` once (close-out, ongoing, or the open-ended "keep
+  contributing" answer) and never clears it. The user picks; nothing is chosen
+  silently.
+- **Deletion guard.** `deleteSavingsPlan` refuses while tagged transactions
+  exist (`in-use-transactions`) — the rows are ledger history — and plans
+  archive instead. A plan with no history deletes outright.
+
 ## 4. Data flow
 
 ```

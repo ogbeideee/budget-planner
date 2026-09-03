@@ -78,7 +78,7 @@ describe("persistence (AC-08)", () => {
     const income = first
       .getState()
       .state.categories.find((c) => c.kind === "income")!;
-    const legacy: Omit<AppState, "version" | "incomePlans" | "learnedRules" | "rollovers" | "debts" | "badges"> & { version: 1 } = {
+    const legacy: Omit<AppState, "version" | "incomePlans" | "learnedRules" | "rollovers" | "debts" | "badges" | "savingsPlans"> & { version: 1 } = {
       version: 1,
       categories: first.getState().state.categories,
       budgets: [],
@@ -129,7 +129,7 @@ describe("persistence (AC-08)", () => {
         }),
       ]);
       expect(state.categories.filter((c) => c.kind === "income")).toHaveLength(6);
-      expect(state.version).toBe(10);
+      expect(state.version).toBe(11);
     });
   });
 

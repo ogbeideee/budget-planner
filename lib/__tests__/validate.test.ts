@@ -17,7 +17,7 @@ describe("validateAppState", () => {
     expect(result.categories).toHaveLength(11);
     expect(result.incomePlans).toEqual([]);
     expect(result.learnedRules).toEqual([]);
-    expect(result.version).toBe(10);
+    expect(result.version).toBe(11);
     // A new install starts with onboarding pending; the flag is only set once
     // guided setup completes (see lib/onboarding.ts).
     expect(result.settings.firstRunDone).toBe(false);
@@ -25,7 +25,7 @@ describe("validateAppState", () => {
 
   it("rejects an unsupported version (AC-10)", () => {
     const state = clone(validState());
-    (state as { version: number }).version = 11;
+    (state as { version: number }).version = 12;
     expect(() => validateAppState(state)).toThrow(ValidationError);
   });
 
@@ -34,7 +34,7 @@ describe("validateAppState", () => {
     (state as { version: number }).version = 3;
     (state as unknown as Record<string, unknown>).learnedRules = undefined;
     const result = validateAppState(state);
-    expect(result.version).toBe(10);
+    expect(result.version).toBe(11);
     expect(result.learnedRules).toEqual([]);
   });
 
@@ -53,7 +53,7 @@ describe("validateAppState", () => {
 
     const result = validateAppState(state);
 
-    expect(result.version).toBe(10);
+    expect(result.version).toBe(11);
     expect(result.categories.find((c) => c.id === "c-edi")?.icon).toBe("📶");
     expect(result.categories.find((c) => c.id === "c-ess")?.icon).toBe("🧺");
   });
@@ -95,7 +95,7 @@ describe("validateAppState", () => {
 
     const result = validateAppState(state);
 
-    expect(result.version).toBe(10);
+    expect(result.version).toBe(11);
     expect(result.categories.find((c) => c.id === "c-loan")?.icon).toBe("💸");
     expect(result.categories.find((c) => c.id === "c-misc")?.icon).toBe("📦");
     expect(result.categories.find((c) => c.id === "c-net")?.icon).toBe("🌐");
@@ -128,7 +128,7 @@ describe("validateAppState", () => {
   it("migrates a version 2 state to version 4", () => {
     const state = clone(validState());
     (state as { version: number }).version = 2;
-    expect(validateAppState(state).version).toBe(10);
+    expect(validateAppState(state).version).toBe(11);
   });
 
   it("migrates a version 1 state: backfills income categories and converts monthly income to plans", () => {
@@ -151,7 +151,7 @@ describe("validateAppState", () => {
     ] as unknown as Transaction[];
     (state as unknown as Record<string, unknown>).incomePlans = undefined;
     const result = validateAppState(state);
-    expect(result.version).toBe(10);
+    expect(result.version).toBe(11);
     expect(result.incomePlans).toEqual([
       expect.objectContaining({
         month: "2026-08",
@@ -555,7 +555,7 @@ describe("validateAppState", () => {
     (state as { version: number }).version = 9;
     delete (state.settings as unknown as Record<string, unknown>).backgroundMode;
     const migrated = validateAppState(state);
-    expect(migrated.version).toBe(10);
+    expect(migrated.version).toBe(11);
     expect(migrated.settings.backgroundMode).toBe(false);
   });
 

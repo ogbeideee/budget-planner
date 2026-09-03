@@ -6,6 +6,7 @@ import {
   ClockIcon,
   GearIcon,
   GridIcon,
+  TargetIcon,
   WalletIcon,
   type IconProps,
 } from "@/components/ui/icons";
@@ -26,5 +27,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/history", label: "Timeline", icon: ClockIcon },
   { href: "/reports", label: "Reports", icon: ChartIcon },
   { href: "/debt", label: "Debt payoff", shortLabel: "Debt", icon: WalletIcon },
+  { href: "/savings", label: "Savings", shortLabel: "Save", icon: TargetIcon },
   { href: "/settings", label: "Settings", icon: GearIcon },
 ];

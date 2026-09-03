@@ -9,7 +9,7 @@ import type { NavItem } from "./nav";
 
 const SECTIONS: ReadonlyArray<{ label: string; hrefs: ReadonlySet<string> }> = [
   { label: "Planning", hrefs: new Set(["/", "/todo", "/upcoming"]) },
-  { label: "Analytics", hrefs: new Set(["/history", "/reports", "/debt"]) },
+  { label: "Analytics", hrefs: new Set(["/history", "/reports", "/debt", "/savings"]) },
   { label: "Settings", hrefs: new Set(["/settings"]) },
 ];
 

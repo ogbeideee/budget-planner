@@ -67,12 +67,12 @@ and docs/15_EMAIL_PARSING.md.
 
 On Windows PowerShell, invoke via `cmd /c "..."`; do NOT use `&&` or `cd` inside commands.
 
-## State model (current: schema version 10)
-- `AppState.version` is `10`; stored under `budget-planner:state` with `CURRENT_STORAGE_VERSION = 10`.
+## State model (current: schema version 11)
+- `AppState.version` is `11`; stored under `budget-planner:state` with `CURRENT_STORAGE_VERSION = 11`.
   Bumping the schema means bumping BOTH — they are separate constants in separate files
   (lib/types.ts + lib/seed.ts, and lib/storage.ts); missing the second one silently
   mis-snapshots every save as "legacy".
-- `validateAppState` (lib/validate.ts) accepts versions 1–10 and migrates each forward;
+- `validateAppState` (lib/validate.ts) accepts versions 1–11 and migrates each forward;
   legacy field normalization always runs. Two rules hold across every migration: a
   backfill opts NOBODY in (rollover, debt and badges all backfill empty), and an icon fix
   matches the lowercase name AND the specific wrong icon, so an icon the user has since

@@ -55,6 +55,11 @@ export interface Transaction {
   edited?: boolean;
   deferred?: boolean;
   monthlyIncome?: boolean;
+  /** Set when this transaction is a contribution to a savings plan (FR-28).
+   *  The money moved into savings, not out of the household: report-level
+   *  expense/income totals exclude it, while the linked category's budget
+   *  envelope still consumes it via `spent()`. */
+  savingsPlanId?: ID;
   /** Where this transaction came from, when it was imported from a bank
    *  statement (Prompt 5A). Used for provenance and re-import detection. */
   importSource?: ImportProvenance;
@@ -224,8 +229,43 @@ export interface EarnedBadge {
   value: number;
 }
 
+/**
+ * A savings goal tracked independently of categories and budgets (FR-28).
+ * A plan is STANDALONE — it is not a category, not a budget and not a debt:
+ * a budget is one month's allowance, a debt is money owed, while a plan is
+ * money being set aside toward a target across any number of months.
+ * Contributions are ordinary expense transactions tagged `savingsPlanId`, so
+ * the ledger stays the single source of money movement.
+ */
+export interface SavingsPlan {
+  id: ID;
+  name: string;
+  /** Target in minor units, >= 0. */
+  targetAmount: number;
+  /** Optional deadline (ISO date). Absent means open-ended. */
+  targetDate?: string;
+  /** Amount already held when the plan was created, in minor units — counted
+   *  toward progress but never written to the ledger. */
+  startingBalance: number;
+  /** `active` — in progress (also the state of an open-ended plan kept past
+   *  its target); `completed` — target reached and closed out; `ongoing` —
+   *  maintenance mode, kept topped up rather than finished; `archived` —
+   *  hidden from the main list. Which of these a reached plan becomes is the
+   *  USER's choice via the completion prompt; nothing picks silently. */
+  status: SavingsPlanStatus;
+  createdAt: string;
+  /** When the target was first reached (set at completion-prompt time for
+   *  completed/ongoing plans, and when the user chose to keep an open-ended
+   *  plan past its target). Its presence on an `active` plan is what stops
+   *  the completion prompt from reappearing. */
+  completedAt?: string;
+  archivedAt?: string;
+}
+
+export type SavingsPlanStatus = "active" | "completed" | "ongoing" | "archived";
+
 export interface AppState {
-  version: 10;
+  version: 11;
   categories: Category[];
   budgets: Budget[];
   transactions: Transaction[];
@@ -236,6 +276,7 @@ export interface AppState {
   rollovers: RolloverRecord[];
   debts: Debt[];
   badges: EarnedBadge[];
+  savingsPlans: SavingsPlan[];
   settings: Settings;
 }
 
@@ -249,6 +290,8 @@ export interface TransactionInput {
   deferred?: boolean;
   /** Statement-import provenance; set by the import engine only. */
   importSource?: ImportProvenance;
+  /** Tags this transaction as a contribution to a savings plan (FR-28). */
+  savingsPlanId?: ID;
 }
 
 /**
@@ -307,6 +350,14 @@ export interface DebtInput {
   startingBalance?: number;
   aprBps: number;
   minimumPayment: number;
+}
+
+/** Fields the savings-plan form edits; the rest is managed by the store. */
+export interface SavingsPlanInput {
+  name: string;
+  targetAmount: number;
+  targetDate?: string;
+  startingBalance?: number;
 }
 
 export type CategoryDeleteReason =
