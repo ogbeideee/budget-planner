@@ -31,6 +31,7 @@ import { BudgetPreferencesPanel } from "./BudgetPreferencesPanel";
 import { CategoryManager } from "./CategoryManager";
 import { IncomeSourcesPanel } from "./IncomeSourcesPanel";
 import { LearnedRulesPanel } from "./LearnedRulesPanel";
+import { EmailAlertsPanel } from "./EmailAlertsPanel";
 import { DataBackupsPanel } from "./DataBackupsPanel";
 import { DesktopPanel } from "./DesktopPanel";
 import { AboutPanel } from "./AboutPanel";
@@ -269,6 +270,7 @@ export function SettingsView() {
           {active === "recurring" && <RecurringPanel />}
           {active === "income" && <IncomeSourcesPanel />}
           {active === "learning" && <LearnedRulesPanel />}
+          {active === "email" && <EmailAlertsPanel />}
           {active === "desktop" && <DesktopPanel />}
           {active === "data" && <DataBackupsPanel autoImport={autoImport} />}
           {active === "about" && <AboutPanel />}

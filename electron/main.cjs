@@ -25,6 +25,11 @@ const { createSplashScreen } = require("./splash.cjs");
 const { initAutoUpdates } = require("./updater.cjs");
 const { MENU_ACTIONS, buildApplicationMenu } = require("./menu.cjs");
 const { createCredentialStore } = require("./credentials.cjs");
+const { createEmailConnectionManager } = require("./emailConnection.cjs");
+const { createTransport } = require("./imapTransport.cjs");
+const { createEmailSyncManager } = require("./emailSync.cjs");
+const { createEmailScheduler } = require("./emailScheduler.cjs");
+const { createEmailSyncStore } = require("./emailSyncStore.cjs");
 const { createTray } = require("./tray.cjs");
 const { openQuickAdd, closeQuickAdd } = require("./quickAdd.cjs");
 const {
@@ -54,6 +59,12 @@ let db = null;
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
+
+// Email sync (FR-24, sync stage). Created with the other email handlers; the
+// scheduler is started at app ready and stopped on quit. Both are null before
+// that, and every consumer checks.
+let emailSyncManager = null;
+let emailScheduler = null;
 
 // --- Background mode (FR-26) -------------------------------------------------
 //
@@ -422,6 +433,111 @@ function registerDesktopHandlers() {
     credentials.clear(typeof account === "string" ? account : ""),
   );
 
+  // --- Email connection (FR-24, transport phase) ----------------------------
+  //
+  // Four operations, all executed here in main. The app password crosses this
+  // boundary exactly once per operation, is handed straight to the transport
+  // or vault, and never comes back: results carry a category and a redacted
+  // message, never a secret. There is no "read the credential" channel and
+  // none may be added.
+  const emailConnection = createEmailConnectionManager({
+    credentialStore: credentials,
+  });
+
+  ipcMain.handle("desktop:email:connect", async (event, payload) => {
+    const config = payload && typeof payload === "object" ? payload.config : null;
+    const password =
+      payload && typeof payload.password === "string" ? payload.password : "";
+    if (!config) {
+      return { ok: false, category: "invalid-config", message: "Missing email configuration." };
+    }
+    if (password.length === 0) {
+      return { ok: false, category: "empty-secret", message: "Enter your app password." };
+    }
+    return emailConnection.connect(config, password);
+  });
+
+  ipcMain.handle("desktop:email:test", async (event, payload) => {
+    const config = payload && typeof payload === "object" ? payload.config : null;
+    const password =
+      payload && typeof payload.password === "string" ? payload.password : "";
+    if (!config) {
+      return { ok: false, category: "invalid-config", message: "Missing email configuration." };
+    }
+    // password may be empty: the stored credential is used when present.
+    return emailConnection.test(config, password);
+  });
+
+  ipcMain.handle("desktop:email:disconnect", () => emailConnection.disconnect());
+
+  ipcMain.handle("desktop:email:status", () => emailConnection.status());
+
+  // --- Email sync (FR-24, sync stage) --------------------------------------
+  //
+  // ONE canonical operation (`emailSyncManager.checkNow`) behind ALL entry
+  // points: the renderer's manual "Check now", the tray item and the hourly
+  // scheduler. Overlap is refused inside the manager (inFlight) and again in
+  // the scheduler; there is no second sync implementation anywhere.
+  //
+  // Delivery: the converted AlertEmail-shaped messages go to the MAIN window
+  // renderer over `desktop:email:alerts`; the renderer runs the existing
+  // parser + pipeline (parseAlerts -> buildEmailDrafts -> planImport) and
+  // confirms the message UIDs back over `desktop:email:confirm-processed`,
+  // which is the mailbox-level dedupe bookkeeping. The result summary pushed
+  // over `desktop:email:sync-result` is safe by construction: counts,
+  // identity, category — no message content, never a secret.
+  const emailSyncStore = createEmailSyncStore({ db });
+  emailSyncManager = createEmailSyncManager({
+    credentialStore: credentials,
+    transportFactory: ({ config: syncConfig, password }) =>
+      createTransport({ config: syncConfig, password }),
+    syncStore: emailSyncStore,
+  });
+
+  emailScheduler = createEmailScheduler({
+    checkNow: (trigger) => emailSyncManager.checkNow(trigger),
+    hasAccount: () => emailSyncManager.hasAccount(),
+    onResult: (result) => deliverEmailSyncResult(result),
+  });
+
+  // The renderer reports the persistable account config + the parser's own
+  // allowlist domains at mount and on connect/disconnect (same direction as
+  // `settings.backgroundMode`: main is TOLD, never parses stored state).
+  ipcMain.handle("desktop:email:set-account", (event, payload) => {
+    const config = payload && typeof payload === "object" ? payload.config : null;
+    const domains =
+      payload && Array.isArray(payload.domains) ? payload.domains : [];
+    const result = emailSyncManager.setAccountConfig(config, domains);
+    if (result.configured && emailScheduler) {
+      emailScheduler.start();
+    }
+    return result;
+  });
+
+  // Manual check — through the scheduler's runNow, never a separate path.
+  ipcMain.handle("desktop:email:check", () => {
+    if (!emailScheduler) return { ok: false, started: false, reason: "no-sync" };
+    return emailScheduler.runNow("manual");
+  });
+
+  ipcMain.handle("desktop:email:sync-status", () =>
+    emailSyncManager ? emailSyncManager.status() : null,
+  );
+
+  // Mailbox-level dedupe confirmation (see lib/emailPipeline.ts for the
+  // TRANSACTION-level duplicate detection — unrelated to this channel).
+  ipcMain.handle("desktop:email:confirm-processed", (event, payload) => {
+    const uids =
+      payload && Array.isArray(payload.uids)
+        ? payload.uids.filter(
+            (uid) => typeof uid === "string" || typeof uid === "number",
+          )
+        : [];
+    return emailSyncManager
+      ? emailSyncManager.confirmProcessed(uids)
+      : { ok: false, reason: "no-sync" };
+  });
+
   // File-based backups. create is synchronous so the renderer can flush the
   // final backup during beforeunload (small state payloads, mirrors the
   // storage channels); the rest are async.
@@ -652,6 +768,62 @@ function broadcastStateChanged(exceptWebContentsId) {
     if (win.isDestroyed()) continue;
     if (win.webContents.id === exceptWebContentsId) continue;
     win.webContents.send("desktop:state:changed");
+  }
+}
+
+/**
+ * Delivers a canonical sync outcome to the MAIN window renderer (FR-24).
+ *
+ * Two payloads leave main:
+ *  - `desktop:email:alerts`: the converted, parser-ready messages + the
+ *    mailbox metadata (mailbox, UIDVALIDITY, sinceDays) the renderer echoes
+ *    back through confirm-processed. Never a password, never a raw HTML body.
+ *  - `desktop:email:sync-result`: the SAFE summary (counts, identity,
+ *    category) every trigger reports — the message array is stripped here.
+ *
+ * The quick-add window is deliberately NOT a recipient: it must not run the
+ * write-at-mount draft pipeline.
+ */
+function deliverEmailSyncResult(result) {
+  if (!result) return;
+  const target =
+    mainWindow !== null && !mainWindow.isDestroyed() ? mainWindow : null;
+  if (target === null) return;
+  const summary = {
+    ok: result.ok === true,
+    trigger: result.trigger ?? "manual",
+    started: result.started !== false,
+    at: result.at ?? new Date().toISOString(),
+    account: result.account ?? null,
+  };
+  if (typeof result.category === "string") summary.category = result.category;
+  if (typeof result.message === "string") summary.message = result.message;
+  if (typeof result.mailbox === "string") summary.mailbox = result.mailbox;
+  if (typeof result.sinceDays === "number") summary.sinceDays = result.sinceDays;
+  if (typeof result.fetched === "number") summary.fetched = result.fetched;
+  if (Array.isArray(result.messages)) {
+    summary.newCount = result.messages.length;
+  }
+  if (result.uidValidity !== undefined) {
+    summary.shipped = {
+      uids: Array.isArray(result.messages)
+        ? result.messages.map((message) => String(message.id))
+        : [],
+      uidValidity: result.uidValidity ?? null,
+    };
+  }
+  try {
+    target.webContents.send("desktop:email:sync-result", summary);
+    if (result.ok && Array.isArray(result.messages) && result.messages.length > 0) {
+      target.webContents.send("desktop:email:alerts", {
+        messages: result.messages,
+        mailbox: result.mailbox ?? "INBOX",
+        uidValidity: result.uidValidity ?? null,
+        sinceDays: result.sinceDays ?? 0,
+      });
+    }
+  } catch {
+    // A window dying mid-delivery must never take the sync down.
   }
 }
 
@@ -1147,7 +1319,23 @@ app.whenReady().then(() => {
     });
     if (tray === null) {
       console.warn("[tray] not available — background mode will fall back to quit-on-close");
+    } else if (emailScheduler !== null) {
+      // FR-24: the tray item exists now that the transport + sync land. It
+      // goes through the scheduler's runNow — the SAME canonical operation as
+      // the renderer's button and the hourly tick, with the same overlap
+      // protection (a busy sync is refused, never stacked).
+      tray.setAlertChecker(() => {
+        emailScheduler.runNow("tray");
+      });
     }
+  }
+
+  // Hourly background polling (FR-24). Starting unconditionally is safe: the
+  // tick itself gates on `hasAccount()`, so with no connected account it is a
+  // no-op. The timer handle is unref'd, so it never keeps the process alive
+  // against the app's own lifetime rules.
+  if (emailScheduler !== null) {
+    emailScheduler.start();
   }
 
   const updateStatus = initAutoUpdates();
@@ -1186,6 +1374,16 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", () => {
+  // Email sync teardown (FR-24): stop the timer first so no tick fires during
+  // shutdown, then close the held IMAP session (read-only; nothing to commit).
+  if (emailScheduler !== null) {
+    emailScheduler.stop();
+    emailScheduler = null;
+  }
+  if (emailSyncManager !== null) {
+    void emailSyncManager.dispose();
+    emailSyncManager = null;
+  }
   if (tray !== null) {
     tray.destroy();
     tray = null;

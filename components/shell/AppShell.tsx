@@ -24,6 +24,8 @@ import { NameSetupModal } from "./NameSetupModal";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 import { QUICK_ADD_ROUTE } from "@/lib/quickAddRoute";
+import { EmailSyncBridge } from "@/hooks/useEmailSync";
+import { EmailDraftsReviewModal } from "@/components/email/EmailDraftsReviewModal";
 
 // Desktop-only integrations (auto-backups, native menu actions). No-op in a
 // plain browser and on the server; idempotent across hot reloads.
@@ -109,6 +111,12 @@ function MainShell({ children }: { children: ReactNode }) {
       </div>
       <BottomNav />
       <NameSetupModal />
+      {/* Email alerts (FR-24, sync stage): the sync bridge is the production
+          caller of the parser + pipeline and must run ONLY in the main window
+          renderer (the quick-add window is chromeless and never writes at
+          mount). In a plain browser every bridge call no-ops. */}
+      <EmailSyncBridge />
+      <EmailDraftsReviewModal />
       <ToastHost />
     </div>
   );

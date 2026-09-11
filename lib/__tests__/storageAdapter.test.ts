@@ -23,6 +23,30 @@ function installBridge(
       status: async () => ({ connected: false, savedAt: null }),
       clear: async () => ({ ok: true, removed: false }),
     },
+    email: {
+      connect: async () => ({ ok: false }),
+      test: async () => ({ ok: false }),
+      disconnect: async () => ({ ok: true }),
+      status: async () => ({
+        state: "not-connected" as const,
+        provider: null,
+        email: null,
+        lastConnectedAt: null,
+        lastError: null,
+        credential: { connected: false, savedAt: null },
+      }),
+      setAccount: async () => ({ ok: true, configured: false }),
+      check: async () => ({ ok: false, started: false, reason: "no-sync" }),
+      syncStatus: async () => ({
+        configured: false,
+        account: null,
+        inFlight: false,
+        lastResult: null,
+        backoff: { active: false },
+        lastSyncAt: null,
+      }),
+      confirmProcessed: async () => ({ ok: true, added: 0 }),
+    },
     platform: "win32",
     getAppInfo: async () => ({
       name: "Budget Planner",
@@ -85,6 +109,8 @@ function installBridge(
     appEvents: {
       onStateChanged: () => () => {},
       onNavigate: () => () => {},
+      onEmailAlerts: () => () => {},
+      onEmailSyncResult: () => () => {},
     },
   };
 }

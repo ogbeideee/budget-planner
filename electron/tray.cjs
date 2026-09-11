@@ -31,12 +31,11 @@ function trayIconPath() {
  * window handles, no module state — so a test can assert which items exist in
  * which mode without launching anything.
  *
- * `canCheckAlerts` gates the "Check for new alerts now" item. It is FALSE
- * today: FR-24 landed the parser, the credential vault and the draft pipeline,
- * but not the IMAP transport, so there is no mail fetch for the item to call.
- * Shipping a menu entry that does nothing is worse than omitting it. When the
- * transport lands it calls `setAlertChecker()` and the item appears — see
- * docs/15_EMAIL_PARSING.md.
+ * `canCheckAlerts` gates the "Check for new alerts now" item. It is driven by
+ * `setAlertChecker()`: main passes the canonical sync invoker once an email
+ * account is reported (FR-24 sync stage) and the item appears; passing null
+ * removes it again. A menu entry is never shipped without something to call —
+ * see docs/15_EMAIL_PARSING.md.
  */
 function buildTrayMenuTemplate({
   appName,

@@ -104,6 +104,21 @@ const appEvents = {
     ipcRenderer.on("desktop:navigate", listener);
     return () => ipcRenderer.removeListener("desktop:navigate", listener);
   },
+  // FR-24 sync stage: main → renderer. The alerts payload is the parser-ready
+  // plain-text conversion — never a password, never a raw HTML body. The
+  // result summary is safe counts/identity only and carries NO message content.
+  onEmailAlerts(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("desktop:email:alerts", listener);
+    return () => ipcRenderer.removeListener("desktop:email:alerts", listener);
+  },
+  onEmailSyncResult(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, result) => callback(result);
+    ipcRenderer.on("desktop:email:sync-result", listener);
+    return () => ipcRenderer.removeListener("desktop:email:sync-result", listener);
+  },
 };
 
 function migrateBrowserData() {
@@ -147,6 +162,24 @@ const credentials = {
   clear: (account) => ipcRenderer.invoke("desktop:credentials:clear", account),
 };
 
+// Email connection + sync operations (FR-24). The password in a connect/test
+// payload travels once, into main, and nothing here can ever read it back —
+// there is no such channel. Status and results are safe identity data only.
+// IMAP networking itself happens entirely in main; `check` runs the SAME
+// canonical sync the scheduler and the tray call, and the fetched messages
+// arrive through `appEvents.onEmailAlerts`.
+const email = {
+  connect: (payload) => ipcRenderer.invoke("desktop:email:connect", payload),
+  test: (payload) => ipcRenderer.invoke("desktop:email:test", payload),
+  disconnect: () => ipcRenderer.invoke("desktop:email:disconnect"),
+  status: () => ipcRenderer.invoke("desktop:email:status"),
+  setAccount: (payload) => ipcRenderer.invoke("desktop:email:set-account", payload),
+  check: () => ipcRenderer.invoke("desktop:email:check"),
+  syncStatus: () => ipcRenderer.invoke("desktop:email:sync-status"),
+  confirmProcessed: (payload) =>
+    ipcRenderer.invoke("desktop:email:confirm-processed", payload),
+};
+
 contextBridge.exposeInMainWorld("budgetPlannerDesktop", {
   platform: process.platform,
   getAppInfo: () => ipcRenderer.invoke("desktop:app-info"),
@@ -158,6 +191,7 @@ contextBridge.exposeInMainWorld("budgetPlannerDesktop", {
   paths: () => ipcRenderer.invoke("desktop:paths"),
   backups,
   credentials,
+  email,
   menu,
   window: windowControls,
   backgroundMode,

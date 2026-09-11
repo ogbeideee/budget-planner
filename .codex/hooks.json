@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\dogbeide\\BUDGET APP\\budget-planner\\.codex\\hooks\\autopush.sh'",
+            "timeout": 900,
+            "statusMessage": "Checking daily git checkpoint..."
+          }
+        ]
+      }
+    ]
+  }
+}

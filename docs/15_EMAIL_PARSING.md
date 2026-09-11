@@ -19,15 +19,24 @@ Landed and tested:
   wired through IPC and the preload bridge
 - Draft pipeline reusing the categorization and duplicate engines
   (`lib/emailPipeline.ts`)
+- IMAP transport (`electron/imapTransport.cjs` — imapflow kept behind this one
+  module; read-only session, error categorization, secret redaction)
+- Email account configuration + initial-lookback setting
+  (`lib/emailAccount.ts`, normalized again in main by
+  `electron/imapConfig.cjs` — a parity test pins the two together)
+- Connection manager and the four IPC channels
+  (`desktop:email:connect|test|disconnect|status`,
+  `electron/emailConnection.cjs`), with the connect/disconnect/test/status UI
+  in Settings (`components/settings/EmailAlertsPanel.tsx`)
 
 NOT yet landed — see "Remaining work" at the end:
 
-- The IMAP transport itself (no mail is fetched yet)
-- The connect / disclosure / needs-review UI
-- Periodic and manual sync
+- The sync pipeline: no code path calls search/fetch yet, so no mail is
+  actually downloaded or parsed from a live mailbox
+- Periodic and manual sync, the needs-review/draft UI
 
-The parsing, storage and routing layers are complete and unit-tested; nothing
-currently reads a mailbox.
+The transport, credentials and configuration layers are complete and
+unit-tested; nothing currently reads a mailbox.
 
 --------------------------------------------------
 SECURITY MODEL
@@ -361,14 +370,27 @@ inherits the whole confirm step rather than reimplementing it.
 REMAINING WORK
 --------------------------------------------------
 
-1. **IMAP transport** (main process only). Must narrow server-side with
-   `SEARCH FROM <domain> SINCE <date>` per allowlisted domain, fetch plain
-   text, and hand `AlertEmail` objects to `parseAlerts`. It must call
-   `credentials.reveal()` at connection time and never return the secret past
-   that call.
-2. **Connect / disclosure UI** in Settings, showing the four disclosures
-   above, the app-password instructions, and a one-click **Disconnect email**
-   wired to `disconnectEmail()`.
+1. **IMAP transport** (main process only) — **TRANSPORT LANDED; SYNC WIRING
+   REMAINS.** `electron/imapTransport.cjs` provides connect/authenticate,
+   `search({ sinceDays, fromDomains })` (SEARCH FROM per allowlisted domain +
+   SINCE, server-side narrowing), `fetchMessages({ uids })` returning
+   AlertEmail-shaped records, and a clean close — all behind an injectable
+   client, with a read-only IMAP session (`readOnly: true`), timeouts, and
+   secret redaction on every error message. `electron/emailConnection.cjs`
+   verifies the account, stores the password via the vault ONLY after the
+   server accepted it, and reports safe status over
+   `desktop:email:connect|test|disconnect|status`. Still to build: the sync
+   operation that opens the connection, runs search + fetch, converts bodies
+   to alert text (HTML-table alerts need the HTML→text conversion before
+   `parseAlerts`), and hands `AlertEmail` objects to `parseAlerts`; plus the
+   long-lived connection lifecycle below. `credentials.reveal()` is called
+   only inside main, and its return value never crosses IPC.
+2. **Connect / disclosure UI** — **LANDED** as
+   `components/settings/EmailAlertsPanel.tsx` (Settings → Email alerts,
+   desktop-only): the four disclosures, the allowlist, app-password
+   instructions, Gmail defaults, generic IMAP fields, lookback choice
+   (7/30/90, default 30), connect / test / disconnect, and the safe status
+   line. The remaining piece is the needs-review UI (item 3).
 3. **Needs-review UI** surfacing `EmailDraft.needsReview` with the snippet.
 4. **Sync scheduling** — an interval of **30 minutes exactly** (decided
    2026-08-29; supersedes the earlier 15-minute suggestion) plus a manual

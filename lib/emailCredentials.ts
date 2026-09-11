@@ -1,4 +1,8 @@
 import { getDesktopBridge } from "./desktop";
+import type {
+  EmailConnectionStatusReport,
+  EmailOperationResult,
+} from "./desktop";
 
 /**
  * Renderer-side access to the email credential vault (FR-24).
@@ -105,3 +109,105 @@ export async function disconnectEmail(): Promise<{ ok: boolean }> {
     .then((result) => ({ ok: result.ok }))
     .catch(() => ({ ok: false }));
 }
+
+/* ------------------------------------------------------------------------ */
+/* Email connection operations (FR-24, transport phase)                      */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Thin wrappers over the desktop:email:* IPC channels. They live here —
+ * beside the vault helpers — so the UI never builds a second bridge, and the
+ * password's one-way trip is visible in exactly one file.
+ *
+ * SECURITY NOTE: `password` crosses IPC once, into main, and nothing in
+ * these functions keeps it, logs it, or reads it back. The stored credential
+ * is used internally by main when `password` is omitted (test/reconnect).
+ */
+
+/** Human message for a failed connect/test, from the safe category. */
+export function emailErrorMessage(
+  category: string | undefined,
+  fallback: string | undefined,
+): string {
+  switch (category) {
+    case "auth":
+      return "The mail server rejected the address or app password. Check both, and make sure you are using an app password — not your normal account password.";
+    case "tls":
+      return "The mail server's security certificate could not be verified, so the connection was refused. Check the server hostname and port.";
+    case "timeout":
+      return "The mail server took too long to respond. Check your connection and the server details.";
+    case "network":
+      return "Could not reach the mail server. Check the hostname, port and your internet connection.";
+    case "empty-secret":
+      return "Enter the app password from your email provider.";
+    case "credential":
+      return fallback ?? "The password could not be stored securely.";
+    case "invalid-config":
+      return fallback ?? "Check the email account settings.";
+    default:
+      return fallback ?? "The connection failed. Try again.";
+  }
+}
+
+/**
+ * Connects (and stays connected) to the email account. On success the app
+ * password has been stored in the OS-backed vault by main — only after the
+ * server actually accepted it.
+ */
+export async function connectEmailAccount(
+  config: unknown,
+  appPassword: string,
+): Promise<EmailOperationResult> {
+  const bridge = getDesktopBridge();
+  if (!bridge?.email) {
+    return { ok: false, category: "invalid-config", message: "Email connections need the desktop app." };
+  }
+  try {
+    const result = await bridge.email.connect({ config, password: appPassword });
+    return result.ok ? result : { ...result, message: emailErrorMessage(result.category, result.message) };
+  } catch {
+    return { ok: false, category: "unknown", message: emailErrorMessage("unknown", undefined) };
+  }
+}
+
+/**
+ * Tests a configuration without changing the connected state or the vault.
+ * `appPassword` may be omitted when a credential is already stored.
+ */
+export async function testEmailConnection(
+  config: unknown,
+  appPassword?: string,
+): Promise<EmailOperationResult> {
+  const bridge = getDesktopBridge();
+  if (!bridge?.email) {
+    return { ok: false, category: "invalid-config", message: "Email connections need the desktop app." };
+  }
+  try {
+    const result = await bridge.email.test({ config, password: appPassword ?? "" });
+    return result.ok ? result : { ...result, message: emailErrorMessage(result.category, result.message) };
+  } catch {
+    return { ok: false, category: "unknown", message: emailErrorMessage("unknown", undefined) };
+  }
+}
+
+/**
+ * The full disconnect: drops main's runtime connection state AND clears the
+ * stored credential (main does both), so the next connect needs the app
+ * password again. The renderer clears its persisted config alongside.
+ */
+export async function disconnectEmailAccount(): Promise<{ ok: boolean }> {
+  const bridge = getDesktopBridge();
+  if (!bridge?.email) return { ok: true };
+  return bridge.email.disconnect().catch(() => ({ ok: false }));
+}
+
+/**
+ * The safe status report from main. Safe to render directly: state, identity,
+ * timestamps and an error CATEGORY — never a password or vault contents.
+ */
+export async function emailConnectionStatusReport(): Promise<EmailConnectionStatusReport | null> {
+  const bridge = getDesktopBridge();
+  if (!bridge?.email) return null;
+  return bridge.email.status().catch(() => null);
+}
+

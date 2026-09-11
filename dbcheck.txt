@@ -1,0 +1,8 @@
+
+> budget-planner@0.1.1 db:check
+> electron electron/scripts/dbcheck.cjs
+
+
+SQLITE_OK electron=43.3.0 modules=148 value=b
+MIGRATE_OK rows=4 backup=true marker=true
+MIGRATE_FAIL_OK error="The database connection is not open" rows_after_failure=0 retry_ready=true

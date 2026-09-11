@@ -5,6 +5,7 @@ import {
   DatabaseIcon,
   GridIcon,
   InfoIcon,
+  MailIcon,
   MonitorIcon,
   PaletteIcon,
   RepeatIcon,
@@ -22,6 +23,7 @@ export type SettingsSection =
   | "recurring"
   | "income"
   | "learning"
+  | "email"
   | "desktop"
   | "data"
   | "about";
@@ -63,6 +65,11 @@ export const SETTINGS_SECTIONS: ReadonlyArray<{
     icon: <SparklesIcon className="h-5 w-5" />,
   },
   {
+    id: "email",
+    label: "Email alerts",
+    icon: <MailIcon className="h-5 w-5" />,
+  },
+  {
     id: "desktop",
     label: "Desktop",
     icon: <MonitorIcon className="h-5 w-5" />,
@@ -76,14 +83,17 @@ export const SETTINGS_SECTIONS: ReadonlyArray<{
 ];
 
 /** Sections to show in this build. "Desktop" is about the tray and the window
- *  close button, neither of which exists in a browser tab, so it is hidden
+ *  close button, neither of which exists in a browser tab, and "email" needs
+ *  the OS keychain and the main-process IMAP transport, so both are hidden
  *  there rather than shown with every control inert. */
 export function visibleSettingsSections(
   desktop: boolean,
 ): ReadonlyArray<(typeof SETTINGS_SECTIONS)[number]> {
   return desktop
     ? SETTINGS_SECTIONS
-    : SETTINGS_SECTIONS.filter((section) => section.id !== "desktop");
+    : SETTINGS_SECTIONS.filter(
+        (section) => section.id !== "desktop" && section.id !== "email",
+      );
 }
 
 export function SettingsNav({
