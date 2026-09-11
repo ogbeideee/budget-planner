@@ -273,3 +273,48 @@ describe("close behaviour", () => {
     expect(client.close).toHaveBeenCalled();
   });
 });
+
+describe("fetch batching (live-found regressions)", () => {
+  it("fetches in batches AND passes {uid:true} — UIDs are not sequence numbers", async () => {
+    const fetchCalls: Array<unknown[]> = [];
+    const client = fakeClient();
+    (client.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async function* (range: unknown, _query: unknown, options: unknown) {
+        fetchCalls.push([range, options]);
+        // Yield one shaped message so the happy path is exercised too.
+        yield {
+          uid: 42,
+          envelope: { from: [{ address: "alert@gtbank.com" }], subject: "Debit alert", date: Date.UTC(2026, 8, 3) },
+          source: Buffer.from(
+            "From: alert@gtbank.com\r\nContent-Type: text/plain\r\n\r\nNGN 5,000 debit",
+          ),
+        };
+      },
+    );
+    const transport = createTransport({
+      config: GMAIL_CONFIG,
+      password: "app-password-123",
+      clientFactory: () => client,
+    });
+    await transport.open();
+    const uids = Array.from({ length: 250 }, (_, i) => i + 1);
+    const result = await transport.fetchMessages({ uids });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // 250 UIDs in batches of 100 -> 3 FETCH commands, none over 100 UIDs.
+    expect(fetchCalls.length).toBe(3);
+    for (const [range, options] of fetchCalls) {
+      expect((range as unknown[]).length).toBeLessThanOrEqual(100);
+      expect(options).toEqual({ uid: true });
+    }
+    // The message body came from the raw source, MIME-split locally.
+    expect(result.messages.length).toBe(3);
+    expect(result.messages[0]).toMatchObject({
+      id: "42",
+      from: "alert@gtbank.com",
+      subject: "Debit alert",
+    });
+    expect(result.messages[0].body).toContain("NGN 5,000 debit");
+    await transport.close();
+  });
+});
