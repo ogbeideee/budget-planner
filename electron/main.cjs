@@ -30,6 +30,10 @@ const { createTransport } = require("./imapTransport.cjs");
 const { createEmailSyncManager } = require("./emailSync.cjs");
 const { createEmailScheduler } = require("./emailScheduler.cjs");
 const { createEmailSyncStore } = require("./emailSyncStore.cjs");
+const {
+  planEmailDelivery,
+  emailAlertNotification,
+} = require("./emailDelivery.cjs");
 const { createTray } = require("./tray.cjs");
 const { openQuickAdd, closeQuickAdd } = require("./quickAdd.cjs");
 const {
@@ -341,29 +345,22 @@ function registerDesktopHandlers() {
   });
 
   // Desktop notifications (Windows toast). AUMID is set at startup, so
-  // packaged toasts have an identity; isSupported() guards the rest.
+  // packaged toasts have an identity; isSupported() guards the rest. The
+  // showing itself goes through the ONE shared helper below — the email sync
+  // raises the same kind of toast, and there must never be a second
+  // notification mechanism.
   ipcMain.handle("desktop:notify", (event, payload) => {
     const { title, body, silent, deepLink } =
       typeof payload === "object" && payload !== null ? payload : {};
-    if (!Notification.isSupported()) {
-      return { ok: false, error: "notifications not supported" };
-    }
     if (typeof title !== "string" || title.length === 0) {
       return { ok: false, error: "invalid notification" };
     }
-    const notification = new Notification({
+    return showAppNotification({
       title,
-      body: typeof body === "string" && body.length > 0 ? body : undefined,
+      body: typeof body === "string" ? body : undefined,
       silent: silent === true,
+      deepLink,
     });
-    // FR-26 req 11: clicking a notification raised while the app sat in the
-    // tray must bring the window back, optionally on a specific route. Only an
-    // in-app path is honoured — see assertNavigable.
-    notification.on("click", () => {
-      showMainWindow(typeof deepLink === "string" ? deepLink : undefined);
-    });
-    notification.show();
-    return { ok: true };
   });
 
   // --- Tray, quick-add and background mode (FR-26) -----------------------
@@ -725,6 +722,51 @@ function handleProtocol(request) {
 }
 
 /**
+ * The ONE notification path (the `desktop:notify` IPC channel and the email
+ * sync's hidden-window toast both land here). Clicking a toast restores the
+ * main window, optionally on a specific route (FR-26 req 11); only an in-app
+ * path is honoured — see isNavigableRoute renderer-side.
+ */
+function showAppNotification({ title, body, silent, deepLink }) {
+  if (!Notification.isSupported()) {
+    return { ok: false, error: "notifications not supported" };
+  }
+  const notification = new Notification({
+    title,
+    body: typeof body === "string" && body.length > 0 ? body : undefined,
+    silent: silent === true,
+  });
+  notification.on("click", () => {
+    showMainWindow(typeof deepLink === "string" ? deepLink : undefined);
+  });
+  notification.show();
+  return { ok: true };
+}
+
+/**
+ * Alert messages found by a sync while the main window was hidden or absent.
+ * Held (never confirmed — the mailbox dedupe keys on the renderer's confirm,
+ * not delivery) until the window is shown again; if the app quits first, the
+ * next sync simply re-fetches them.
+ */
+let pendingEmailDelivery = null;
+
+/** Sends a cached hidden-window batch the moment its window is back. */
+function flushPendingEmailDelivery() {
+  if (pendingEmailDelivery === null) return;
+  const target =
+    mainWindow !== null && !mainWindow.isDestroyed() ? mainWindow : null;
+  if (target === null) return;
+  try {
+    target.webContents.send("desktop:email:sync-result", pendingEmailDelivery.summary);
+    target.webContents.send("desktop:email:alerts", pendingEmailDelivery.payload);
+  } catch {
+    return; // window died mid-flush: keep the batch, try again on the next show
+  }
+  pendingEmailDelivery = null;
+}
+
+/**
  * Restores and focuses the main window, creating it if background mode let the
  * app outlive it. Used by the tray's Open item, a notification click, and the
  * second-instance handler.
@@ -747,6 +789,9 @@ function showMainWindow(deepLink) {
   if (typeof deepLink === "string" && deepLink.length > 0) {
     mainWindow.webContents.send("desktop:navigate", deepLink);
   }
+  // Alerts that arrived while the window was hidden are delivered now — the
+  // user clicked a toast (or opened the window) because of them.
+  flushPendingEmailDelivery();
 }
 
 /**
@@ -774,12 +819,19 @@ function broadcastStateChanged(exceptWebContentsId) {
 /**
  * Delivers a canonical sync outcome to the MAIN window renderer (FR-24).
  *
- * Two payloads leave main:
+ * Two payloads leave main when the window is visible:
  *  - `desktop:email:alerts`: the converted, parser-ready messages + the
  *    mailbox metadata (mailbox, UIDVALIDITY, sinceDays) the renderer echoes
  *    back through confirm-processed. Never a password, never a raw HTML body.
  *  - `desktop:email:sync-result`: the SAFE summary (counts, identity,
  *    category) every trigger reports — the message array is stripped here.
+ *
+ * When the window is hidden (background mode / minimized) or absent, the
+ * decision module (`emailDelivery.cjs`) routes the outcome instead: the batch
+ * is CACHED for re-delivery on the next `showMainWindow` and an OS
+ * notification raises (counts only, click routes to Settings → Email alerts).
+ * The messages stay unconfirmed, so nothing is lost even if the app quits
+ * before the window is shown — the next sync re-fetches them.
  *
  * The quick-add window is deliberately NOT a recipient: it must not run the
  * write-at-mount draft pipeline.
@@ -788,7 +840,17 @@ function deliverEmailSyncResult(result) {
   if (!result) return;
   const target =
     mainWindow !== null && !mainWindow.isDestroyed() ? mainWindow : null;
-  if (target === null) return;
+  const windowVisible =
+    target !== null && target.isVisible() && !target.isMinimized();
+  const messageCount =
+    result.ok === true && Array.isArray(result.messages)
+      ? result.messages.length
+      : 0;
+  const plan = planEmailDelivery({
+    windowVisible,
+    ok: result.ok === true,
+    messageCount,
+  });
   const summary = {
     ok: result.ok === true,
     trigger: result.trigger ?? "manual",
@@ -812,9 +874,21 @@ function deliverEmailSyncResult(result) {
       uidValidity: result.uidValidity ?? null,
     };
   }
+  if (plan.notify !== null) {
+    const payload = {
+      messages: result.messages,
+      mailbox: result.mailbox ?? "INBOX",
+      uidValidity: result.uidValidity ?? null,
+      sinceDays: result.sinceDays ?? 0,
+    };
+    pendingEmailDelivery = { summary, payload };
+    showAppNotification(emailAlertNotification({ count: plan.notify.count }));
+    return;
+  }
+  if (target === null) return;
   try {
     target.webContents.send("desktop:email:sync-result", summary);
-    if (result.ok && Array.isArray(result.messages) && result.messages.length > 0) {
+    if (plan.deliver) {
       target.webContents.send("desktop:email:alerts", {
         messages: result.messages,
         mailbox: result.mailbox ?? "INBOX",

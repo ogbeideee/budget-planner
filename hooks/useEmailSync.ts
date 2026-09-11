@@ -169,8 +169,22 @@ async function onAlertsDelivered(payload: EmailAlertsDelivered): Promise<void> {
   }
 }
 
+/**
+ * Whether a canonical run's summary deserves a toast. A scheduled (hourly)
+ * tick that found nothing must stay silent — an hourly "No new bank alerts."
+ * toast is exactly the notification spam the OS notification path exists to
+ * avoid. Failures surface on EVERY trigger (a sync failure must never
+ * vanish); so does the busy refusal, which only happens after an explicit
+ * user action anyway.
+ */
+export function shouldToastSyncSummary(result: EmailSyncResultSummary): boolean {
+  if (!result.ok) return true;
+  return result.trigger !== "scheduled";
+}
+
 /** Toast for a canonical run's safe summary (failures + no-new-alert cases). */
 function reportSyncSummary(result: EmailSyncResultSummary): void {
+  if (!shouldToastSyncSummary(result)) return;
   const push = useToastStore.getState().push;
   if (!result.ok) {
     if (result.started === false && result.reason === "busy") {

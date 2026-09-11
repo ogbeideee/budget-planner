@@ -29,14 +29,29 @@ Landed and tested:
   `electron/emailConnection.cjs`), with the connect/disconnect/test/status UI
   in Settings (`components/settings/EmailAlertsPanel.tsx`)
 
-NOT yet landed — see "Remaining work" at the end:
+Landed and tested, sync stage (2026-09):
 
-- The sync pipeline: no code path calls search/fetch yet, so no mail is
-  actually downloaded or parsed from a live mailbox
-- Periodic and manual sync, the needs-review/draft UI
+- The sync manager (`electron/emailSync.cjs`) — ONE canonical operation
+  (`checkNow`) behind every entry point, an `inFlight` guard against
+  overlapping sessions, one held-open transport across ticks, failure
+  backoff, and mailbox-level UID dedupe via `electron/emailSyncStore.cjs`
+  (a non-ledger record through the storage seam, never AppState)
+- The hourly scheduler (`electron/emailScheduler.cjs`, ONE timer handle,
+  cleared before every restart) and the manual "Check now" button + tray
+  "Check for new alerts now" item, all calling the SAME canonical operation
+- Delivery to the renderer (`desktop:email:alerts` + safe summary on
+  `desktop:email:sync-result`), the renderer bridge (`hooks/useEmailSync.ts`)
+  running the EXISTING parser + pipeline, auto-import through `planImport`,
+  and the needs-review queue (`components/email/EmailDraftsReviewModal.tsx`)
+- Hidden-window handling (`electron/emailDelivery.cjs`): a sync that finds
+  alerts while the main window is in the tray caches the batch (still
+  unconfirmed) and raises an OS notification whose click restores the window
+  on Settings → Email alerts; nothing is lost even if the app quits first
 
-The transport, credentials and configuration layers are complete and
-unit-tested; nothing currently reads a mailbox.
+See "Remaining work" at the end for what is still open — notably that
+NOTHING here has been verified against a real mailbox yet: every test runs
+against a fake transport, so the whole sync stage is representative, not
+verified (§4.1a).
 
 --------------------------------------------------
 SECURITY MODEL
@@ -370,39 +385,31 @@ inherits the whole confirm step rather than reimplementing it.
 REMAINING WORK
 --------------------------------------------------
 
-1. **IMAP transport** (main process only) — **TRANSPORT LANDED; SYNC WIRING
-   REMAINS.** `electron/imapTransport.cjs` provides connect/authenticate,
-   `search({ sinceDays, fromDomains })` (SEARCH FROM per allowlisted domain +
-   SINCE, server-side narrowing), `fetchMessages({ uids })` returning
-   AlertEmail-shaped records, and a clean close — all behind an injectable
-   client, with a read-only IMAP session (`readOnly: true`), timeouts, and
-   secret redaction on every error message. `electron/emailConnection.cjs`
-   verifies the account, stores the password via the vault ONLY after the
-   server accepted it, and reports safe status over
-   `desktop:email:connect|test|disconnect|status`. Still to build: the sync
-   operation that opens the connection, runs search + fetch, converts bodies
-   to alert text (HTML-table alerts need the HTML→text conversion before
-   `parseAlerts`), and hands `AlertEmail` objects to `parseAlerts`; plus the
-   long-lived connection lifecycle below. `credentials.reveal()` is called
-   only inside main, and its return value never crosses IPC.
-2. **Connect / disclosure UI** — **LANDED** as
-   `components/settings/EmailAlertsPanel.tsx` (Settings → Email alerts,
-   desktop-only): the four disclosures, the allowlist, app-password
-   instructions, Gmail defaults, generic IMAP fields, lookback choice
-   (7/30/90, default 30), connect / test / disconnect, and the safe status
-   line. The remaining piece is the needs-review UI (item 3).
-3. **Needs-review UI** surfacing `EmailDraft.needsReview` with the snippet.
-4. **Sync scheduling** — an interval of **30 minutes exactly** (decided
-   2026-08-29; supersedes the earlier 15-minute suggestion) plus a manual
-   "Check now".
-   Three constraints on whoever builds this:
-   - The interval MUST be a named constant (`EMAIL_SYNC_INTERVAL_MS =
-     30 * 60 * 1000`) declared next to the scheduler, never an inline literal.
-   - "Check now" MUST NOT go through the timer — it calls the same fetch
-     directly, so a user who knows an alert just arrived never waits.
-   - ONE timer handle, cleared on teardown AND before every (re)start, so a
-     disconnect/reconnect or a close/reopen cycle cannot stack timers. Copy
-     the shape of `startAutoBackups` in lib/desktopFeatures.ts.
+1. **Live-mailbox verification — the only remaining build item, and the one
+   that matters most.** Every layer (transport, sync, scheduler, delivery,
+   review UI) is built and unit-tested against FAKE transports. Per §4.1a the
+   whole sync stage is therefore representative, not verified. Verification
+   means connecting a real Gmail account with a real app password and walking
+   connect → hourly/manual sync → HTML→text conversion → parse → auto-import
+   / needs-review for at least one REAL alert from each Tier 1 institution
+   (GTBank / Wema / Quick MFB). Tier 2 templates stay banner-marked guesses
+   until their real samples arrive — assume they are wrong (every Tier 1
+   template was, before its samples did).
+2. **Sync scheduling** — **LANDED** as `electron/emailScheduler.cjs`, with
+   ONE decision superseded on the way: the interval is **ONE HOUR**
+   (`EMAIL_SYNC_INTERVAL_MS = 60 * 60 * 1000`, decided in the sync-stage
+   build session, recorded in the module and pinned by its test), NOT the
+   30 minutes decided here on 2026-08-29. The earlier 15-minute and 30-minute
+   suggestions are both obsolete — do not "fix" the constant back to 30.
+   The constraints below all hold as specified:
+   - The interval is a named constant declared next to the scheduler.
+   - "Check now" (renderer button and tray item) bypasses the timer via
+     `runNow()` and calls the same canonical `checkNow`.
+   - ONE timer handle, `unref`'d, cleared before every (re)start.
+   A scheduled tick that finds nothing toasts NOTHING renderer-side
+   (`shouldToastSyncSummary` in hooks/useEmailSync.ts) — an hourly "no new
+   alerts" toast would be worse than no check. Failures surface on every
+   trigger.
 
 --------------------------------------------------
 BACKGROUND CHECKING (FR-26) — WHAT CHANGED, AND WHAT DID NOT
@@ -413,19 +420,24 @@ FR-26 added a system tray, a quick-add window, and an opt-in
 tray instead of quitting the app. That lifts the constraint this document used
 to state — that syncing was "explicitly scoped to a running, foreground app".
 
-**It does not make background checking work.** Nothing here changed about the
-transport, because there still is no transport. Item 1 above is still open and
-nothing in the app reads a mailbox. What FR-26 provides is the *precondition*:
-a process that can still be alive with no window on screen, and a place to
-surface what it finds.
+**Background checking now WORKS** (2026-09 sync stage): the transport, sync
+manager and scheduler are landed, and the tray's "Check for new alerts now"
+item is wired — `main.cjs` registers
+`tray.setAlertChecker(() => emailScheduler.runNow("tray"))`, so a sync that
+finds nothing leaves the app silent, and one that finds alerts while the
+window is hidden caches the batch and raises an OS notification
+(`electron/emailDelivery.cjs`) whose click restores the window on
+Settings → Email alerts. What FR-26 originally provided was the
+*precondition*: a process that can still be alive with no window on screen,
+and a place to surface what it finds.
 
 What FR-26 actually landed for this feature:
 
 - **A tray menu seam.** `tray.setAlertChecker(fn)` makes a "Check for new
-  alerts now" item appear in the tray context menu. Nothing calls it today, so
-  the item is ABSENT rather than present and dead. The scheduler should call it
-  with the same function "Check now" calls — see the constraint above that
-  manual checks must not go through the timer.
+  alerts now" item appear in the tray context menu. **Now wired:** the
+  scheduler's `runNow("tray")` is registered in `main.cjs`, so the item and
+  the renderer's "Check now" call the same canonical operation — the manual
+  check never goes through the timer.
 - **A notification path with a click target.** `desktop:notify` now accepts a
   `deepLink`; clicking the toast restores the main window and routes there.
   Use the existing path (`sendDesktopNotification`, `Notification.isSupported()`
