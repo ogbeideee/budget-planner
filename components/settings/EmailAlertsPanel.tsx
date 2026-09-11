@@ -529,7 +529,27 @@ export function EmailAlertsPanel() {
     void credentialAvailability().then((result) => {
       if (!cancelled) setAvailability(result);
     });
-    void emailConnectionStatusReport().then((report) => {
+    void emailConnectionStatusReport().then(async (report) => {
+      if (cancelled) return;
+      // Passwordless reconnect: the vault keeps the app password across app
+      // restarts, but main's connection state does not. Without this, every
+      // relaunch showed the connect form again (hiding the review queue) even
+      // though the credential is still stored. Connect with an EMPTY password
+      // — main reveals the stored one; it fails harmlessly when none exists.
+      if (
+        report &&
+        report.state !== "connected" &&
+        loadEmailAccountConfig() !== null
+      ) {
+        const reconnect = await connectEmailAccount(loadEmailAccountConfig(), "");
+        if (!cancelled && reconnect.ok) {
+          const refreshed = await emailConnectionStatusReport();
+          if (refreshed) {
+            setStatus(refreshed);
+            return;
+          }
+        }
+      }
       if (!cancelled && report) setStatus(report);
     });
     return () => {

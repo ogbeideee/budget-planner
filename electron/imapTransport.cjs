@@ -19,6 +19,7 @@
 "use strict";
 
 const { ImapFlow } = require("imapflow");
+const { extractBodies } = require("./mimeBodies.cjs");
 
 const CONNECT_TIMEOUT_MS = 15 * 1000;
 const GREETING_TIMEOUT_MS = 15 * 1000;
@@ -41,6 +42,10 @@ const INBOX = "INBOX";
 /** Cap for a single fetched body part. Bank alert mail is tiny; anything this
  *  large is not an alert and would only cost memory. */
 const BODY_PART_MAX_BYTES = 768 * 1024;
+// FETCH UIDs are batched: a 30-day lookback over busy bank senders can match
+// hundreds of messages, and Gmail answers a single FETCH with a very long UID
+// list `BAD — Could not parse command` (found live, 2026-09-11).
+const FETCH_BATCH_SIZE = 100;
 
 /** Replaces any occurrence of a secret in a message with [redacted]. */
 function redactSecrets(message, secrets) {
@@ -156,14 +161,28 @@ function createTransport({ config, password, clientFactory, timeouts = {} }) {
 
   function failure(error) {
     const category = categorizeImapError(error);
-    return {
-      ok: false,
-      category,
-      message: redactSecrets(
-        error instanceof Error ? error.message : String(error),
-        secrets,
-      ),
-    };
+    const message = redactSecrets(
+      error instanceof Error ? error.message : String(error),
+      secrets,
+    );
+    // Main-process-only diagnostic (never crosses IPC beyond the category +
+    // redacted message already carried by the result; never the secret —
+    // every field passes through redactSecrets, which scrubs the password
+    // and the account address). imapflow's error.message is often just
+    // "Command failed"; the server's actual NO/BAD text lives on
+    // .responseText and the sent command on .executedCommand, and those are
+    // what make a live failure diagnosable.
+    const detail = [
+      error?.responseStatus || error?.status,
+      redactSecrets(String(error?.responseText || error?.text || ""), secrets),
+      redactSecrets(String(error?.executedCommand || ""), secrets),
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    console.error(
+      `[imap] ${category}: ${message}${detail ? ` — ${detail}` : ""}`,
+    );
+    return { ok: false, category, message };
   }
 
   return {
@@ -229,6 +248,10 @@ function createTransport({ config, password, clientFactory, timeouts = {} }) {
       }
       try {
         const uids = await client.search(query, { uid: true });
+        // Metadata only (a count + the window) — no subjects, no senders.
+        console.error(
+          `[imap] search since=${since.toISOString()} domains=${domains.length} -> ${(uids ?? []).length} uids`,
+        );
         return { ok: true, uids: (uids ?? []).map((uid) => Number(uid)) };
       } catch (error) {
         return failure(error);
@@ -251,27 +274,41 @@ function createTransport({ config, password, clientFactory, timeouts = {} }) {
       if (list.length === 0) return { ok: true, messages: [] };
       try {
         const messages = [];
-        for await (const msg of client.fetch(list, {
-          uid: true,
-          envelope: true,
-          bodyParts: [
-            { key: "text", maxLength: BODY_PART_MAX_BYTES },
-            { key: "html", maxLength: BODY_PART_MAX_BYTES },
-          ],
-        })) {
-          const addresses = (msg.envelope?.from ?? [])
-            .map((address) => address?.address)
-            .filter(Boolean);
-          messages.push({
-            id: String(msg.uid),
-            from: addresses.join(", "),
-            subject: msg.envelope?.subject ?? "",
-            receivedAt: msg.envelope?.date
-              ? new Date(msg.envelope.date).toISOString()
-              : undefined,
-            body: msg.bodyParts?.get?.("text")?.toString() ?? "",
-            html: msg.bodyParts?.get?.("html")?.toString() ?? "",
-          });
+        for (let i = 0; i < list.length; i += FETCH_BATCH_SIZE) {
+          const batch = list.slice(i, i + FETCH_BATCH_SIZE);
+          // Raw source + local split, NOT BODY.PEEK[HTML]: IMAP has no
+          // "give me the HTML part" selector (Gmail answers
+          // `BODY.PEEK[HTML]` with BAD — Could not parse command), so the
+          // message comes back capped and mimeBodies extracts text/html
+          // locally. Read-only either way.
+          for await (const msg of client.fetch(
+            batch,
+            {
+              uid: true,
+              envelope: true,
+              source: { maxLength: BODY_PART_MAX_BYTES },
+            },
+            // The list contains UIDs (the search ran with uid:true) — without
+            // this flag imapflow treats them as SEQUENCE numbers, matches
+            // nothing, and silently returns zero messages (found live,
+            // 2026-09-11).
+            { uid: true },
+          )) {
+            const addresses = (msg.envelope?.from ?? [])
+              .map((address) => address?.address)
+              .filter(Boolean);
+            const bodies = await extractBodies(msg.source);
+            messages.push({
+              id: String(msg.uid),
+              from: addresses.join(", "),
+              subject: msg.envelope?.subject ?? "",
+              receivedAt: msg.envelope?.date
+                ? new Date(msg.envelope.date).toISOString()
+                : undefined,
+              body: bodies.text,
+              html: bodies.html,
+            });
+          }
         }
         return { ok: true, messages };
       } catch (error) {

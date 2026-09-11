@@ -260,3 +260,20 @@ describe("disconnect and status", () => {
     expect(serialized).not.toContain("app-password-123");
   });
 });
+
+// The 2026-09-11 live failure: main.cjs built the connection manager without
+// `transportFactory`, so every real connect/test threw and the renderer could
+// only show a generic message. The unit tests inject a fake factory and never
+// caught it — so the wiring itself gets a tripwire here.
+describe("main-process wiring", () => {
+  it("hands the real transport factory to the connection manager", () => {
+    const fs = require_("node:fs");
+    const path = require_("node:path");
+    const source = fs.readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+    const call = source.match(
+      /createEmailConnectionManager\(\{[\s\S]*?\n  \}\);/,
+    );
+    expect(call).not.toBeNull();
+    expect(call![0]).toContain("transportFactory");
+  });
+});

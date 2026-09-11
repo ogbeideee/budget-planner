@@ -64,7 +64,9 @@
     "productName": "Budget Planner",
     "files": [
       "out/**",
-      "electron/**"
+      "electron/**",
+      "build/icon.ico",
+      "build/icon.png"
     ],
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**"

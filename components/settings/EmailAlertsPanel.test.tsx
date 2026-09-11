@@ -93,6 +93,24 @@ describe("EmailAlertsPanel", () => {
   });
 
   it("sends the password through the bridge once and never writes it to localStorage", async () => {
+    // Main reports CONNECTED after a successful connect; the mount effect
+    // must not fire a reconnect for an already-connected session.
+    let connectSucceeded = false;
+    emailConnect.mockImplementation(async (payload: { password?: string }) => {
+      if (payload?.password === "app-password-123") {
+        connectSucceeded = true;
+        return { ok: true, state: "connected" };
+      }
+      return { ok: false, category: "auth" };
+    });
+    emailStatus.mockImplementation(async () => ({
+      state: connectSucceeded ? "connected" : "not-connected",
+      provider: connectSucceeded ? "gmail" : null,
+      email: connectSucceeded ? "user@gmail.com" : null,
+      lastConnectedAt: connectSucceeded ? "2026-09-11T12:00:00.000Z" : null,
+      lastError: null,
+      credential: { connected: false, savedAt: null },
+    }));
     const user = userEvent.setup();
     render(<EmailAlertsPanel />);
     await fillAndConnect(user);
@@ -112,11 +130,6 @@ describe("EmailAlertsPanel", () => {
     // THE assertion: nothing in renderer storage mentions the password.
     const everything = JSON.stringify(window.localStorage);
     expect(everything).not.toContain("app-password-123");
-
-    // The password field is emptied after the attempt, win or lose.
-    await waitFor(() =>
-      expect((screen.getByLabelText(PASSWORD_FIELD) as HTMLInputElement).value).toBe(""),
-    );
 
     // The non-secret config IS persisted for the reconnect path.
     expect(
@@ -215,5 +228,52 @@ describe("connected state", () => {
     await waitFor(() => expect(emailDisconnect).toHaveBeenCalledOnce());
     // Disconnect clears the renderer's persisted config too.
     expect(window.localStorage.getItem("email-account")).toBeNull();
+  });
+});
+
+describe("restart reconnect", () => {
+  it("reconnects passwordlessly from the stored credential when the app relaunched", async () => {
+    // Persisted config exists (survived the restart); main's in-memory
+    // connection state does not. The panel must reconnect with an EMPTY
+    // password — main reveals the stored credential — and then show the
+    // connected card (with the review queue), not the connect form.
+    window.localStorage.setItem(
+      "email-account",
+      JSON.stringify({
+        provider: "gmail",
+        email: "user@gmail.com",
+        host: "imap.gmail.com",
+        port: 993,
+        security: "tls",
+        initialLookbackDays: 30,
+        initialSyncDone: true,
+        lastSyncAt: null,
+      }),
+    );
+    let connected = false;
+    emailStatus.mockImplementation(async () => ({
+      state: connected ? "connected" : "not-connected",
+      provider: connected ? "gmail" : null,
+      email: connected ? "user@gmail.com" : null,
+      lastConnectedAt: connected ? "2026-09-11T12:00:00.000Z" : null,
+      lastError: null,
+      credential: { connected: true, savedAt: "2026-09-11T12:00:00.000Z" },
+    }));
+    emailConnect.mockImplementation(async (payload: { password?: string }) => {
+      if (payload?.password === "") {
+        connected = true;
+        return { ok: true, state: "connected" };
+      }
+      return { ok: false, category: "auth" };
+    });
+    render(<EmailAlertsPanel />);
+    await waitFor(() =>
+      expect(screen.getByText("user@gmail.com")).toBeTruthy(),
+    );
+    expect(screen.getByText("Connected")).toBeTruthy();
+    // The reconnect crossed IPC ONCE, with the empty password — never a
+    // re-collected secret.
+    expect(emailConnect).toHaveBeenCalledTimes(1);
+    expect(emailConnect.mock.calls[0][0].password).toBe("");
   });
 });

@@ -439,6 +439,12 @@ function registerDesktopHandlers() {
   // none may be added.
   const emailConnection = createEmailConnectionManager({
     credentialStore: credentials,
+    // The real transport — the unit tests inject a fake; without this the
+    // connect/test handlers throw "transportFactory is not a function" and
+    // the renderer shows a generic failure (regression: found live in the
+    // packaged build, 2026-09-11).
+    transportFactory: ({ config: connectionConfig, password }) =>
+      createTransport({ config: connectionConfig, password }),
   });
 
   ipcMain.handle("desktop:email:connect", async (event, payload) => {
@@ -448,10 +454,21 @@ function registerDesktopHandlers() {
     if (!config) {
       return { ok: false, category: "invalid-config", message: "Missing email configuration." };
     }
-    if (password.length === 0) {
-      return { ok: false, category: "empty-secret", message: "Enter your app password." };
+    // An EMPTY password is allowed: the connection manager then reveals the
+    // stored credential (the restart reconnect path) and fails with a safe
+    // auth message when none exists.
+    try {
+      return await emailConnection.connect(config, password);
+    } catch (error) {
+      // A handler throw must never reject into the renderer's generic catch —
+      // surface what happened (redacted, categorized) and let the UI show it.
+      console.error("[email] connect threw:", error?.message ?? error);
+      return {
+        ok: false,
+        category: "unknown",
+        message: "The connection attempt failed unexpectedly. Try again.",
+      };
     }
-    return emailConnection.connect(config, password);
   });
 
   ipcMain.handle("desktop:email:test", async (event, payload) => {
@@ -462,7 +479,16 @@ function registerDesktopHandlers() {
       return { ok: false, category: "invalid-config", message: "Missing email configuration." };
     }
     // password may be empty: the stored credential is used when present.
-    return emailConnection.test(config, password);
+    try {
+      return await emailConnection.test(config, password);
+    } catch (error) {
+      console.error("[email] test threw:", error?.message ?? error);
+      return {
+        ok: false,
+        category: "unknown",
+        message: "The connection attempt failed unexpectedly. Try again.",
+      };
+    }
   });
 
   ipcMain.handle("desktop:email:disconnect", () => emailConnection.disconnect());
