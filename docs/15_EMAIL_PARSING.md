@@ -36,7 +36,7 @@ Landed and tested, sync stage (2026-09):
   overlapping sessions, one held-open transport across ticks, failure
   backoff, and mailbox-level UID dedupe via `electron/emailSyncStore.cjs`
   (a non-ledger record through the storage seam, never AppState)
-- The hourly scheduler (`electron/emailScheduler.cjs`, ONE timer handle,
+- The 30-minute scheduler (`electron/emailScheduler.cjs`, ONE timer handle,
   cleared before every restart) and the manual "Check now" button + tray
   "Check for new alerts now" item, all calling the SAME canonical operation
 - Delivery to the renderer (`desktop:email:alerts` + safe summary on
@@ -390,24 +390,24 @@ REMAINING WORK
    review UI) is built and unit-tested against FAKE transports. Per §4.1a the
    whole sync stage is therefore representative, not verified. Verification
    means connecting a real Gmail account with a real app password and walking
-   connect → hourly/manual sync → HTML→text conversion → parse → auto-import
+   connect → scheduled/manual sync → HTML→text conversion → parse → auto-import
    / needs-review for at least one REAL alert from each Tier 1 institution
    (GTBank / Wema / Quick MFB). Tier 2 templates stay banner-marked guesses
    until their real samples arrive — assume they are wrong (every Tier 1
    template was, before its samples did).
-2. **Sync scheduling** — **LANDED** as `electron/emailScheduler.cjs`, with
-   ONE decision superseded on the way: the interval is **ONE HOUR**
-   (`EMAIL_SYNC_INTERVAL_MS = 60 * 60 * 1000`, decided in the sync-stage
-   build session, recorded in the module and pinned by its test), NOT the
-   30 minutes decided here on 2026-08-29. The earlier 15-minute and 30-minute
-   suggestions are both obsolete — do not "fix" the constant back to 30.
+2. **Sync scheduling** — **LANDED** as `electron/emailScheduler.cjs`. The
+   interval is **30 MINUTES exactly** (`EMAIL_SYNC_INTERVAL_MS = 30 * 60 *
+   1000`, the 2026-08-29 decision, reconfirmed by the user 2026-09-11 after
+   the build session briefly shipped one hour — do not change it again
+   without a new dated decision). The constraints below all hold as
+   specified:
    The constraints below all hold as specified:
    - The interval is a named constant declared next to the scheduler.
    - "Check now" (renderer button and tray item) bypasses the timer via
      `runNow()` and calls the same canonical `checkNow`.
    - ONE timer handle, `unref`'d, cleared before every (re)start.
    A scheduled tick that finds nothing toasts NOTHING renderer-side
-   (`shouldToastSyncSummary` in hooks/useEmailSync.ts) — an hourly "no new
+   (`shouldToastSyncSummary` in hooks/useEmailSync.ts) — a repeated "no new
    alerts" toast would be worse than no check. Failures surface on every
    trigger.
 

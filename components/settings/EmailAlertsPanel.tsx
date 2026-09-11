@@ -385,7 +385,7 @@ function ConnectedCard({
   const provider = status?.provider ?? config?.provider ?? "gmail";
 
   // Sync surface (FR-24, sync stage): manual check + the review queue. The
-  // manual check calls the SAME canonical operation the hourly scheduler and
+  // manual check calls the SAME canonical operation the 30-minute scheduler and
   // the tray item call — never a separate flow.
   const draftCount = useEmailSync((s) => s.drafts.length);
   const setReviewOpen = useEmailSync((s) => s.setReviewOpen);
@@ -496,7 +496,7 @@ function ConnectedCard({
             )}
           </div>
           <p className="text-xs leading-relaxed text-muted">
-            New alerts are also checked automatically once an hour while the app
+            New alerts are also checked automatically every 30 minutes while the app
             is running, and from the tray&apos;s &quot;Check for new alerts
             now&quot; item. Fully-read alerts with a confirmed category are
             imported straight away; anything incomplete waits here.

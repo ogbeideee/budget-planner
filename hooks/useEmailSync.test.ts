@@ -14,7 +14,7 @@ function summary(overrides: Partial<EmailSyncResultSummary>): EmailSyncResultSum
 }
 
 describe("shouldToastSyncSummary", () => {
-  it("stays silent when the scheduled hourly tick found nothing", () => {
+  it("stays silent when the scheduled tick found nothing", () => {
     expect(shouldToastSyncSummary(summary({ trigger: "scheduled" }))).toBe(false);
   });
 

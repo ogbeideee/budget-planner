@@ -1,4 +1,4 @@
-// Background email polling (FR-24, Prompt 2) — the hourly tick that keeps the
+// Background email polling (FR-24) — the 30-minute tick that keeps the
 // account checked while the app runs.
 //
 // Design constraints (docs/15_EMAIL_PARSING.md + Prompt 2 product decisions):
@@ -17,8 +17,9 @@
 //    tick simply tries again (the sync manager owns backoff).
 "use strict";
 
-/** Polling default: ONE HOUR (Prompt 2, decisions 6 and 10). */
-const EMAIL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+/** Polling interval: 30 MINUTES exactly (decided 2026-08-29, reconfirmed by
+ *  the user 2026-09-11; supersedes the build session's one-hour choice). */
+const EMAIL_SYNC_INTERVAL_MS = 30 * 60 * 1000;
 
 function createEmailScheduler({
   checkNow,
@@ -77,7 +78,7 @@ function createEmailScheduler({
 
   return {
     /**
-     * Starts the hourly timer if it is not already running. Always safe to
+     * Starts the 30-minute timer if it is not already running. Always safe to
      * call once at app ready; the tick itself is what decides whether an
      * account exists. Does NOT backfill a missed tick.
      */

@@ -7,11 +7,11 @@ const {
   EMAIL_SYNC_INTERVAL_MS,
 } = require_("./emailScheduler.cjs");
 
-const HOUR = 60 * 60 * 1000;
+const INTERVAL = 30 * 60 * 1000;
 
 describe("email scheduler", () => {
-  it("exposes the one-hour interval as a named constant", () => {
-    expect(EMAIL_SYNC_INTERVAL_MS).toBe(HOUR);
+  it("exposes the 30-minute interval as a named constant", () => {
+    expect(EMAIL_SYNC_INTERVAL_MS).toBe(INTERVAL);
   });
 
   it("invokes the canonical check on each tick with the scheduled trigger", async () => {
@@ -29,12 +29,12 @@ describe("email scheduler", () => {
       checkNow,
       hasAccount: () => true,
       onResult,
-      intervalMs: HOUR,
+      intervalMs: INTERVAL,
     });
     scheduler.start();
     // advanceTimersByTimeAsync lets the sync promise's microtasks settle, so
     // onResult has actually fired before the assertion.
-    await vi.advanceTimersByTimeAsync(HOUR);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
     expect(checkNow).toHaveBeenCalledWith("scheduled");
     // The result is delivered through the callback the caller wired to the renderer.
     expect(onResult).toHaveBeenCalledWith(
@@ -50,10 +50,10 @@ describe("email scheduler", () => {
     const scheduler = createEmailScheduler({
       checkNow,
       hasAccount: () => false,
-      intervalMs: HOUR,
+      intervalMs: INTERVAL,
     });
     scheduler.start();
-    vi.advanceTimersByTime(HOUR * 3);
+    vi.advanceTimersByTime(INTERVAL * 3);
     expect(checkNow).not.toHaveBeenCalled();
     scheduler.stop();
     vi.useRealTimers();
@@ -71,14 +71,14 @@ describe("email scheduler", () => {
     const scheduler = createEmailScheduler({
       checkNow,
       hasAccount: () => true,
-      intervalMs: HOUR,
+      intervalMs: INTERVAL,
     });
     scheduler.start();
-    vi.advanceTimersByTime(HOUR);
+    vi.advanceTimersByTime(INTERVAL);
     expect(checkNow).toHaveBeenCalledTimes(1);
     expect(scheduler.running).toBe(true);
-    // One hour later the tick finds a sync still running — it drops it.
-    vi.advanceTimersByTime(HOUR);
+    // One interval later the tick finds a sync still running — it drops it.
+    vi.advanceTimersByTime(INTERVAL);
     expect(checkNow).toHaveBeenCalledTimes(1);
     // Manual while running is also refused (no stacking).
     const ack = scheduler.runNow();
@@ -95,7 +95,7 @@ describe("email scheduler", () => {
     const scheduler = createEmailScheduler({
       checkNow,
       hasAccount: () => true,
-      intervalMs: 10 * HOUR,
+      intervalMs: 10 * INTERVAL,
     });
     scheduler.start();
     const ack = scheduler.runNow();
@@ -111,7 +111,7 @@ describe("email scheduler", () => {
     const scheduler = createEmailScheduler({
       checkNow,
       hasAccount: () => true,
-      intervalMs: 10 * HOUR,
+      intervalMs: 10 * INTERVAL,
     });
     scheduler.start();
     scheduler.runNow("tray");
@@ -126,11 +126,11 @@ describe("email scheduler", () => {
     const scheduler = createEmailScheduler({
       checkNow,
       hasAccount: () => true,
-      intervalMs: HOUR,
+      intervalMs: INTERVAL,
     });
     scheduler.start();
     scheduler.start();
-    vi.advanceTimersByTime(HOUR);
+    vi.advanceTimersByTime(INTERVAL);
     expect(checkNow).toHaveBeenCalledTimes(1);
     scheduler.stop();
     vi.useRealTimers();
@@ -142,11 +142,11 @@ describe("email scheduler", () => {
     const scheduler = createEmailScheduler({
       checkNow,
       hasAccount: () => true,
-      intervalMs: HOUR,
+      intervalMs: INTERVAL,
     });
     scheduler.start();
     scheduler.stop();
-    vi.advanceTimersByTime(HOUR * 2);
+    vi.advanceTimersByTime(INTERVAL * 2);
     expect(checkNow).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
@@ -160,7 +160,7 @@ describe("email scheduler", () => {
       checkNow,
       hasAccount: () => true,
       onResult,
-      intervalMs: HOUR,
+      intervalMs: INTERVAL,
     });
     const ack = scheduler.runNow();
     expect(ack).toMatchObject({ ok: true, started: true });

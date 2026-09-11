@@ -164,14 +164,14 @@ async function onAlertsDelivered(payload: EmailAlertsDelivered): Promise<void> {
         .push(`Email alerts: ${parts.join(", ")}.`, "success");
     }
   } catch {
-    // A delivery handling failure must never crash the app; the next hourly
+    // A delivery handling failure must never crash the app; the next scheduled
     // sync simply re-delivers anything not yet confirmed.
   }
 }
 
 /**
- * Whether a canonical run's summary deserves a toast. A scheduled (hourly)
- * tick that found nothing must stay silent — an hourly "No new bank alerts."
+ * Whether a canonical run's summary deserves a toast. A scheduled
+ * tick that found nothing must stay silent — a repeated "No new bank alerts."
  * toast is exactly the notification spam the OS notification path exists to
  * avoid. Failures surface on EVERY trigger (a sync failure must never
  * vanish); so does the busy refusal, which only happens after an explicit

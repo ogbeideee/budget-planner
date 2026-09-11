@@ -472,7 +472,7 @@ function registerDesktopHandlers() {
   // --- Email sync (FR-24, sync stage) --------------------------------------
   //
   // ONE canonical operation (`emailSyncManager.checkNow`) behind ALL entry
-  // points: the renderer's manual "Check now", the tray item and the hourly
+  // points: the renderer's manual "Check now", the tray item and the scheduled
   // scheduler. Overlap is refused inside the manager (inFlight) and again in
   // the scheduler; there is no second sync implementation anywhere.
   //
@@ -1396,7 +1396,7 @@ app.whenReady().then(() => {
     } else if (emailScheduler !== null) {
       // FR-24: the tray item exists now that the transport + sync land. It
       // goes through the scheduler's runNow — the SAME canonical operation as
-      // the renderer's button and the hourly tick, with the same overlap
+      // the renderer's button and the scheduled tick, with the same overlap
       // protection (a busy sync is refused, never stacked).
       tray.setAlertChecker(() => {
         emailScheduler.runNow("tray");
